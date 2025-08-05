@@ -1,0 +1,25 @@
+interfaces:
+  ####################################################
+  ###############  TEST INTERFACE  ###################
+  ####################################################
+  "a_":
+    scope: ["some_module"]
+    clock: "clk_i"
+    reset: "rst_ni"
+    reset_type: "low"
+
+    handshake: "ReadyValid"
+    ready: "a_ready"
+    valid: "a_valid"
+ 
+  "b_":
+    scope: ["some_module"]
+    clock: "clk_i"
+    reset: "rst_ni"
+    reset_type: "low"
+
+    handshake: "ReadyValid"
+    ready: "b_ready"
+    valid: "b_valid"
+ 
+

@@ -1,0 +1,22 @@
+stages:
+  - build
+
+image: debian
+
+build:
+  stage: build
+  only:
+    - branches
+  before_script: 
+    - apt update -qq &> /dev/null
+    - apt install --yes curl gcc python3 python3-setuptools git &> /dev/null
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &> /dev/null
+    - git clone https://github.com/antmicro/tuttest.git
+    - cd tuttest
+    - python3 setup.py build &> /dev/null
+    - python3 setup.py install &> /dev/null
+    - cd ..
+  script:
+    - source ~/.cargo/env
+    - cargo build --tests
+    - cargo test

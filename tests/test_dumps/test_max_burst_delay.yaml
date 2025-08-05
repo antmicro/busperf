@@ -1,0 +1,14 @@
+interfaces:
+  ####################################################
+  ###############  TEST INTERFACE  ###################
+  ####################################################
+  "test":
+    scope: ["logic"]
+    clock: "clk"
+    reset: "reset"
+    reset_type: "low"
+
+    handshake: "ReadyValid"
+    ready: "ready"
+    valid: "valid"
+
