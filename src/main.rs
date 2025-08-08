@@ -107,7 +107,26 @@ Options:
     }
 }
 
+use pyo3::ffi::c_str;
+use pyo3::prelude::*;
+use pyo3::types::IntoPyDict;
+
 fn main() {
+    Python::with_gil(|py| {
+        let sys = py.import("sys").unwrap();
+        let version: String = sys.getattr("version").unwrap().extract().unwrap();
+
+        let locals = [("os", py.import("os").unwrap())].into_py_dict(py).unwrap();
+        let code = c_str!("os.getenv('USER') or os.getenv('USERNAME') or 'Unknown'");
+        let user: String = py
+            .eval(code, None, Some(&locals))
+            .unwrap()
+            .extract()
+            .unwrap();
+
+        println!("Hello {}, I'm Python {}", user, version);
+    });
+
     let args = Args::parse();
     let mut data = load_simulation_trace(&args.simulation_trace);
     let descs = load_bus_descriptions(&args.bus_description, args.max_burst_delay).unwrap();
