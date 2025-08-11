@@ -127,6 +127,23 @@ fn main() {
         println!("Hello {}, I'm Python {}", user, version);
     });
 
+    let py_foo = c_str!(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/python/utils/foo.py"
+    )));
+    let py_app = c_str!(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/python/app.py"
+    )));
+    let from_python = Python::with_gil(|py| -> PyResult<Py<PyAny>> {
+        PyModule::from_code(py, py_foo, c_str!("utils.foo"), c_str!("utils.foo"))?;
+        Into::<Py<PyAny>>::into(
+            PyModule::from_code(py, py_app, c_str!(""), c_str!(""))?.getattr("run")?,
+        )
+        .call0(py)
+    });
+    println!("py: {}", from_python.unwrap());
+
     let args = Args::parse();
     let mut data = load_simulation_trace(&args.simulation_trace);
     let descs = load_bus_descriptions(&args.bus_description, args.max_burst_delay).unwrap();
