@@ -482,7 +482,21 @@ pub fn calculate_ready_valid_bus<'a>(
                     usage.add_wasted_cycle(t);
                 }
             },
-            _ => panic!("ready and valid should be binary signals."),
+            (SignalValue::FourValue(rdy, 1), SignalValue::FourValue(vld, 1)) => {
+                match (rdy[0], vld[0]) {
+                    (66, _) | (_, 66) if vrst[0] != bus_desc.rst_active_value => {
+                        eprintln!("bus in unknown state outside reset {}", i.0);
+                    }
+                    (66, _) | (_, 66) => usage.add_wasted_cycle(WastedCycleType::NoTransaction),
+                    other => {
+                        panic!("other {:?}", other);
+                    }
+                }
+            }
+            _ => panic!(
+                "ready and valid should be binary signals. {} {}",
+                ready, valid
+            ),
         }
     }
     usage.end();
