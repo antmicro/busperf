@@ -510,11 +510,6 @@ pub fn calculate_ready_valid_bus<'a>(
         let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
 
         if reset.to_bit_string().unwrap() != bus_desc.rst_active_value.to_string() {
-            println!(
-                "{} {}",
-                reset.to_bit_string().unwrap(),
-                bus_desc.rst_active_value.to_string()
-            );
             if let Ok(ready) = ready.to_bit_string().unwrap().parse::<u32>()
                 && let Ok(valid) = valid.to_bit_string().unwrap().parse::<u32>()
             {
