@@ -523,8 +523,8 @@ pub fn calculate_ready_valid_bus<'a>(
                 usage.add_cycle(t);
             } else {
                 eprintln!(
-                    "bus in unknown statte outside reset ready: {}, valid: {}",
-                    ready, valid
+                    "bus \"{}\" in unknown state outside reset - ready: {}, valid: {}, time: {}",
+                    bus_desc.bus_name, ready, valid, time
                 );
             }
         } else {

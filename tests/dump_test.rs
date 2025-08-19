@@ -171,3 +171,29 @@ fn basic_max_burst_delay() {
         &[correct],
     );
 }
+
+#[test]
+fn credit_valid() {
+    let correct = BusUsage::literal(
+        "test",
+        14,
+        0,
+        0,
+        5,
+        2,
+        vec![1, 2, 1, 3],
+        4,
+        vec![2, 2],
+        vec![4, 1, 2, 7],
+        vec![1, 1, 2],
+        0,
+        3,
+        0,
+    );
+    test(
+        "tests/test_dumps/credit_valid.vcd",
+        "tests/test_dumps/credit_valid.yaml",
+        0,
+        &[correct],
+    );
+}
