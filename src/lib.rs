@@ -508,40 +508,32 @@ pub fn calculate_ready_valid_bus<'a>(
         let ready = ready.get_value_at(&ready.get_offset(time).unwrap(), 0);
         let valid = valid.get_value_at(&valid.get_offset(time).unwrap(), 0);
         let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
-        let SignalValue::Binary(vrst, 1) = reset else {
-            panic!("reset signal should be binary")
-        };
-        match (ready, valid) {
-            (SignalValue::Binary(vr, 1), SignalValue::Binary(vv, 1)) => match (vr[0], vv[0]) {
-                (1, 1) if vrst[0] != bus_desc.rst_active_value => {
-                    usage.add_busy_cycle();
-                }
-                values => {
-                    let t = match values {
-                        (1, 1) => CycleType::NoTransaction,
-                        (0, 0) => CycleType::Free,
-                        (0, 1) => CycleType::Backpressure,
-                        (1, 0) => CycleType::NoData,
-                        _ => panic!("ready and valid should only be 0 or 1"),
-                    };
-                    usage.add_wasted_cycle(t);
-                }
-            },
-            (SignalValue::FourValue(rdy, 1), SignalValue::FourValue(vld, 1)) => {
-                match (rdy[0], vld[0]) {
-                    (66, _) | (_, 66) if vrst[0] != bus_desc.rst_active_value => {
-                        eprintln!("bus in unknown state outside reset {}", i.0);
-                    }
-                    (66, _) | (_, 66) => usage.add_wasted_cycle(CycleType::NoTransaction),
-                    other => {
-                        panic!("other {:?}", other);
-                    }
-                }
+
+        if reset.to_bit_string().unwrap() != bus_desc.rst_active_value.to_string() {
+            println!(
+                "{} {}",
+                reset.to_bit_string().unwrap(),
+                bus_desc.rst_active_value.to_string()
+            );
+            if let Ok(ready) = ready.to_bit_string().unwrap().parse::<u32>()
+                && let Ok(valid) = valid.to_bit_string().unwrap().parse::<u32>()
+            {
+                let t = match (ready, valid) {
+                    (1, 1) => CycleType::Busy,
+                    (0, 0) => CycleType::Free,
+                    (1, 0) => CycleType::NoData,
+                    (0, 1) => CycleType::Backpressure,
+                    _ => panic!("signal has invalid value ready: {} valid: {}", ready, valid),
+                };
+                usage.add_cycle(t);
+            } else {
+                eprintln!(
+                    "bus in unknown statte outside reset ready: {}, valid: {}",
+                    ready, valid
+                );
             }
-            _ => panic!(
-                "ready and valid should be binary signals. {} {}",
-                ready, valid
-            ),
+        } else {
+            usage.add_cycle(CycleType::NoTransaction);
         }
     }
     usage.end();
