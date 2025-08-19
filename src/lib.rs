@@ -36,9 +36,22 @@ pub struct CreditValidBus {
 }
 
 #[derive(Debug)]
+pub struct AHBBus {
+    bus_name: String,
+    module_scope: Vec<String>,
+    clk_name: String,
+    rst_name: String,
+    rst_active_value: u8,
+    htrans: String,
+    hready: String,
+    max_burst_delay: CyclesNum,
+}
+
+#[derive(Debug)]
 pub enum BusDescription {
     AXI(AXIBus),
     CreditValid(CreditValidBus),
+    AHB(AHBBus),
 }
 
 pub fn load_bus_descriptions(
@@ -124,6 +137,24 @@ pub fn load_bus_descriptions(
                     rst_active_value: rst_type.to_owned(),
                     credit: credit.to_owned(),
                     valid: valid.to_owned(),
+                    max_burst_delay: default_max_burst_delay,
+                }))
+            }
+            "AHB" => {
+                let htrans = i.1["htrans"]
+                    .as_str()
+                    .unwrap_or("AHB bus requires htrans signal");
+                let hready = i.1["hready"]
+                    .as_str()
+                    .unwrap_or("AHB bus requires hready signal");
+                descs.push(BusDescription::AHB(AHBBus {
+                    bus_name: name.to_owned(),
+                    module_scope: scope,
+                    clk_name: clk.to_owned(),
+                    rst_name: rst.to_owned(),
+                    rst_active_value: rst_type.to_owned(),
+                    htrans: htrans.to_owned(),
+                    hready: hready.to_owned(),
                     max_burst_delay: default_max_burst_delay,
                 }))
             }
@@ -478,6 +509,7 @@ pub fn calculate_usage<'a>(
         BusDescription::CreditValid(credit_valid_bus) => {
             calculate_credit_valid_bus(simulation_data, credit_valid_bus)
         }
+        BusDescription::AHB(ahbbus) => calculate_ahb_bus(simulation_data, ahbbus),
     }
 }
 
@@ -596,4 +628,68 @@ pub fn calculate_credit_valid_bus<'a>(
     }
     usage.end();
     usage
+}
+
+pub fn calculate_ahb_bus<'a>(
+    simulation_data: &mut SimulationData,
+    bus_desc: &'a AHBBus,
+) -> BusUsage<'a> {
+    let [(_, clock), (_, reset), (_, htrans), (_, hready)] = load_signals(
+        simulation_data,
+        &bus_desc.module_scope,
+        &[
+            &bus_desc.clk_name,
+            &bus_desc.rst_name,
+            &bus_desc.htrans,
+            &bus_desc.hready,
+        ],
+    );
+
+    todo!();
+    // let mut usage = BusUsage::new(&bus_desc.bus_name, bus_desc.max_burst_delay);
+    // for i in clock.iter_changes() {
+    //     if let SignalValue::Binary(v, 1) = i.1 {
+    //         if v[0] == 0 {
+    //             continue;
+    //         }
+    //     }
+    //     // We subtract one to use values just before clock signal
+    //     let time = i.0.saturating_sub(1);
+    //     let credit = credit.get_value_at(&credit.get_offset(time).unwrap(), 0);
+    //     let valid = valid.get_value_at(&valid.get_offset(time).unwrap(), 0);
+    //     let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
+
+    //     if reset.to_bit_string().unwrap() != bus_desc.rst_active_value.to_string() {
+    //         if let Ok(credit) = credit.to_bit_string().unwrap().parse::<u32>()
+    //             && let Ok(valid) = valid.to_bit_string().unwrap().parse::<u32>()
+    //         {
+    //             let t = match (credit, valid) {
+    //                 (1.., 1) => CycleType::Busy,
+    //                 (1.., 0) => CycleType::Free,
+    //                 (0, 1) => {
+    //                     eprintln!(
+    //                         "[WARN]: Credit is 0 and valid 1 on credit/valid bus {} time: {}",
+    //                         bus_desc.bus_name, time
+    //                     );
+    //                     CycleType::Busy
+    //                 }
+    //                 (0, 0) => CycleType::NoTransaction,
+    //                 _ => panic!(
+    //                     "signal has invalid value credit: {} valid: {}",
+    //                     credit, valid
+    //                 ),
+    //             };
+    //             usage.add_cycle(t);
+    //         } else {
+    //             eprintln!(
+    //                 "bus in unknown state outside reset credit: {}, valid: {}",
+    //                 credit, valid
+    //             );
+    //         }
+    //     } else {
+    //         usage.add_cycle(CycleType::NoTransaction);
+    //     }
+    // }
+    // usage.end();
+    // usage
 }
