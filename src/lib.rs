@@ -579,8 +579,15 @@ pub fn calculate_credit_valid_bus<'a>(
             {
                 let t = match (credit, valid) {
                     (1.., 1) => CycleType::Busy,
-                    (1.., 0) => CycleType::NoData,
-                    (0, 1) => CycleType::Backpressure,
+                    (1.., 0) => CycleType::Free,
+                    (0, 1) => {
+                        eprintln!(
+                            "[WARN]: Credit is 0 and valid 1 on credit/valid bus {} time: {}",
+                            bus_desc.bus_name, time
+                        );
+                        CycleType::Busy
+                    }
+                    (0, 0) => CycleType::NoTransaction,
                     _ => panic!(
                         "signal has invalid value credit: {} valid: {}",
                         credit, valid
@@ -589,7 +596,7 @@ pub fn calculate_credit_valid_bus<'a>(
                 usage.add_cycle(t);
             } else {
                 eprintln!(
-                    "bus in uknown statte outside reset credit: {}, valid: {}",
+                    "bus in unknown state outside reset credit: {}, valid: {}",
                     credit, valid
                 );
             }
