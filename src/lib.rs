@@ -1,6 +1,7 @@
 use std::{
     fs::File,
     io::{Read, Write},
+    process::Termination,
     sync::{atomic::AtomicU64, Arc},
 };
 
@@ -23,8 +24,21 @@ pub struct AXIBus {
 }
 
 #[derive(Debug)]
+pub struct CreditValidBus {
+    bus_name: String,
+    module_scope: Vec<String>,
+    clk_name: String,
+    rst_name: String,
+    rst_active_value: u8,
+    credit: String,
+    valid: String,
+    max_burst_delay: CyclesNum,
+}
+
+#[derive(Debug)]
 pub enum BusDescription {
     AXI(AXIBus),
+    CreditValid(CreditValidBus),
 }
 
 pub fn load_bus_descriptions(
@@ -95,7 +109,25 @@ pub fn load_bus_descriptions(
                     max_burst_delay,
                 }));
             }
-            _ => (),
+            "CreditValid" => {
+                let credit = i.1["credit"]
+                    .as_str()
+                    .unwrap_or("CreditValid bus requires credit signal");
+                let valid = i.1["valid"]
+                    .as_str()
+                    .unwrap_or("CreditValid bus requires valid signal");
+                descs.push(BusDescription::CreditValid(CreditValidBus {
+                    bus_name: name.to_owned(),
+                    module_scope: scope,
+                    clk_name: clk.to_owned(),
+                    rst_name: rst.to_owned(),
+                    rst_active_value: rst_type.to_owned(),
+                    credit: credit.to_owned(),
+                    valid: valid.to_owned(),
+                    max_burst_delay: default_max_burst_delay,
+                }))
+            }
+            _ => Err(format!("Invalid handshake {}", handshake))?,
         }
     }
     Ok(descs)
@@ -160,7 +192,8 @@ pub struct BusUsage<'a> {
     max_burst_delay: CyclesNum,
 }
 
-enum WastedCycleType {
+enum CycleType {
+    Busy,
     Free,
     NoTransaction,
     Backpressure,
@@ -187,6 +220,14 @@ impl<'a> BusUsage<'a> {
         }
     }
 
+    fn add_cycle(&mut self, t: CycleType) {
+        if let CycleType::Busy = t {
+            self.add_busy_cycle();
+        } else {
+            self.add_wasted_cycle(t);
+        }
+    }
+
     fn add_busy_cycle(&mut self) {
         self.busy += 1;
         self.burst_lengths[self.current_burst] += 1;
@@ -208,12 +249,13 @@ impl<'a> BusUsage<'a> {
         }
     }
 
-    fn add_wasted_cycle(&mut self, t: WastedCycleType) {
+    fn add_wasted_cycle(&mut self, t: CycleType) {
         match t {
-            WastedCycleType::Free => self.free += 1,
-            WastedCycleType::NoTransaction => self.no_transaction += 1,
-            WastedCycleType::Backpressure => self.backpressure += 1,
-            WastedCycleType::NoData => self.no_data += 1,
+            CycleType::Free => self.free += 1,
+            CycleType::NoTransaction => self.no_transaction += 1,
+            CycleType::Backpressure => self.backpressure += 1,
+            CycleType::NoData => self.no_data += 1,
+            CycleType::Busy => unreachable!(),
         }
         self.transaction_delays[self.current_delay] += 1;
         let transaction_delay = self.transaction_delays[self.current_delay];
@@ -361,7 +403,7 @@ fn get_header(usages: &[BusUsage]) -> (Vec<String>, usize, usize) {
     let mut v = vec![
         String::from("bus_name"),
         String::from("busy(%)"),
-        String::from("busy but no transaction(%)"),
+        String::from("no transaction(%)"),
         String::from("backpressure(%)"),
         String::from("no data to send(%)"),
         String::from("free(%)"),
@@ -433,6 +475,9 @@ pub fn calculate_usage<'a>(
 ) -> BusUsage<'a> {
     match bus_desc {
         BusDescription::AXI(axi) => calculate_ready_valid_bus(simulation_data, axi),
+        BusDescription::CreditValid(credit_valid_bus) => {
+            calculate_credit_valid_bus(simulation_data, credit_valid_bus)
+        }
     }
 }
 
@@ -473,10 +518,10 @@ pub fn calculate_ready_valid_bus<'a>(
                 }
                 values => {
                     let t = match values {
-                        (1, 1) => WastedCycleType::NoTransaction,
-                        (0, 0) => WastedCycleType::Free,
-                        (0, 1) => WastedCycleType::Backpressure,
-                        (1, 0) => WastedCycleType::NoData,
+                        (1, 1) => CycleType::NoTransaction,
+                        (0, 0) => CycleType::Free,
+                        (0, 1) => CycleType::Backpressure,
+                        (1, 0) => CycleType::NoData,
                         _ => panic!("ready and valid should only be 0 or 1"),
                     };
                     usage.add_wasted_cycle(t);
@@ -487,7 +532,7 @@ pub fn calculate_ready_valid_bus<'a>(
                     (66, _) | (_, 66) if vrst[0] != bus_desc.rst_active_value => {
                         eprintln!("bus in unknown state outside reset {}", i.0);
                     }
-                    (66, _) | (_, 66) => usage.add_wasted_cycle(WastedCycleType::NoTransaction),
+                    (66, _) | (_, 66) => usage.add_wasted_cycle(CycleType::NoTransaction),
                     other => {
                         panic!("other {:?}", other);
                     }
@@ -497,6 +542,67 @@ pub fn calculate_ready_valid_bus<'a>(
                 "ready and valid should be binary signals. {} {}",
                 ready, valid
             ),
+        }
+    }
+    usage.end();
+    usage
+}
+
+pub fn calculate_credit_valid_bus<'a>(
+    simulation_data: &mut SimulationData,
+    bus_desc: &'a CreditValidBus,
+) -> BusUsage<'a> {
+    let [(_, clock), (_, reset), (_, credit), (_, valid)] = load_signals(
+        simulation_data,
+        &bus_desc.module_scope,
+        &[
+            &bus_desc.clk_name,
+            &bus_desc.rst_name,
+            &bus_desc.credit,
+            &bus_desc.valid,
+        ],
+    );
+
+    let mut usage = BusUsage::new(&bus_desc.bus_name, bus_desc.max_burst_delay);
+    for i in clock.iter_changes() {
+        if let SignalValue::Binary(v, 1) = i.1 {
+            if v[0] == 0 {
+                continue;
+            }
+        }
+        // We subtract one to use values just before clock signal
+        let time = i.0.saturating_sub(1);
+        let credit = credit.get_value_at(&credit.get_offset(time).unwrap(), 0);
+        let valid = valid.get_value_at(&valid.get_offset(time).unwrap(), 0);
+        let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
+
+        if reset.to_bit_string().unwrap() != bus_desc.rst_active_value.to_string() {
+            println!(
+                "{} {}",
+                reset.to_bit_string().unwrap(),
+                bus_desc.rst_active_value.to_string()
+            );
+            if let Ok(credit) = credit.to_bit_string().unwrap().parse::<u32>()
+                && let Ok(valid) = valid.to_bit_string().unwrap().parse::<u32>()
+            {
+                let t = match (credit, valid) {
+                    (1.., 1) => CycleType::Busy,
+                    (1.., 0) => CycleType::NoData,
+                    (0, 1) => CycleType::Backpressure,
+                    _ => panic!(
+                        "signal has invalid value credit: {} valid: {}",
+                        credit, valid
+                    ),
+                };
+                usage.add_cycle(t);
+            } else {
+                eprintln!(
+                    "bus in uknown statte outside reset credit: {}, valid: {}",
+                    credit, valid
+                );
+            }
+        } else {
+            usage.add_cycle(CycleType::NoTransaction);
         }
     }
     usage.end();
