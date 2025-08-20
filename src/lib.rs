@@ -92,42 +92,40 @@ pub fn load_bus_descriptions(
                 )));
             }
             "CreditValid" => {
-                todo!()
-                // let credit = i.1["credit"]
-                //     .as_str()
-                //     .unwrap_or("CreditValid bus requires credit signal");
-                // let valid = i.1["valid"]
-                //     .as_str()
-                //     .unwrap_or("CreditValid bus requires valid signal");
-                // descs.push(BusDescription::CreditValid(CreditValidBus {
-                //     bus_name: name.to_owned(),
-                //     module_scope: scope,
-                //     clk_name: clk.to_owned(),
-                //     rst_name: rst.to_owned(),
-                //     rst_active_value: rst_type.to_owned(),
-                //     credit: credit.to_owned(),
-                //     valid: valid.to_owned(),
-                //     max_burst_delay: default_max_burst_delay,
-                // }))
+                let credit = i.1["credit"]
+                    .as_str()
+                    .unwrap_or("CreditValid bus requires credit signal");
+                let valid = i.1["valid"]
+                    .as_str()
+                    .unwrap_or("CreditValid bus requires valid signal");
+                descs.push(Box::new(bus::credit_valid::CreditValidBus::new(
+                    name.to_owned(),
+                    scope,
+                    clk.to_owned(),
+                    rst.to_owned(),
+                    rst_type.to_owned(),
+                    default_max_burst_delay,
+                    credit.to_owned(),
+                    valid.to_owned(),
+                )))
             }
             "AHB" => {
-                todo!()
-                // let htrans = i.1["htrans"]
-                //     .as_str()
-                //     .unwrap_or("AHB bus requires htrans signal");
-                // let hready = i.1["hready"]
-                //     .as_str()
-                //     .unwrap_or("AHB bus requires hready signal");
-                // descs.push(BusDescription::AHB(AHBBus {
-                //     bus_name: name.to_owned(),
-                //     module_scope: scope,
-                //     clk_name: clk.to_owned(),
-                //     rst_name: rst.to_owned(),
-                //     rst_active_value: rst_type.to_owned(),
-                //     htrans: htrans.to_owned(),
-                //     hready: hready.to_owned(),
-                //     max_burst_delay: default_max_burst_delay,
-                // }))
+                let htrans = i.1["htrans"]
+                    .as_str()
+                    .unwrap_or("AHB bus requires htrans signal");
+                let hready = i.1["hready"]
+                    .as_str()
+                    .unwrap_or("AHB bus requires hready signal");
+                descs.push(Box::new(bus::ahb::AHBBus::new(
+                    name.to_owned(),
+                    scope,
+                    clk.to_owned(),
+                    rst.to_owned(),
+                    rst_type.to_owned(),
+                    default_max_burst_delay,
+                    htrans.to_owned(),
+                    hready.to_owned(),
+                )))
             }
             _ => Err(format!("Invalid handshake {}", handshake))?,
         }
@@ -533,194 +531,4 @@ pub fn calculate_usage<'a>(
     }
     usage.end();
     usage
-}
-
-pub fn calculate_ready_valid_bus<'a>(
-    simulation_data: &mut SimulationData,
-    bus_desc: &'a bus::axi::AXIBus,
-) -> BusUsage<'a> {
-    // let [(_, clock), (_, reset), (_, ready), (_, valid)] = load_signals(
-    //     simulation_data,
-    //     &bus_desc.module_scope,
-    //     &[
-    //         &bus_desc.clk_name,
-    //         &bus_desc.rst_name,
-    //         &bus_desc.ready,
-    //         &bus_desc.valid,
-    //     ],
-    // );
-
-    // let mut usage = BusUsage::new(&bus_desc.bus_name, bus_desc.max_burst_delay);
-    // for i in clock.iter_changes() {
-    //     if let SignalValue::Binary(v, 1) = i.1 {
-    //         if v[0] == 0 {
-    //             continue;
-    //         }
-    //     }
-    //     // We subtract one to use values just before clock signal
-    //     let time = i.0.saturating_sub(1);
-    //     let ready = ready.get_value_at(&ready.get_offset(time).unwrap(), 0);
-    //     let valid = valid.get_value_at(&valid.get_offset(time).unwrap(), 0);
-    //     let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
-
-    //     if reset.to_bit_string().unwrap() != bus_desc.rst_active_value.to_string() {
-    //         if let Ok(ready) = ready.to_bit_string().unwrap().parse::<u32>()
-    //             && let Ok(valid) = valid.to_bit_string().unwrap().parse::<u32>()
-    //         {
-    //             let t = match (ready, valid) {
-    //                 (1, 1) => CycleType::Busy,
-    //                 (0, 0) => CycleType::Free,
-    //                 (1, 0) => CycleType::NoData,
-    //                 (0, 1) => CycleType::Backpressure,
-    //                 _ => panic!("signal has invalid value ready: {} valid: {}", ready, valid),
-    //             };
-    //             usage.add_cycle(t);
-    //         } else {
-    //             eprintln!(
-    //                 "bus \"{}\" in unknown state outside reset - ready: {}, valid: {}, time: {}",
-    //                 bus_desc.bus_name, ready, valid, time
-    //             );
-    //         }
-    //     } else {
-    //         usage.add_cycle(CycleType::NoTransaction);
-    //     }
-    // }
-    // usage.end();
-    // usage
-    todo!();
-}
-
-pub fn calculate_credit_valid_bus<'a>(
-    simulation_data: &mut SimulationData,
-    bus_desc: &'a bus::CreditValidBus,
-) -> BusUsage<'a> {
-    // let [(_, clock), (_, reset), (_, credit), (_, valid)] = load_signals(
-    //     simulation_data,
-    //     &bus_desc.module_scope,
-    //     &[
-    //         &bus_desc.clk_name,
-    //         &bus_desc.rst_name,
-    //         &bus_desc.credit,
-    //         &bus_desc.valid,
-    //     ],
-    // );
-
-    // let mut usage = BusUsage::new(&bus_desc.bus_name, bus_desc.max_burst_delay);
-    // for i in clock.iter_changes() {
-    //     if let SignalValue::Binary(v, 1) = i.1 {
-    //         if v[0] == 0 {
-    //             continue;
-    //         }
-    //     }
-    //     // We subtract one to use values just before clock signal
-    //     let time = i.0.saturating_sub(1);
-    //     let credit = credit.get_value_at(&credit.get_offset(time).unwrap(), 0);
-    //     let valid = valid.get_value_at(&valid.get_offset(time).unwrap(), 0);
-    //     let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
-
-    //     if reset.to_bit_string().unwrap() != bus_desc.rst_active_value.to_string() {
-    //         if let Ok(credit) = credit.to_bit_string().unwrap().parse::<u32>()
-    //             && let Ok(valid) = valid.to_bit_string().unwrap().parse::<u32>()
-    //         {
-    //             let t = match (credit, valid) {
-    //                 (1.., 1) => CycleType::Busy,
-    //                 (1.., 0) => CycleType::Free,
-    //                 (0, 1) => {
-    //                     eprintln!(
-    //                         "[WARN]: Credit is 0 and valid 1 on credit/valid bus {} time: {}",
-    //                         bus_desc.bus_name, time
-    //                     );
-    //                     CycleType::Busy
-    //                 }
-    //                 (0, 0) => CycleType::NoTransaction,
-    //                 _ => panic!(
-    //                     "signal has invalid value credit: {} valid: {}",
-    //                     credit, valid
-    //                 ),
-    //             };
-    //             usage.add_cycle(t);
-    //         } else {
-    //             eprintln!(
-    //                 "bus in unknown state outside reset credit: {}, valid: {}",
-    //                 credit, valid
-    //             );
-    //         }
-    //     } else {
-    //         usage.add_cycle(CycleType::NoTransaction);
-    //     }
-    // }
-    // usage.end();
-    // usage
-    todo!()
-}
-
-pub fn calculate_ahb_bus<'a>(
-    simulation_data: &mut SimulationData,
-    bus_desc: &'a bus::AHBBus,
-) -> BusUsage<'a> {
-    // let [(_, clock), (_, reset), (_, htrans), (_, hready)] = load_signals(
-    //     simulation_data,
-    //     &bus_desc.module_scope,
-    //     &[
-    //         &bus_desc.clk_name,
-    //         &bus_desc.rst_name,
-    //         &bus_desc.htrans,
-    //         &bus_desc.hready,
-    //     ],
-    // );
-
-    // let mut usage = BusUsage::new(&bus_desc.bus_name, bus_desc.max_burst_delay);
-    // for i in clock.iter_changes() {
-    //     if let SignalValue::Binary(v, 1) = i.1 {
-    //         if v[0] == 0 {
-    //             continue;
-    //         }
-    //     }
-    //     // We subtract one to use values just before clock signal
-    //     let time = i.0.saturating_sub(1);
-    //     let htrans = htrans.get_value_at(&htrans.get_offset(time).unwrap(), 0);
-    //     let hready = hready.get_value_at(&hready.get_offset(time).unwrap(), 0);
-    //     let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
-
-    //     if reset.to_bit_string().unwrap() != bus_desc.rst_active_value.to_string() {
-    //         if let Some(htrans) = htrans.to_bit_string()
-    //             && let Ok(hready) = hready.to_bit_string().unwrap().parse::<u32>()
-    //         {
-    //             /*
-    //             00 - IDLE
-    //             01 - BUSY
-    //             10 - NOSEQ
-    //             11 - SEQ
-    //             */
-    //             let t = match (htrans.as_str(), hready) {
-    //                 ("11", 1) | ("10", 1) => CycleType::Busy,
-    //                 ("00", 1) => CycleType::Free,
-    //                 ("01", 1) => CycleType::NoData,
-    //                 ("00", 0) | ("01", 0) => {
-    //                     eprintln!(
-    //                         "ahb bus in disallowed state htrans: {} hready: {}, time: {}",
-    //                         htrans, hready, time
-    //                     );
-    //                     CycleType::Backpressure
-    //                 }
-    //                 (_, 0) => CycleType::Backpressure,
-    //                 _ => panic!(
-    //                     "signal has invalid value hready: {} htrans: {}",
-    //                     hready, htrans
-    //                 ),
-    //             };
-    //             usage.add_cycle(t);
-    //         } else {
-    //             eprintln!(
-    //                 "bus in unknown state outside reset hready: {}, htrans: {}",
-    //                 hready, htrans
-    //             );
-    //         }
-    //     } else {
-    //         usage.add_cycle(CycleType::NoTransaction);
-    //     }
-    // }
-    // usage.end();
-    // usage
-    todo!();
 }
