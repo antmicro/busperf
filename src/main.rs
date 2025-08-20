@@ -113,7 +113,7 @@ fn main() {
     let descs = load_bus_descriptions(&args.bus_description, args.max_burst_delay).unwrap();
     let usages: Vec<BusUsage> = descs
         .iter()
-        .map(|d| calculate_usage(&mut data, &d))
+        .map(|d| calculate_usage(&mut data, &**d))
         .collect();
     let mut out: &mut dyn std::io::Write = match args.output {
         None => &mut std::io::stdout(),

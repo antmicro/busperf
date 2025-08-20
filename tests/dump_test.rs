@@ -5,7 +5,7 @@ fn test(trace: &str, yaml: &str, max_burst_delay: u32, correct: &[BusUsage]) {
     let descs = load_bus_descriptions(yaml, max_burst_delay).unwrap();
     assert_eq!(correct.len(), descs.len());
     for (desc, correct) in descs.iter().zip(correct) {
-        let usage = calculate_usage(&mut data, &desc);
+        let usage = calculate_usage(&mut data, &**desc);
         assert_eq!(usage, *correct);
     }
 }
