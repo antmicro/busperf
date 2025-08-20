@@ -4,6 +4,7 @@ pub type DelaysNum = u32;
 pub mod ahb;
 pub mod axi;
 pub mod credit_valid;
+pub mod custom_python;
 
 use wellen::SignalValue;
 
