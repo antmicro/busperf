@@ -645,51 +645,57 @@ pub fn calculate_ahb_bus<'a>(
         ],
     );
 
-    todo!();
-    // let mut usage = BusUsage::new(&bus_desc.bus_name, bus_desc.max_burst_delay);
-    // for i in clock.iter_changes() {
-    //     if let SignalValue::Binary(v, 1) = i.1 {
-    //         if v[0] == 0 {
-    //             continue;
-    //         }
-    //     }
-    //     // We subtract one to use values just before clock signal
-    //     let time = i.0.saturating_sub(1);
-    //     let credit = credit.get_value_at(&credit.get_offset(time).unwrap(), 0);
-    //     let valid = valid.get_value_at(&valid.get_offset(time).unwrap(), 0);
-    //     let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
+    let mut usage = BusUsage::new(&bus_desc.bus_name, bus_desc.max_burst_delay);
+    for i in clock.iter_changes() {
+        if let SignalValue::Binary(v, 1) = i.1 {
+            if v[0] == 0 {
+                continue;
+            }
+        }
+        // We subtract one to use values just before clock signal
+        let time = i.0.saturating_sub(1);
+        let htrans = htrans.get_value_at(&htrans.get_offset(time).unwrap(), 0);
+        let hready = hready.get_value_at(&hready.get_offset(time).unwrap(), 0);
+        let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
 
-    //     if reset.to_bit_string().unwrap() != bus_desc.rst_active_value.to_string() {
-    //         if let Ok(credit) = credit.to_bit_string().unwrap().parse::<u32>()
-    //             && let Ok(valid) = valid.to_bit_string().unwrap().parse::<u32>()
-    //         {
-    //             let t = match (credit, valid) {
-    //                 (1.., 1) => CycleType::Busy,
-    //                 (1.., 0) => CycleType::Free,
-    //                 (0, 1) => {
-    //                     eprintln!(
-    //                         "[WARN]: Credit is 0 and valid 1 on credit/valid bus {} time: {}",
-    //                         bus_desc.bus_name, time
-    //                     );
-    //                     CycleType::Busy
-    //                 }
-    //                 (0, 0) => CycleType::NoTransaction,
-    //                 _ => panic!(
-    //                     "signal has invalid value credit: {} valid: {}",
-    //                     credit, valid
-    //                 ),
-    //             };
-    //             usage.add_cycle(t);
-    //         } else {
-    //             eprintln!(
-    //                 "bus in unknown state outside reset credit: {}, valid: {}",
-    //                 credit, valid
-    //             );
-    //         }
-    //     } else {
-    //         usage.add_cycle(CycleType::NoTransaction);
-    //     }
-    // }
-    // usage.end();
-    // usage
+        if reset.to_bit_string().unwrap() != bus_desc.rst_active_value.to_string() {
+            if let Some(htrans) = htrans.to_bit_string()
+                && let Ok(hready) = hready.to_bit_string().unwrap().parse::<u32>()
+            {
+                /*
+                00 - IDLE
+                01 - BUSY
+                10 - NOSEQ
+                11 - SEQ
+                */
+                let t = match (htrans.as_str(), hready) {
+                    ("11", 1) | ("10", 1) => CycleType::Busy,
+                    ("00", 1) => CycleType::Free,
+                    ("01", 1) => CycleType::NoData,
+                    ("00", 0) | ("01", 0) => {
+                        eprintln!(
+                            "ahb bus in disallowed state htrans: {} hready: {}, time: {}",
+                            htrans, hready, time
+                        );
+                        CycleType::Backpressure
+                    }
+                    (_, 0) => CycleType::Backpressure,
+                    _ => panic!(
+                        "signal has invalid value hready: {} htrans: {}",
+                        hready, htrans
+                    ),
+                };
+                usage.add_cycle(t);
+            } else {
+                eprintln!(
+                    "bus in unknown state outside reset hready: {}, htrans: {}",
+                    hready, htrans
+                );
+            }
+        } else {
+            usage.add_cycle(CycleType::NoTransaction);
+        }
+    }
+    usage.end();
+    usage
 }

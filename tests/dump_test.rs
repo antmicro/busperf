@@ -197,3 +197,29 @@ fn credit_valid() {
         &[correct],
     );
 }
+
+#[test]
+fn ahb() {
+    let correct = BusUsage::literal(
+        "test",
+        9,
+        5,
+        1,
+        1,
+        5,
+        vec![1, 2, 1, 6, 2],
+        5,
+        vec![2, 2, 1],
+        vec![4, 1, 2, 1, 1],
+        vec![3, 1, 1],
+        0,
+        4,
+        0,
+    );
+    test(
+        "tests/test_dumps/ahb.vcd",
+        "tests/test_dumps/ahb.yaml",
+        0,
+        &[correct],
+    );
+}

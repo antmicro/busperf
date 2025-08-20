@@ -1,0 +1,140 @@
+$date
+   Date text. For example: November 11, 2009.
+$end
+$version
+   VCD generator tool version info text.
+$end
+$comment
+   Any comment text.
+$end
+$timescale 1ps $end
+$scope module logic $end
+$var wire 1 # clk $end 
+$var wire 8 $ data $end
+$var wire 2 % htrans $end
+$var wire 1 & hready $end
+$var wire 1 * reset $end
+$upscope $end
+$enddefinitions $end
+$dumpvars
+0#
+bxxxxxxxx $
+bxx %
+0&
+0*
+$end
+#1
+1#
+b10 %
+1&
+1*
+#2
+0#
+#3
+1#
+b00000001 $
+b11 %
+#4
+0#
+#5
+1#
+b00000010 $
+b11 %
+#6
+0#
+#7
+1#
+b00000011 $
+b11 %
+#8
+0#
+#9
+1#
+b00000100 $
+0%
+#10
+0#
+#11
+1#
+bxxxxxxxx $
+#12
+0#
+#13
+1#
+bxxxxxxxx  $
+b10 %
+1&
+#14
+0#
+#15
+1#
+b0000101 $
+b01 %
+#16
+0#
+#17
+1#
+bxxxxxxxx $
+b11 %
+1&
+#18
+0#
+#19
+1#
+b00000110 $
+#20
+0#
+#21
+1#
+b00000111  $
+0%
+#22
+0#
+#23
+bxxxxxxxx $
+1#
+#24
+0#
+#25
+1#
+#26
+0#
+#27
+1#
+b10 %
+0&
+#28
+0#
+#29
+1#
+#30
+0#
+#31
+1#
+#32
+0#
+#33
+1#
+b10 %
+1&
+#34
+0#
+#35
+1#
+0&
+b00001000 $
+b11 %
+#36
+0#
+#37
+1#
+#38
+0#
+#39
+1#
+1&
+#40
+0#
+#41
+b00001001 $
+1#
