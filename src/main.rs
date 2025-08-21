@@ -109,11 +109,11 @@ Options:
 
 fn main() {
     let args = Args::parse();
-    let mut data = load_simulation_trace(&args.simulation_trace);
+    let mut data = load_simulation_trace(&args.simulation_trace, args.verbose);
     let descs = load_bus_descriptions(&args.bus_description, args.max_burst_delay).unwrap();
     let usages: Vec<BusUsage> = descs
         .iter()
-        .map(|d| calculate_usage(&mut data, &**d))
+        .map(|d| calculate_usage(&mut data, &**d, args.verbose))
         .collect();
     let mut out: &mut dyn std::io::Write = match args.output {
         None => &mut std::io::stdout(),

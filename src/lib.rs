@@ -156,7 +156,8 @@ pub struct SimulationData {
     body: BodyResult,
 }
 
-pub fn load_simulation_trace(filename: &str) -> SimulationData {
+pub fn load_simulation_trace(filename: &str, verbose: bool) -> SimulationData {
+    let start = std::time::Instant::now();
     let load_options = LoadOptions {
         multi_thread: true,
         remove_scopes_with_empty_name: false,
@@ -166,7 +167,9 @@ pub fn load_simulation_trace(filename: &str) -> SimulationData {
     let hierarchy = header.hierarchy;
     let body = viewers::read_body(header.body, &hierarchy, Some(Arc::new(AtomicU64::new(0))))
         .expect("Failed to load body.");
-
+    if verbose {
+        println!("loading trace took {:?}", start.elapsed());
+    }
     SimulationData { hierarchy, body }
 }
 
@@ -510,6 +513,7 @@ pub fn generate_csv(write: &mut impl Write, usages: &[BusUsage], verbose: bool) 
 pub fn calculate_usage<'a>(
     simulation_data: &mut SimulationData,
     bus_desc: &'a dyn BusDescription,
+    verbose: bool,
 ) -> BusUsage<'a> {
     // match bus_desc {
     //     BusDescription::AXI(axi) => calculate_ready_valid_bus(simulation_data, axi),
@@ -521,10 +525,15 @@ pub fn calculate_usage<'a>(
     let mut signals = vec![bus_desc.common().clk_name(), bus_desc.common().rst_name()];
     signals.append(&mut bus_desc.signals());
 
+    let start = std::time::Instant::now();
     let loaded = load_signals(simulation_data, &bus_desc.common().module_scope(), &signals);
     let (_, clock) = &loaded[0];
     let (_, reset) = &loaded[1];
+    if verbose {
+        println!("loading took {:?}", start.elapsed());
+    }
 
+    let start = std::time::Instant::now();
     let mut usage = BusUsage::new(&bus_desc.bus_name(), bus_desc.common().max_burst_delay());
     for i in clock.iter_changes() {
         if let SignalValue::Binary(v, 1) = i.1 {
@@ -548,5 +557,8 @@ pub fn calculate_usage<'a>(
         }
     }
     usage.end();
+    if verbose {
+        println!("calculating took {:?}", start.elapsed());
+    }
     usage
 }
