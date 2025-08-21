@@ -70,10 +70,10 @@ pub fn load_bus_descriptions(
             "ReadyValid" => {
                 let ready = i.1["ready"]
                     .as_str()
-                    .unwrap_or("ReadyValid bus requires ready signal");
+                    .ok_or("ReadyValid bus requires ready signal")?;
                 let valid = i.1["valid"]
                     .as_str()
-                    .unwrap_or("ReadyValid bus requires valid signal");
+                    .ok_or("ReadyValid bus requires valid signal")?;
                 let max_burst_delay = i.1["max_burst_delay"].as_i64();
                 let max_burst_delay = if max_burst_delay.is_some() {
                     max_burst_delay.unwrap().try_into().unwrap()
@@ -94,10 +94,10 @@ pub fn load_bus_descriptions(
             "CreditValid" => {
                 let credit = i.1["credit"]
                     .as_str()
-                    .unwrap_or("CreditValid bus requires credit signal");
+                    .ok_or("CreditValid bus requires credit signal")?;
                 let valid = i.1["valid"]
                     .as_str()
-                    .unwrap_or("CreditValid bus requires valid signal");
+                    .ok_or("CreditValid bus requires valid signal")?;
                 descs.push(Box::new(bus::credit_valid::CreditValidBus::new(
                     name.to_owned(),
                     scope,
@@ -112,10 +112,10 @@ pub fn load_bus_descriptions(
             "AHB" => {
                 let htrans = i.1["htrans"]
                     .as_str()
-                    .unwrap_or("AHB bus requires htrans signal");
+                    .ok_or("AHB bus requires htrans signal")?;
                 let hready = i.1["hready"]
                     .as_str()
-                    .unwrap_or("AHB bus requires hready signal");
+                    .ok_or("AHB bus requires hready signal")?;
                 descs.push(Box::new(bus::ahb::AHBBus::new(
                     name.to_owned(),
                     scope,
