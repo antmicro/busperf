@@ -5,7 +5,6 @@ use crate::CycleType;
 use super::BusCommon;
 use super::BusDescription;
 use super::CyclesNum;
-use super::DelaysNum;
 
 #[derive(Debug)]
 pub struct AXIBus {

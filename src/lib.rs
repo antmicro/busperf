@@ -1,7 +1,6 @@
 use std::{
     fs::File,
     io::{Read, Write},
-    process::Termination,
     sync::{atomic::AtomicU64, Arc},
 };
 
@@ -168,7 +167,8 @@ pub fn load_simulation_trace(filename: &str, verbose: bool) -> SimulationData {
     let body = viewers::read_body(header.body, &hierarchy, Some(Arc::new(AtomicU64::new(0))))
         .expect("Failed to load body.");
     if verbose {
-        println!("loading trace took {:?}", start.elapsed());
+        // println!("loading trace took {}", start.elapsed().as_millis());
+        println!("{}", start.elapsed().as_millis());
     }
     SimulationData { hierarchy, body }
 }
@@ -530,7 +530,8 @@ pub fn calculate_usage<'a>(
     let (_, clock) = &loaded[0];
     let (_, reset) = &loaded[1];
     if verbose {
-        println!("loading took {:?}", start.elapsed());
+        // println!("loading took {:?}", start.elapsed());
+        print!("{}\t", start.elapsed().as_millis());
     }
 
     let start = std::time::Instant::now();
@@ -558,7 +559,8 @@ pub fn calculate_usage<'a>(
     }
     usage.end();
     if verbose {
-        println!("calculating took {:?}", start.elapsed());
+        // println!("calculating took {:?}", start.elapsed());
+        println!("{}\t", start.elapsed().as_millis());
     }
     usage
 }
