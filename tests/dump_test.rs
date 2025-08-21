@@ -10,6 +10,19 @@ fn test(trace: &str, yaml: &str, max_burst_delay: u32, correct: &[BusUsage]) {
     }
 }
 
+fn measure_performance(trace: &str, yaml: &str, bus_num: usize) -> u128 {
+    let start = std::time::Instant::now();
+    let mut data = load_simulation_trace(trace, false);
+    println!("{:?}", start.elapsed().as_millis());
+    let descs = load_bus_descriptions(yaml, 0).unwrap();
+    let usages: Vec<_> = descs
+        .iter()
+        .map(|d| calculate_usage(&mut data, &**d, true))
+        .collect();
+    assert_eq!(usages.len(), bus_num);
+    start.elapsed().as_millis()
+}
+
 #[test]
 fn dump() {
     let correct_a = BusUsage::literal(
