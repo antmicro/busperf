@@ -1,0 +1,17 @@
+interfaces:
+  ####################################################
+  ###############  TEST INTERFACE  ###################
+  ####################################################
+  "test":
+    scope: ["logic"]
+    clock: "clk"
+    reset: "reset"
+    reset_type: "low"
+
+    handshake: "Custom"
+    custom_handshake: "PythonTest"
+    custom_analyzer: "PythonTest"
+    ready: "ready"
+    valid: "valid"
+ 
+

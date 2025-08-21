@@ -223,3 +223,71 @@ fn ahb() {
         &[correct],
     );
 }
+
+#[test]
+fn python() {
+    let correct = BusUsage::literal(
+        "test",
+        9,
+        5,
+        3,
+        1,
+        3,
+        vec![1, 2, 1, 6, 2],
+        5,
+        vec![2, 2, 1],
+        vec![4, 1, 2, 1, 1],
+        vec![3, 1, 1],
+        0,
+        4,
+        0,
+    );
+    test(
+        "tests/test_dumps/test.vcd",
+        "tests/test_dumps/python_test.yaml",
+        0,
+        &[correct],
+    );
+}
+
+#[test]
+fn python_dump() {
+    let correct_a = BusUsage::literal(
+        "a_",
+        0,
+        0,
+        15,
+        15,
+        0,
+        vec![30],
+        0,
+        vec![0, 0, 0, 0, 1],
+        vec![],
+        vec![],
+        0,
+        0,
+        0,
+    );
+    let correct_b = BusUsage::literal(
+        "b_",
+        15,
+        0,
+        0,
+        15,
+        0,
+        vec![15],
+        1,
+        vec![0, 0, 0, 1],
+        vec![15],
+        vec![0, 0, 0, 1],
+        0,
+        0,
+        0,
+    );
+    test(
+        "tests/test_dumps/dump.vcd",
+        "tests/test_dumps/python_dump.yaml",
+        0,
+        &[correct_a, correct_b],
+    );
+}

@@ -4,7 +4,7 @@ class Analyzer2:
     def get_signals(self):
         return ["ready", "valid"]
     def interpret_cycle(self, signals):
-        return 1
+        return 0
             
 
 def create():
