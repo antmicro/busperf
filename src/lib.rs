@@ -13,7 +13,7 @@ use yaml_rust2::YamlLoader;
 
 mod bus;
 
-use bus::DelaysNum;
+use bus::{BusCommon, DelaysNum};
 use bus::{BusDescription, CyclesNum};
 
 // #[derive(Debug)]
@@ -127,6 +127,24 @@ pub fn load_bus_descriptions(
                     hready.to_owned(),
                 )))
             }
+            "Custom" => {
+                let handshake = i.1["custom_handshake"]
+                    .as_str()
+                    .ok_or("Custom bus has to specify handshake interpreter")?;
+                descs.push(Box::new(bus::custom_python::PythonCustomBus::new(
+                    BusCommon::new(
+                        name.to_owned(),
+                        scope,
+                        clk.to_owned(),
+                        rst.to_owned(),
+                        rst_type.to_owned(),
+                        default_max_burst_delay,
+                    ),
+                    handshake,
+                    i.1,
+                )));
+            }
+
             _ => Err(format!("Invalid handshake {}", handshake))?,
         }
     }
