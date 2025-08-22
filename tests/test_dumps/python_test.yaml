@@ -10,7 +10,6 @@ interfaces:
 
     handshake: "Custom"
     custom_handshake: "PythonTest"
-    custom_analyzer: "PythonTest"
     ready: "ready"
     valid: "valid"
  

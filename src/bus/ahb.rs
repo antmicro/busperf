@@ -10,25 +10,9 @@ pub struct AHBBus {
 }
 
 impl AHBBus {
-    pub fn new(
-        bus_name: String,
-        module_scope: Vec<String>,
-        clk_name: String,
-        rst_name: String,
-        rst_active_value: u8,
-        max_burst_delay: CyclesNum,
-        htrans: String,
-        hready: String,
-    ) -> Self {
+    pub fn new(common: BusCommon, htrans: String, hready: String) -> Self {
         AHBBus {
-            common: BusCommon {
-                bus_name,
-                module_scope,
-                clk_name,
-                rst_name,
-                rst_active_value,
-                max_burst_delay,
-            },
+            common,
             htrans,
             hready,
         }

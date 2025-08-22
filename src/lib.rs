@@ -4,12 +4,14 @@ use std::{
     sync::{atomic::AtomicU64, Arc},
 };
 
+use analyzer::Analyzer;
 use wellen::{
     viewers::{self, BodyResult},
     Hierarchy, LoadOptions, SignalValue,
 };
 use yaml_rust2::YamlLoader;
 
+mod analyzer;
 mod bus;
 
 use bus::{BusCommon, DelaysNum};
@@ -37,114 +39,17 @@ pub fn load_bus_descriptions(
         .ok_or("YAML should define interfaces")?
         .iter()
     {
-        let name = i.0.as_str().ok_or("Invalid bus name")?;
-        let scope = i.1["scope"]
-            .as_vec()
-            .ok_or("Scope should be array of strings")?;
-        let scope = scope
-            .iter()
-            .map(|module| module.as_str().unwrap().to_owned())
-            .collect();
-        let clk = i.1["clock"]
-            .as_str()
-            .ok_or("Bus should have clock signal")?;
-        let rst = i.1["reset"]
-            .as_str()
-            .ok_or("Bus should have reset signal")?;
-        let rst_type = i.1["reset_type"]
-            .as_str()
-            .ok_or("Bus should have reset type defined")?;
-        let rst_type = if rst_type == "low" {
-            0
-        } else if rst_type == "high" {
-            1
+        let analyzer: Box<dyn Analyzer> = if let Some(custom) = i.1["custom_analyzer"].as_str() {
+            Box::new(analyzer::python_analyzer::PythonAnalyzer::new(custom))
         } else {
-            Err("Reset type can be \"high\" or \"low\"")?
+            Box::new(analyzer::default_analyzer::DefaultAnalyzer::new())
         };
-        let handshake = i.1["handshake"]
-            .as_str()
-            .ok_or("Bus should have handshake defined")?;
-
-        match handshake {
-            "ReadyValid" => {
-                let ready = i.1["ready"]
-                    .as_str()
-                    .ok_or("ReadyValid bus requires ready signal")?;
-                let valid = i.1["valid"]
-                    .as_str()
-                    .ok_or("ReadyValid bus requires valid signal")?;
-                let max_burst_delay = i.1["max_burst_delay"].as_i64();
-                let max_burst_delay = if max_burst_delay.is_some() {
-                    max_burst_delay.unwrap().try_into().unwrap()
-                } else {
-                    default_max_burst_delay
-                };
-                descs.push(Box::new(bus::axi::AXIBus::new(
-                    name.to_owned(),
-                    scope,
-                    clk.to_owned(),
-                    rst.to_owned(),
-                    rst_type,
-                    max_burst_delay,
-                    ready.to_owned(),
-                    valid.to_owned(),
-                )));
-            }
-            "CreditValid" => {
-                let credit = i.1["credit"]
-                    .as_str()
-                    .ok_or("CreditValid bus requires credit signal")?;
-                let valid = i.1["valid"]
-                    .as_str()
-                    .ok_or("CreditValid bus requires valid signal")?;
-                descs.push(Box::new(bus::credit_valid::CreditValidBus::new(
-                    name.to_owned(),
-                    scope,
-                    clk.to_owned(),
-                    rst.to_owned(),
-                    rst_type.to_owned(),
-                    default_max_burst_delay,
-                    credit.to_owned(),
-                    valid.to_owned(),
-                )))
-            }
-            "AHB" => {
-                let htrans = i.1["htrans"]
-                    .as_str()
-                    .ok_or("AHB bus requires htrans signal")?;
-                let hready = i.1["hready"]
-                    .as_str()
-                    .ok_or("AHB bus requires hready signal")?;
-                descs.push(Box::new(bus::ahb::AHBBus::new(
-                    name.to_owned(),
-                    scope,
-                    clk.to_owned(),
-                    rst.to_owned(),
-                    rst_type.to_owned(),
-                    default_max_burst_delay,
-                    htrans.to_owned(),
-                    hready.to_owned(),
-                )))
-            }
-            "Custom" => {
-                let handshake = i.1["custom_handshake"]
-                    .as_str()
-                    .ok_or("Custom bus has to specify handshake interpreter")?;
-                descs.push(Box::new(bus::custom_python::PythonCustomBus::new(
-                    BusCommon::new(
-                        name.to_owned(),
-                        scope,
-                        clk.to_owned(),
-                        rst.to_owned(),
-                        rst_type.to_owned(),
-                        default_max_burst_delay,
-                    ),
-                    handshake,
-                    i.1,
-                )));
-            }
-
-            _ => Err(format!("Invalid handshake {}", handshake))?,
+        for b in analyzer
+            .load_buses(i, default_max_burst_delay)
+            .unwrap()
+            .into_iter()
+        {
+            descs.push(b);
         }
     }
     Ok(descs)
