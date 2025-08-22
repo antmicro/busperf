@@ -1,6 +1,6 @@
 use crate::CycleType;
 
-use super::{BusCommon, BusDescription, CyclesNum};
+use super::{BusCommon, BusDescription};
 
 #[derive(Debug)]
 pub struct AHBBus {

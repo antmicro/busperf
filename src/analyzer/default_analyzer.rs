@@ -1,7 +1,7 @@
 use wellen::SignalValue;
 
 use crate::{
-    bus::{self, axi::AXIBus, BusCommon, BusDescription, BusDescriptionBuilder},
+    bus::{BusDescription, BusDescriptionBuilder},
     load_signals, BusUsage, CycleType,
 };
 

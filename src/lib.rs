@@ -7,15 +7,15 @@ use std::{
 use analyzer::{Analyzer, AnalyzerBuilder};
 use wellen::{
     viewers::{self, BodyResult},
-    Hierarchy, LoadOptions, SignalValue,
+    Hierarchy, LoadOptions,
 };
 use yaml_rust2::YamlLoader;
 
 mod analyzer;
 mod bus;
 
-use bus::{BusCommon, DelaysNum};
-use bus::{BusDescription, CyclesNum};
+use bus::CyclesNum;
+use bus::DelaysNum;
 
 // #[derive(Debug)]
 // pub enum BusDescription {
