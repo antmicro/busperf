@@ -2,6 +2,7 @@ use wellen::SignalValue;
 
 use crate::{
     bus::{BusDescription, BusDescriptionBuilder},
+    bus_usage::SingleChannelBusUsage,
     load_signals, BusUsage, CycleType,
 };
 
@@ -14,7 +15,8 @@ pub struct DefaultAnalyzer {
 
 impl DefaultAnalyzer {
     pub fn new(yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml), default_max_burst_delay: u32) -> Self {
-        let bus_desc = BusDescriptionBuilder::build(yaml, default_max_burst_delay)
+        let name = yaml.0.as_str().expect("Invalid bus name");
+        let bus_desc = BusDescriptionBuilder::build(name, yaml.1, default_max_burst_delay)
             .expect("Failed to load bus");
         DefaultAnalyzer {
             bus_desc,
@@ -37,7 +39,8 @@ impl DefaultAnalyzer {
         }
 
         let start = std::time::Instant::now();
-        let mut usage = BusUsage::new(&bus_desc.bus_name(), bus_desc.common().max_burst_delay());
+        let mut usage =
+            SingleChannelBusUsage::new(&bus_desc.bus_name(), bus_desc.common().max_burst_delay());
         for i in clock.iter_changes() {
             if let SignalValue::Binary(v, 1) = i.1 {
                 if v[0] == 0 {
@@ -64,19 +67,11 @@ impl DefaultAnalyzer {
             // println!("calculating took {:?}", start.elapsed());
             println!("{}\t", start.elapsed().as_millis());
         }
-        self.result = Some(usage);
+        self.result = Some(BusUsage::SingleChannel(usage));
     }
 }
 
 impl Analyzer for DefaultAnalyzer {
-    fn load_buses(
-        &self,
-        yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml),
-        default_max_burst_delay: u32,
-    ) -> Result<Vec<Box<dyn crate::bus::BusDescription>>, Box<dyn std::error::Error>> {
-        todo!();
-    }
-
     fn analyze(&mut self, simulation_data: &mut crate::SimulationData, verbose: bool) {
         self.analyze_internal(simulation_data, verbose);
     }

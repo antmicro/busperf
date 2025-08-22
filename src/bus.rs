@@ -27,25 +27,21 @@ pub struct BusCommon {
 
 impl BusCommon {
     pub fn from_yaml(
-        yaml: (&Yaml, &Yaml),
+        name: &str,
+        yaml: &Yaml,
         default_max_burst: u32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let i = yaml;
-        let name = i.0.as_str().ok_or("Invalid bus name")?;
-        let scope = i.1["scope"]
+        let scope = i["scope"]
             .as_vec()
             .ok_or("Scope should be array of strings")?;
         let scope = scope
             .iter()
             .map(|module| module.as_str().unwrap().to_owned())
             .collect();
-        let clk = i.1["clock"]
-            .as_str()
-            .ok_or("Bus should have clock signal")?;
-        let rst = i.1["reset"]
-            .as_str()
-            .ok_or("Bus should have reset signal")?;
-        let rst_type = i.1["reset_type"]
+        let clk = i["clock"].as_str().ok_or("Bus should have clock signal")?;
+        let rst = i["reset"].as_str().ok_or("Bus should have reset signal")?;
+        let rst_type = i["reset_type"]
             .as_str()
             .ok_or("Bus should have reset type defined")?;
         let rst_type = if rst_type == "low" {
@@ -114,23 +110,24 @@ pub struct BusDescriptionBuilder {}
 
 impl BusDescriptionBuilder {
     pub fn build(
-        yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml),
+        name: &str,
+        yaml: &yaml_rust2::Yaml,
         default_max_burst_delay: u32,
     ) -> Result<Box<dyn BusDescription>, Box<dyn std::error::Error>> {
         let i = yaml;
 
-        let common = BusCommon::from_yaml(i, default_max_burst_delay)?;
+        let common = BusCommon::from_yaml(name, i, default_max_burst_delay)?;
 
-        let handshake = i.1["handshake"]
+        let handshake = i["handshake"]
             .as_str()
             .ok_or("Bus should have handshake defined")?;
 
         match handshake {
             "ReadyValid" => {
-                let ready = i.1["ready"]
+                let ready = i["ready"]
                     .as_str()
                     .ok_or("ReadyValid bus requires ready signal")?;
-                let valid = i.1["valid"]
+                let valid = i["valid"]
                     .as_str()
                     .ok_or("ReadyValid bus requires valid signal")?;
                 return Ok(Box::new(AXIBus::new(
@@ -140,10 +137,10 @@ impl BusDescriptionBuilder {
                 )));
             }
             "CreditValid" => {
-                let credit = i.1["credit"]
+                let credit = i["credit"]
                     .as_str()
                     .ok_or("CreditValid bus requires credit signal")?;
-                let valid = i.1["valid"]
+                let valid = i["valid"]
                     .as_str()
                     .ok_or("CreditValid bus requires valid signal")?;
                 return Ok(Box::new(CreditValidBus::new(
@@ -153,10 +150,10 @@ impl BusDescriptionBuilder {
                 )));
             }
             "AHB" => {
-                let htrans = i.1["htrans"]
+                let htrans = i["htrans"]
                     .as_str()
                     .ok_or("AHB bus requires htrans signal")?;
-                let hready = i.1["hready"]
+                let hready = i["hready"]
                     .as_str()
                     .ok_or("AHB bus requires hready signal")?;
                 return Ok(Box::new(AHBBus::new(
@@ -166,10 +163,10 @@ impl BusDescriptionBuilder {
                 )));
             }
             "Custom" => {
-                let handshake = i.1["custom_handshake"]
+                let handshake = i["custom_handshake"]
                     .as_str()
                     .ok_or("Custom bus has to specify handshake interpreter")?;
-                return Ok(Box::new(PythonCustomBus::new(common, handshake, i.1)));
+                return Ok(Box::new(PythonCustomBus::new(common, handshake, i)));
             }
 
             _ => Err(format!("Invalid handshake {}", handshake))?,

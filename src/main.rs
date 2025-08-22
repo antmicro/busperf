@@ -110,7 +110,7 @@ Options:
 fn main() {
     let args = Args::parse();
     let mut data = load_simulation_trace(&args.simulation_trace, args.verbose);
-    let mut analyzers = load_bus_descriptions(&args.bus_description, args.max_burst_delay).unwrap();
+    let mut analyzers = load_bus_analyzers(&args.bus_description, args.max_burst_delay).unwrap();
     for a in analyzers.iter_mut() {
         a.analyze(&mut data, args.verbose);
     }

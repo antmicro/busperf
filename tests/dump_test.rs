@@ -2,7 +2,7 @@ use busperf::*;
 
 fn test(trace: &str, yaml: &str, max_burst_delay: u32, correct: &[BusUsage]) {
     let mut data = load_simulation_trace(trace, false);
-    let mut descs = load_bus_descriptions(yaml, max_burst_delay).unwrap();
+    let mut descs = load_bus_analyzers(yaml, max_burst_delay).unwrap();
     assert_eq!(correct.len(), descs.len());
     for (desc, correct) in descs.iter_mut().zip(correct) {
         desc.analyze(&mut data, false);
@@ -13,7 +13,7 @@ fn test(trace: &str, yaml: &str, max_burst_delay: u32, correct: &[BusUsage]) {
 
 #[test]
 fn dump() {
-    let correct_a = BusUsage::literal(
+    let correct_a = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "a_",
         0,
         0,
@@ -28,8 +28,8 @@ fn dump() {
         0,
         0,
         0,
-    );
-    let correct_b = BusUsage::literal(
+    ));
+    let correct_b = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "b_",
         0,
         0,
@@ -44,7 +44,7 @@ fn dump() {
         0,
         0,
         0,
-    );
+    ));
     test(
         "tests/test_dumps/dump.vcd",
         "tests/test_dumps/dump.yaml",
@@ -55,7 +55,7 @@ fn dump() {
 
 #[test]
 fn dump_rst_high() {
-    let correct_a = BusUsage::literal(
+    let correct_a = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "a_",
         15,
         0,
@@ -70,8 +70,8 @@ fn dump_rst_high() {
         0,
         1,
         0,
-    );
-    let correct_b = BusUsage::literal(
+    ));
+    let correct_b = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "b_",
         0,
         0,
@@ -86,7 +86,7 @@ fn dump_rst_high() {
         0,
         0,
         0,
-    );
+    ));
     test(
         "tests/test_dumps/dump.vcd",
         "tests/test_dumps/dump_rst_high.yaml",
@@ -97,7 +97,7 @@ fn dump_rst_high() {
 
 #[test]
 fn basic() {
-    let correct = BusUsage::literal(
+    let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "test",
         9,
         5,
@@ -112,7 +112,7 @@ fn basic() {
         0,
         4,
         0,
-    );
+    ));
     test(
         "tests/test_dumps/test.vcd",
         "tests/test_dumps/test.yaml",
@@ -123,7 +123,7 @@ fn basic() {
 
 #[test]
 fn basic_scopes() {
-    let correct = BusUsage::literal(
+    let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "test",
         9,
         5,
@@ -138,7 +138,7 @@ fn basic_scopes() {
         0,
         4,
         0,
-    );
+    ));
     test(
         "tests/test_dumps/test_complex_scope.vcd",
         "tests/test_dumps/test_complex_scope.yaml",
@@ -149,7 +149,7 @@ fn basic_scopes() {
 
 #[test]
 fn basic_max_burst_delay() {
-    let correct = BusUsage::literal(
+    let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "test",
         9,
         5,
@@ -164,7 +164,7 @@ fn basic_max_burst_delay() {
         6,
         1,
         2,
-    );
+    ));
     test(
         "tests/test_dumps/test_complex_scope.vcd",
         "tests/test_dumps/test_complex_scope.yaml",
@@ -175,7 +175,7 @@ fn basic_max_burst_delay() {
 
 #[test]
 fn credit_valid() {
-    let correct = BusUsage::literal(
+    let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "test",
         14,
         0,
@@ -190,7 +190,7 @@ fn credit_valid() {
         0,
         3,
         0,
-    );
+    ));
     test(
         "tests/test_dumps/credit_valid.vcd",
         "tests/test_dumps/credit_valid.yaml",
@@ -201,7 +201,7 @@ fn credit_valid() {
 
 #[test]
 fn ahb() {
-    let correct = BusUsage::literal(
+    let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "test",
         9,
         5,
@@ -216,7 +216,7 @@ fn ahb() {
         0,
         4,
         0,
-    );
+    ));
     test(
         "tests/test_dumps/ahb.vcd",
         "tests/test_dumps/ahb.yaml",
@@ -227,7 +227,7 @@ fn ahb() {
 
 #[test]
 fn python() {
-    let correct = BusUsage::literal(
+    let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "test",
         9,
         5,
@@ -242,7 +242,7 @@ fn python() {
         0,
         4,
         0,
-    );
+    ));
     test(
         "tests/test_dumps/test.vcd",
         "tests/test_dumps/python_test.yaml",
@@ -253,7 +253,7 @@ fn python() {
 
 #[test]
 fn python_dump() {
-    let correct_a = BusUsage::literal(
+    let correct_a = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "a_",
         0,
         0,
@@ -268,8 +268,8 @@ fn python_dump() {
         0,
         0,
         0,
-    );
-    let correct_b = BusUsage::literal(
+    ));
+    let correct_b = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "b_",
         15,
         0,
@@ -284,7 +284,7 @@ fn python_dump() {
         0,
         0,
         0,
-    );
+    ));
     test(
         "tests/test_dumps/dump.vcd",
         "tests/test_dumps/python_dump.yaml",
