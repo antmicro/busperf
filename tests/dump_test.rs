@@ -2,25 +2,13 @@ use busperf::*;
 
 fn test(trace: &str, yaml: &str, max_burst_delay: u32, correct: &[BusUsage]) {
     let mut data = load_simulation_trace(trace, false);
-    let descs = load_bus_descriptions(yaml, max_burst_delay).unwrap();
+    let mut descs = load_bus_descriptions(yaml, max_burst_delay).unwrap();
     assert_eq!(correct.len(), descs.len());
-    for (desc, correct) in descs.iter().zip(correct) {
-        let usage = calculate_usage(&mut data, &**desc, false);
-        assert_eq!(usage, *correct);
+    for (desc, correct) in descs.iter_mut().zip(correct) {
+        desc.analyze(&mut data, false);
+        let usage = desc.get_results();
+        assert_eq!(usage, correct);
     }
-}
-
-fn measure_performance(trace: &str, yaml: &str, bus_num: usize) -> u128 {
-    let start = std::time::Instant::now();
-    let mut data = load_simulation_trace(trace, false);
-    println!("{:?}", start.elapsed().as_millis());
-    let descs = load_bus_descriptions(yaml, 0).unwrap();
-    let usages: Vec<_> = descs
-        .iter()
-        .map(|d| calculate_usage(&mut data, &**d, true))
-        .collect();
-    assert_eq!(usages.len(), bus_num);
-    start.elapsed().as_millis()
 }
 
 #[test]

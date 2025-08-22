@@ -6,6 +6,10 @@ pub mod axi;
 pub mod credit_valid;
 pub mod custom_python;
 
+use ahb::AHBBus;
+use axi::AXIBus;
+use credit_valid::CreditValidBus;
+use custom_python::PythonCustomBus;
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
@@ -52,6 +56,13 @@ impl BusCommon {
             Err("Reset type can be \"high\" or \"low\"")?
         };
 
+        // let max_burst_delay = i.1["max_burst_delay"].as_i64();
+        // let max_burst_delay = if max_burst_delay.is_some() {
+        //     max_burst_delay.unwrap().try_into().unwrap()
+        // } else {
+        //     default_max_burst_delay
+        // };
+
         Ok(Self::new(
             name,
             scope,
@@ -96,6 +107,73 @@ impl BusCommon {
 
     pub fn rst_active_value(&self) -> u8 {
         self.rst_active_value
+    }
+}
+
+pub struct BusDescriptionBuilder {}
+
+impl BusDescriptionBuilder {
+    pub fn build(
+        yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml),
+        default_max_burst_delay: u32,
+    ) -> Result<Box<dyn BusDescription>, Box<dyn std::error::Error>> {
+        let i = yaml;
+
+        let common = BusCommon::from_yaml(i, default_max_burst_delay)?;
+
+        let handshake = i.1["handshake"]
+            .as_str()
+            .ok_or("Bus should have handshake defined")?;
+
+        match handshake {
+            "ReadyValid" => {
+                let ready = i.1["ready"]
+                    .as_str()
+                    .ok_or("ReadyValid bus requires ready signal")?;
+                let valid = i.1["valid"]
+                    .as_str()
+                    .ok_or("ReadyValid bus requires valid signal")?;
+                return Ok(Box::new(AXIBus::new(
+                    common,
+                    ready.to_owned(),
+                    valid.to_owned(),
+                )));
+            }
+            "CreditValid" => {
+                let credit = i.1["credit"]
+                    .as_str()
+                    .ok_or("CreditValid bus requires credit signal")?;
+                let valid = i.1["valid"]
+                    .as_str()
+                    .ok_or("CreditValid bus requires valid signal")?;
+                return Ok(Box::new(CreditValidBus::new(
+                    common,
+                    credit.to_owned(),
+                    valid.to_owned(),
+                )));
+            }
+            "AHB" => {
+                let htrans = i.1["htrans"]
+                    .as_str()
+                    .ok_or("AHB bus requires htrans signal")?;
+                let hready = i.1["hready"]
+                    .as_str()
+                    .ok_or("AHB bus requires hready signal")?;
+                return Ok(Box::new(AHBBus::new(
+                    common,
+                    htrans.to_owned(),
+                    hready.to_owned(),
+                )));
+            }
+            "Custom" => {
+                let handshake = i.1["custom_handshake"]
+                    .as_str()
+                    .ok_or("Custom bus has to specify handshake interpreter")?;
+                return Ok(Box::new(PythonCustomBus::new(common, handshake, i.1)));
+            }
+
+            _ => Err(format!("Invalid handshake {}", handshake))?,
+        }
     }
 }
 

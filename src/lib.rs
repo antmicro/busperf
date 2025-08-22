@@ -4,7 +4,7 @@ use std::{
     sync::{atomic::AtomicU64, Arc},
 };
 
-use analyzer::Analyzer;
+use analyzer::{Analyzer, AnalyzerBuilder};
 use wellen::{
     viewers::{self, BodyResult},
     Hierarchy, LoadOptions, SignalValue,
@@ -27,30 +27,27 @@ use bus::{BusDescription, CyclesNum};
 pub fn load_bus_descriptions(
     filename: &str,
     default_max_burst_delay: CyclesNum,
-) -> Result<Vec<Box<dyn BusDescription>>, Box<dyn std::error::Error>> {
+) -> Result<Vec<Box<dyn Analyzer>>, Box<dyn std::error::Error>> {
     let mut f = File::open(filename)?;
     let mut s = String::new();
     f.read_to_string(&mut s)?;
     let yaml = YamlLoader::load_from_str(&s)?;
     let doc = &yaml[0];
-    let mut descs: Vec<Box<dyn BusDescription>> = vec![];
+    let mut descs: Vec<Box<dyn Analyzer>> = vec![];
     for i in doc["interfaces"]
         .as_hash()
         .ok_or("YAML should define interfaces")?
         .iter()
     {
-        let analyzer: Box<dyn Analyzer> = if let Some(custom) = i.1["custom_analyzer"].as_str() {
-            Box::new(analyzer::python_analyzer::PythonAnalyzer::new(custom))
-        } else {
-            Box::new(analyzer::default_analyzer::DefaultAnalyzer::new())
-        };
-        for b in analyzer
-            .load_buses(i, default_max_burst_delay)
-            .unwrap()
-            .into_iter()
-        {
-            descs.push(b);
-        }
+        let analyzer: Box<dyn Analyzer> = AnalyzerBuilder::build(i, default_max_burst_delay);
+        descs.push(analyzer);
+        // for b in analyzer
+        //     .load_buses(i, default_max_burst_delay)
+        //     .unwrap()
+        //     .into_iter()
+        // {
+        //     descs.push(b);
+        // }
     }
     Ok(descs)
 }
@@ -121,8 +118,8 @@ fn load_signals(
 }
 
 #[derive(PartialEq, Debug)]
-pub struct BusUsage<'a> {
-    pub bus_name: &'a str,
+pub struct BusUsage {
+    pub bus_name: String,
     busy: CyclesNum,
     backpressure: CyclesNum,
     no_data: CyclesNum,
@@ -146,10 +143,10 @@ pub enum CycleType {
     NoData,
 }
 
-impl<'a> BusUsage<'a> {
+impl BusUsage {
     fn new(name: &str, max_burst_delay: CyclesNum) -> BusUsage {
         BusUsage {
-            bus_name: name,
+            bus_name: name.to_owned(),
             busy: 0,
             backpressure: 0,
             no_data: 0,
@@ -316,7 +313,7 @@ impl<'a> BusUsage<'a> {
         max_burst_delay: CyclesNum,
     ) -> BusUsage {
         BusUsage {
-            bus_name,
+            bus_name: bus_name.to_owned(),
             busy,
             backpressure,
             no_data,
@@ -334,7 +331,7 @@ impl<'a> BusUsage<'a> {
     }
 }
 
-fn get_header(usages: &[BusUsage]) -> (Vec<String>, usize, usize) {
+fn get_header(usages: &[&BusUsage]) -> (Vec<String>, usize, usize) {
     let delays = usages
         .iter()
         .map(|u| u.transaction_delay_buckets.len())
@@ -365,7 +362,7 @@ fn get_header(usages: &[BusUsage]) -> (Vec<String>, usize, usize) {
     (v, delays, bursts)
 }
 
-fn generate_tabled<O>(usages: &[BusUsage], verbose: bool, style: O) -> tabled::Table
+fn generate_tabled<O>(usages: &[&BusUsage], verbose: bool, style: O) -> tabled::Table
 where
     O: tabled::settings::TableOption<
         tabled::grid::records::vec_records::VecRecords<
@@ -375,7 +372,7 @@ where
         tabled::grid::dimension::CompleteDimension,
     >,
 {
-    let (header, delays, bursts) = get_header(&usages);
+    let (header, delays, bursts) = get_header(usages);
     let mut builder = tabled::builder::Builder::new();
     builder.push_record(header);
     for u in usages {
@@ -386,7 +383,7 @@ where
     t
 }
 
-pub fn print_statistics(write: &mut impl Write, usages: &[BusUsage], verbose: bool) {
+pub fn print_statistics(write: &mut impl Write, usages: &[&BusUsage], verbose: bool) {
     writeln!(
         write,
         "{}",
@@ -395,7 +392,7 @@ pub fn print_statistics(write: &mut impl Write, usages: &[BusUsage], verbose: bo
     .unwrap();
 }
 
-pub fn generate_md_table(write: &mut impl Write, usages: &[BusUsage], verbose: bool) {
+pub fn generate_md_table(write: &mut impl Write, usages: &[&BusUsage], verbose: bool) {
     writeln!(
         write,
         "{}",
@@ -404,68 +401,13 @@ pub fn generate_md_table(write: &mut impl Write, usages: &[BusUsage], verbose: b
     .unwrap();
 }
 
-pub fn generate_csv(write: &mut impl Write, usages: &[BusUsage], verbose: bool) {
+pub fn generate_csv(write: &mut impl Write, usages: &[&BusUsage], verbose: bool) {
     let mut wtr = csv::Writer::from_writer(write);
-    let (header, delays, bursts) = get_header(&usages);
+    let (header, delays, bursts) = get_header(usages);
     wtr.write_record(header).unwrap();
     for u in usages {
         wtr.write_record(u.get_data(delays, bursts, verbose))
             .unwrap();
     }
     wtr.flush().unwrap();
-}
-
-pub fn calculate_usage<'a>(
-    simulation_data: &mut SimulationData,
-    bus_desc: &'a dyn BusDescription,
-    verbose: bool,
-) -> BusUsage<'a> {
-    // match bus_desc {
-    //     BusDescription::AXI(axi) => calculate_ready_valid_bus(simulation_data, axi),
-    //     BusDescription::CreditValid(credit_valid_bus) => {
-    //         calculate_credit_valid_bus(simulation_data, credit_valid_bus)
-    //     }
-    //     BusDescription::AHB(ahbbus) => calculate_ahb_bus(simulation_data, ahbbus),
-    // }
-    let mut signals = vec![bus_desc.common().clk_name(), bus_desc.common().rst_name()];
-    signals.append(&mut bus_desc.signals());
-
-    let start = std::time::Instant::now();
-    let loaded = load_signals(simulation_data, &bus_desc.common().module_scope(), &signals);
-    let (_, clock) = &loaded[0];
-    let (_, reset) = &loaded[1];
-    if verbose {
-        // println!("loading took {:?}", start.elapsed());
-        print!("{}\t", start.elapsed().as_millis());
-    }
-
-    let start = std::time::Instant::now();
-    let mut usage = BusUsage::new(&bus_desc.bus_name(), bus_desc.common().max_burst_delay());
-    for i in clock.iter_changes() {
-        if let SignalValue::Binary(v, 1) = i.1 {
-            if v[0] == 0 {
-                continue;
-            }
-        }
-        // We subtract one to use values just before clock signal
-        let time = i.0.saturating_sub(1);
-        let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
-        let values: Vec<SignalValue> = loaded[2..]
-            .iter()
-            .map(|(_, s)| s.get_value_at(&s.get_offset(time).unwrap(), 0))
-            .collect();
-
-        // let reset = signals[0];
-        if reset.to_bit_string().unwrap() != bus_desc.common().rst_active_value().to_string() {
-            usage.add_cycle(bus_desc.interpret_cycle(values, time));
-        } else {
-            usage.add_cycle(CycleType::NoTransaction);
-        }
-    }
-    usage.end();
-    if verbose {
-        // println!("calculating took {:?}", start.elapsed());
-        println!("{}\t", start.elapsed().as_millis());
-    }
-    usage
 }

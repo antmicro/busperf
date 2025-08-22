@@ -44,4 +44,12 @@ impl Analyzer for PythonAnalyzer {
         let common = BusCommon::from_yaml(yaml, default_max_burst_delay);
         todo!()
     }
+
+    fn analyze(&mut self, simulation_data: &mut crate::SimulationData, verbose: bool) {
+        todo!()
+    }
+
+    fn get_results(&self) -> &crate::BusUsage {
+        todo!()
+    }
 }
