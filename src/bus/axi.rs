@@ -1,4 +1,5 @@
 use wellen::SignalValue;
+use yaml_rust2::Yaml;
 
 use crate::CycleType;
 
@@ -7,30 +8,26 @@ use super::BusDescription;
 
 #[derive(Debug)]
 pub struct AXIBus {
-    common: BusCommon,
     ready: String,
     valid: String,
 }
 
 impl AXIBus {
-    pub fn new(common: BusCommon, ready: String, valid: String) -> Self {
-        AXIBus {
-            common,
-            ready,
-            valid,
-        }
+    pub fn from_yaml(common: BusCommon, yaml: &Yaml) -> Result<Self, Box<dyn std::error::Error>> {
+        let ready = yaml["ready"]
+            .as_str()
+            .ok_or("ReadyValid bus requires ready signal")?;
+        let valid = yaml["valid"]
+            .as_str()
+            .ok_or("ReadyValid bus requires valid signal")?;
+        return Ok(AXIBus::new(ready.to_owned(), valid.to_owned()));
+    }
+    pub fn new(ready: String, valid: String) -> Self {
+        AXIBus { ready, valid }
     }
 }
 
 impl BusDescription for AXIBus {
-    fn bus_name(&self) -> &str {
-        &self.common.bus_name
-    }
-
-    fn common(&self) -> &super::BusCommon {
-        &self.common
-    }
-
     fn signals(&self) -> Vec<&str> {
         vec![self.ready.as_str(), self.valid.as_str()]
     }
@@ -52,10 +49,7 @@ impl BusDescription for AXIBus {
         } else {
             eprintln!(
                 "bus \"{}\" in unknown state outside reset - ready: {}, valid: {}, time: {}",
-                self.bus_name(),
-                ready,
-                valid,
-                time
+                "FIXME", ready, valid, time
             );
             CycleType::NoTransaction
         }

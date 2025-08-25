@@ -20,14 +20,6 @@ impl AHBBus {
 }
 
 impl BusDescription for AHBBus {
-    fn bus_name(&self) -> &str {
-        &self.common.bus_name
-    }
-
-    fn common(&self) -> &BusCommon {
-        &self.common
-    }
-
     fn signals(&self) -> Vec<&str> {
         vec![self.htrans.as_str(), self.hready.as_str()]
     }

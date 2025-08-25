@@ -20,14 +20,6 @@ impl CreditValidBus {
 }
 
 impl BusDescription for CreditValidBus {
-    fn bus_name(&self) -> &str {
-        &self.common.bus_name
-    }
-
-    fn common(&self) -> &super::BusCommon {
-        &self.common
-    }
-
     fn signals(&self) -> Vec<&str> {
         vec![self.credit.as_str(), self.valid.as_str()]
     }

@@ -86,6 +86,10 @@ impl BusCommon {
         }
     }
 
+    pub fn bus_name(&self) -> &str {
+        &self.bus_name
+    }
+
     pub fn module_scope(&self) -> &Vec<String> {
         &self.module_scope
     }
@@ -124,17 +128,7 @@ impl BusDescriptionBuilder {
 
         match handshake {
             "ReadyValid" => {
-                let ready = i["ready"]
-                    .as_str()
-                    .ok_or("ReadyValid bus requires ready signal")?;
-                let valid = i["valid"]
-                    .as_str()
-                    .ok_or("ReadyValid bus requires valid signal")?;
-                return Ok(Box::new(AXIBus::new(
-                    common,
-                    ready.to_owned(),
-                    valid.to_owned(),
-                )));
+                return Ok(Box::new(AXIBus::from_yaml(common, i)?));
             }
             "CreditValid" => {
                 let credit = i["credit"]
@@ -175,8 +169,6 @@ impl BusDescriptionBuilder {
 }
 
 pub trait BusDescription {
-    fn bus_name(&self) -> &str;
-    fn common(&self) -> &BusCommon;
     fn signals(&self) -> Vec<&str>;
     fn interpret_cycle(&self, signals: Vec<SignalValue>, time: u32) -> CycleType;
 }
