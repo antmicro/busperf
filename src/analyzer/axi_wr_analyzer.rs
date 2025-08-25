@@ -110,6 +110,7 @@ impl Analyzer for AXIWrAnalyzer {
             .iter()
             .map(|bus| analyze_single_bus(&self.common, *bus, simulation_data, verbose))
             .collect();
+        usage.end();
 
         self.result = Some(BusUsage::MultiChannel(usage));
     }

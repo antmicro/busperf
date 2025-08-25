@@ -114,6 +114,7 @@ pub enum CycleType {
     NoTransaction,
     Backpressure,
     NoData,
+    Reset,
 }
 
 fn generate_tabled<O>(

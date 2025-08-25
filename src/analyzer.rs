@@ -72,7 +72,7 @@ pub fn analyze_single_bus(
         if reset.to_bit_string().unwrap() != common.rst_active_value().to_string() {
             usage.add_cycle(bus_desc.interpret_cycle(values, time));
         } else {
-            usage.add_cycle(CycleType::NoTransaction);
+            usage.add_cycle(CycleType::Reset);
         }
     }
     usage.end();

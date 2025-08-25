@@ -17,6 +17,7 @@ pub struct SingleChannelBusUsage {
     no_data: CyclesNum,
     no_transaction: CyclesNum,
     free: CyclesNum,
+    reset: CyclesNum,
     transaction_delays: Vec<CyclesNum>,
     current_delay: usize,
     transaction_delay_buckets: Vec<DelaysNum>,
@@ -35,6 +36,7 @@ impl SingleChannelBusUsage {
             no_data: 0,
             no_transaction: 0,
             free: 0,
+            reset: 0,
             transaction_delays: vec![0],
             current_delay: 0,
             transaction_delay_buckets: vec![],
@@ -81,6 +83,7 @@ impl SingleChannelBusUsage {
             CycleType::NoTransaction => self.no_transaction += 1,
             CycleType::Backpressure => self.backpressure += 1,
             CycleType::NoData => self.no_data += 1,
+            CycleType::Reset => self.reset += 1,
             CycleType::Busy => unreachable!(),
         }
         self.transaction_delays[self.current_delay] += 1;
@@ -186,6 +189,7 @@ impl SingleChannelBusUsage {
         no_data: CyclesNum,
         no_transaction: CyclesNum,
         free: CyclesNum,
+        reset: CyclesNum,
         transaction_delays: Vec<CyclesNum>,
         current_delay: usize,
         transaction_delay_buckets: Vec<DelaysNum>,
@@ -202,6 +206,7 @@ impl SingleChannelBusUsage {
             no_data,
             no_transaction,
             free,
+            reset,
             transaction_delays,
             current_delay,
             transaction_delay_buckets,
@@ -321,6 +326,10 @@ impl VecStatistic {
     pub fn add(&mut self, value: CyclesNum) {
         self.data.push(value);
     }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
 }
 
 #[derive(PartialEq, Debug)]
@@ -334,9 +343,10 @@ pub struct MultiChannelBusUsage {
     error_num: u32,
     correct_num: u32,
     averaged_bandwidth: f32,
-    bandwidth_above_x_rate: CyclesNum,
-    bandwidth_below_y_rate: CyclesNum,
+    bandwidth_above_x_rate: f32,
+    bandwidth_below_y_rate: f32,
     pub channels_usages: Vec<SingleChannelBusUsage>,
+    time: u32,
 }
 
 impl MultiChannelBusUsage {
@@ -351,9 +361,10 @@ impl MultiChannelBusUsage {
             error_num: 0,
             correct_num: 0,
             averaged_bandwidth: 0.0,
-            bandwidth_above_x_rate: 0,
-            bandwidth_below_y_rate: 0,
+            bandwidth_above_x_rate: 0.0,
+            bandwidth_below_y_rate: 0.0,
             channels_usages: vec![],
+            time: 0,
         }
     }
 
@@ -376,6 +387,11 @@ impl MultiChannelBusUsage {
             self.error_num += 1;
         }
         self.transaction_delays.add(delay);
+        self.time = time + delay;
+    }
+
+    pub fn end(&mut self) {
+        self.averaged_bandwidth = self.cmd_to_first_data.len() as f32 / self.time as f32;
     }
 
     pub fn get_data(
