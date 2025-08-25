@@ -7,7 +7,7 @@ use crate::{
     load_signals, BusUsage,
 };
 
-use super::Analyzer;
+use super::{analyze_single_bus, Analyzer};
 
 pub struct AXIWrAnalyzer {
     common: BusCommon,
@@ -67,7 +67,12 @@ impl Analyzer for AXIWrAnalyzer {
         let (_, bvalid) = &loaded[7];
         let (_, b_resp) = &loaded[8];
 
-        for (time, value) in awvalid.iter_changes() {
+        let mut next = awvalid.iter_changes().map(|(t, _)| t);
+        next.next();
+        next.next();
+        let next = next.chain([*clk.time_indices().last().unwrap()]);
+
+        for ((time, value), next) in awvalid.iter_changes().zip(next) {
             if value.to_bit_string().unwrap() != "1" {
                 continue;
             }
@@ -93,16 +98,18 @@ impl Analyzer for AXIWrAnalyzer {
                 .get_value_at(&b_resp.get_offset(resp_time).unwrap(), 0)
                 .to_bit_string()
                 .unwrap();
-            // println!(
-            //     "transaction {} - {} last write {} first data {} status {}",
-            //     time,
-            //     resp_time,
-            //     last_write,
-            //     first_data,
-            //     resp.to_bit_string().unwrap()
-            // );
-            usage.add_transaction(time, resp_time, last_write, first_data, &resp);
+            let delay = next - resp_time;
+            println!(
+                "transaction {} - {} last write {} first data {} status {} next {}",
+                time, resp_time, last_write, first_data, resp, next
+            );
+            usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
         }
+
+        usage.channels_usages = [&self.aw, &self.w, &self.b]
+            .iter()
+            .map(|bus| analyze_single_bus(&self.common, *bus, simulation_data, verbose))
+            .collect();
 
         self.result = Some(BusUsage::MultiChannel(usage));
     }

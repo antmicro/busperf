@@ -245,7 +245,7 @@ pub fn get_header(usages: &[&SingleChannelBusUsage]) -> (Vec<String>, usize, usi
     (v, delays, bursts)
 }
 
-pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, u32, u32) {
+pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, u32, u32, u32) {
     let mut v = vec![String::from("bus_name"), String::from("cmd_to_completion")];
     let max1 = usages
         .iter()
@@ -273,6 +273,15 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
     for i in 0..max3 {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
     }
+    v.push(String::from("transaction delays"));
+    let max4 = usages
+        .iter()
+        .map(|u| u.transaction_delays.buckets_num())
+        .max()
+        .unwrap();
+    for i in 0..max4 {
+        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
+    }
 
     v.append(&mut vec![
         String::from("error rate"),
@@ -280,7 +289,7 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         String::from("bandwidth_above_x_rate"),
         String::from("bandwidth_below_y_rate"),
     ]);
-    (v, max1, max2, max3)
+    (v, max1, max2, max3, max4)
 }
 
 #[derive(PartialEq, Debug)]
@@ -320,12 +329,14 @@ pub struct MultiChannelBusUsage {
     cmd_to_completion: VecStatistic,
     cmd_to_first_data: VecStatistic,
     last_data_to_completion: VecStatistic,
+    transaction_delays: VecStatistic,
     error_rate: f32,
     error_num: u32,
     correct_num: u32,
     averaged_bandwidth: f32,
     bandwidth_above_x_rate: CyclesNum,
     bandwidth_below_y_rate: CyclesNum,
+    pub channels_usages: Vec<SingleChannelBusUsage>,
 }
 
 impl MultiChannelBusUsage {
@@ -335,12 +346,14 @@ impl MultiChannelBusUsage {
             cmd_to_completion: VecStatistic::new("cmd to completion"),
             cmd_to_first_data: VecStatistic::new("cmd to first data"),
             last_data_to_completion: VecStatistic::new("last data to completion"),
+            transaction_delays: VecStatistic::new("transaction_delays"),
             error_rate: 0.0,
             error_num: 0,
             correct_num: 0,
             averaged_bandwidth: 0.0,
             bandwidth_above_x_rate: 0,
             bandwidth_below_y_rate: 0,
+            channels_usages: vec![],
         }
     }
 
@@ -351,6 +364,7 @@ impl MultiChannelBusUsage {
         last_write: u32,
         first_data: u32,
         resp: &str,
+        delay: u32,
     ) {
         self.cmd_to_completion.add((resp_time - time) / 2);
         self.cmd_to_first_data.add((first_data - time) / 2);
@@ -361,9 +375,17 @@ impl MultiChannelBusUsage {
         } else {
             self.error_num += 1;
         }
+        self.transaction_delays.add(delay);
     }
 
-    pub fn get_data(&self, verbose: bool, c2c: u32, c2d: u32, ld2c: u32) -> Vec<String> {
+    pub fn get_data(
+        &self,
+        verbose: bool,
+        c2c: u32,
+        c2d: u32,
+        ld2c: u32,
+        delays: u32,
+    ) -> Vec<String> {
         let mut v = vec![self.bus_name.clone()];
         v.push(if verbose {
             format!("{:?}", self.cmd_to_completion.data)
@@ -396,6 +418,17 @@ impl MultiChannelBusUsage {
             v.push(num.to_string());
         }
         for _ in 0..ld2c - self.last_data_to_completion.buckets_num() {
+            v.push(String::from("0"));
+        }
+        v.push(if verbose {
+            format!("{:?}", self.transaction_delays.data)
+        } else {
+            String::from("")
+        });
+        for num in self.transaction_delays.get_buckets().iter() {
+            v.push(num.to_string());
+        }
+        for _ in 0..delays - self.transaction_delays.buckets_num() {
             v.push(String::from("0"));
         }
         v.push(self.error_rate.to_string());

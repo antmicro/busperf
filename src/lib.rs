@@ -184,10 +184,10 @@ fn print_statistics_internal<O>(
         })
         .collect();
     if multi_usage.len() > 0 {
-        let (header, c2c, c2d, ld2c) = get_header_multi(&multi_usage);
+        let (header, c2c, c2d, ld2c, delays) = get_header_multi(&multi_usage);
         let data = multi_usage
             .iter()
-            .map(|u| u.get_data(verbose, c2c, c2d, ld2c))
+            .map(|u| u.get_data(verbose, c2c, c2d, ld2c, delays))
             .collect();
         writeln!(write, "{}", generate_tabled(&header, &data, verbose, style)).unwrap();
     }
