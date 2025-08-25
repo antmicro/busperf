@@ -128,7 +128,7 @@ impl BusDescriptionBuilder {
 
         match handshake {
             "ReadyValid" => {
-                return Ok(Box::new(AXIBus::from_yaml(common, i)?));
+                return Ok(Box::new(AXIBus::from_yaml(i)?));
             }
             "CreditValid" => {
                 let credit = i["credit"]

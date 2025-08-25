@@ -5,7 +5,7 @@ use std::{
 };
 
 use analyzer::{Analyzer, AnalyzerBuilder};
-use bus_usage::get_header;
+use bus_usage::{get_header, get_header_multi, MultiChannelBusUsage};
 use wellen::{
     viewers::{self, BodyResult},
     Hierarchy, LoadOptions,
@@ -116,7 +116,12 @@ pub enum CycleType {
     NoData,
 }
 
-fn generate_tabled<O>(usages: &[&BusUsage], verbose: bool, style: O) -> tabled::Table
+fn generate_tabled<O>(
+    header: &Vec<String>,
+    data: &Vec<Vec<String>>,
+    verbose: bool,
+    style: O,
+) -> tabled::Table
 where
     O: tabled::settings::TableOption<
         tabled::grid::records::vec_records::VecRecords<
@@ -126,40 +131,73 @@ where
         tabled::grid::dimension::CompleteDimension,
     >,
 {
-    let usages: Vec<&SingleChannelBusUsage> = usages
-        .iter()
-        .filter_map(|u| match u {
-            BusUsage::SingleChannel(single) => Some(single),
-            _ => None,
-        })
-        .collect();
-    let (header, delays, bursts) = get_header(&usages);
     let mut builder = tabled::builder::Builder::new();
     builder.push_record(header);
-    for u in usages {
-        builder.push_record(u.get_data(delays, bursts, verbose));
+    for u in data {
+        builder.push_record(u);
     }
     let mut t = builder.build();
     t.with(style);
     t
 }
 
+fn print_statistics_internal<O>(
+    write: &mut impl Write,
+    usages: &[&BusUsage],
+    verbose: bool,
+    style: O,
+) where
+    O: tabled::settings::TableOption<
+            tabled::grid::records::vec_records::VecRecords<
+                tabled::grid::records::vec_records::Text<String>,
+            >,
+            tabled::grid::config::ColoredConfig,
+            tabled::grid::dimension::CompleteDimension,
+        > + Clone,
+{
+    let single_usages: Vec<&SingleChannelBusUsage> = usages
+        .iter()
+        .filter_map(|u| match u {
+            BusUsage::SingleChannel(single) => Some(single),
+            _ => None,
+        })
+        .collect();
+    if single_usages.len() > 0 {
+        let (header, delays, bursts) = get_header(&single_usages);
+        let data = single_usages
+            .iter()
+            .map(|u| u.get_data(delays, bursts, verbose))
+            .collect();
+        writeln!(
+            write,
+            "{}",
+            generate_tabled(&header, &data, verbose, style.clone())
+        )
+        .unwrap();
+    }
+
+    let multi_usage: Vec<&MultiChannelBusUsage> = usages
+        .iter()
+        .filter_map(|u| match u {
+            BusUsage::MultiChannel(multi) => Some(multi),
+            _ => None,
+        })
+        .collect();
+    if multi_usage.len() > 0 {
+        let (header, c2c, c2d, ld2c) = get_header_multi(&multi_usage);
+        let data = multi_usage
+            .iter()
+            .map(|u| u.get_data(verbose, c2c, c2d, ld2c))
+            .collect();
+        writeln!(write, "{}", generate_tabled(&header, &data, verbose, style)).unwrap();
+    }
+}
 pub fn print_statistics(write: &mut impl Write, usages: &[&BusUsage], verbose: bool) {
-    writeln!(
-        write,
-        "{}",
-        generate_tabled(usages, verbose, tabled::settings::Style::rounded())
-    )
-    .unwrap();
+    print_statistics_internal(write, usages, verbose, tabled::settings::Style::rounded());
 }
 
 pub fn generate_md_table(write: &mut impl Write, usages: &[&BusUsage], verbose: bool) {
-    writeln!(
-        write,
-        "{}",
-        generate_tabled(usages, verbose, tabled::settings::Style::markdown())
-    )
-    .unwrap();
+    print_statistics_internal(write, usages, verbose, tabled::settings::Style::markdown());
 }
 
 pub fn generate_csv(write: &mut impl Write, usages: &[&BusUsage], verbose: bool) {

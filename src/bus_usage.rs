@@ -245,5 +245,164 @@ pub fn get_header(usages: &[&SingleChannelBusUsage]) -> (Vec<String>, usize, usi
     (v, delays, bursts)
 }
 
+pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, u32, u32) {
+    let mut v = vec![String::from("bus_name"), String::from("cmd_to_completion")];
+    let max1 = usages
+        .iter()
+        .map(|u| u.cmd_to_completion.buckets_num())
+        .max()
+        .unwrap();
+    for i in 0..max1 {
+        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
+    }
+    v.push(String::from("cmd_to_first_data"));
+    let max2 = usages
+        .iter()
+        .map(|u| u.cmd_to_first_data.buckets_num())
+        .max()
+        .unwrap();
+    for i in 0..max2 {
+        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
+    }
+    v.push(String::from("last_data_to_completion"));
+    let max3 = usages
+        .iter()
+        .map(|u| u.last_data_to_completion.buckets_num())
+        .max()
+        .unwrap();
+    for i in 0..max3 {
+        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
+    }
+
+    v.append(&mut vec![
+        String::from("error rate"),
+        String::from("averaged_bandwidth"),
+        String::from("bandwidth_above_x_rate"),
+        String::from("bandwidth_below_y_rate"),
+    ]);
+    (v, max1, max2, max3)
+}
+
 #[derive(PartialEq, Debug)]
-struct MultiChannelBusUsage {}
+pub struct VecStatistic {
+    name: &'static str,
+    data: Vec<CyclesNum>,
+}
+
+impl VecStatistic {
+    pub fn new(name: &'static str) -> VecStatistic {
+        VecStatistic { name, data: vec![] }
+    }
+    pub fn get_buckets(&self) -> Vec<usize> {
+        let mut buckets = vec![];
+        for v in self.data.iter() {
+            let bucket = v.ilog2() as usize;
+            if buckets.len() <= bucket {
+                buckets.resize(bucket + 1, 0);
+            }
+            buckets[bucket] += 1;
+        }
+        buckets
+    }
+
+    pub fn buckets_num(&self) -> u32 {
+        self.data.iter().max().unwrap().ilog2() + 1
+    }
+
+    pub fn add(&mut self, value: CyclesNum) {
+        self.data.push(value);
+    }
+}
+
+#[derive(PartialEq, Debug)]
+pub struct MultiChannelBusUsage {
+    pub bus_name: String,
+    cmd_to_completion: VecStatistic,
+    cmd_to_first_data: VecStatistic,
+    last_data_to_completion: VecStatistic,
+    error_rate: f32,
+    error_num: u32,
+    correct_num: u32,
+    averaged_bandwidth: f32,
+    bandwidth_above_x_rate: CyclesNum,
+    bandwidth_below_y_rate: CyclesNum,
+}
+
+impl MultiChannelBusUsage {
+    pub fn new(bus_name: &str) -> Self {
+        MultiChannelBusUsage {
+            bus_name: bus_name.to_owned(),
+            cmd_to_completion: VecStatistic::new("cmd to completion"),
+            cmd_to_first_data: VecStatistic::new("cmd to first data"),
+            last_data_to_completion: VecStatistic::new("last data to completion"),
+            error_rate: 0.0,
+            error_num: 0,
+            correct_num: 0,
+            averaged_bandwidth: 0.0,
+            bandwidth_above_x_rate: 0,
+            bandwidth_below_y_rate: 0,
+        }
+    }
+
+    pub fn add_transaction(
+        &mut self,
+        time: u32,
+        resp_time: u32,
+        last_write: u32,
+        first_data: u32,
+        resp: &str,
+    ) {
+        self.cmd_to_completion.add((resp_time - time) / 2);
+        self.cmd_to_first_data.add((first_data - time) / 2);
+        self.last_data_to_completion
+            .add((resp_time - last_write) / 2);
+        if resp.ends_with("00") || resp.ends_with("01") {
+            self.correct_num += 1;
+        } else {
+            self.error_num += 1;
+        }
+    }
+
+    pub fn get_data(&self, verbose: bool, c2c: u32, c2d: u32, ld2c: u32) -> Vec<String> {
+        let mut v = vec![self.bus_name.clone()];
+        v.push(if verbose {
+            format!("{:?}", self.cmd_to_completion.data)
+        } else {
+            String::from("")
+        });
+        for num in self.cmd_to_completion.get_buckets().iter() {
+            v.push(num.to_string());
+        }
+        for _ in 0..c2c - self.cmd_to_completion.buckets_num() {
+            v.push(String::from("0"));
+        }
+        v.push(if verbose {
+            format!("{:?}", self.cmd_to_first_data.data)
+        } else {
+            String::from("")
+        });
+        for num in self.cmd_to_first_data.get_buckets().iter() {
+            v.push(num.to_string());
+        }
+        for _ in 0..c2d - self.cmd_to_first_data.buckets_num() {
+            v.push(String::from("0"));
+        }
+        v.push(if verbose {
+            format!("{:?}", self.last_data_to_completion.data)
+        } else {
+            String::from("")
+        });
+        for num in self.last_data_to_completion.get_buckets().iter() {
+            v.push(num.to_string());
+        }
+        for _ in 0..ld2c - self.last_data_to_completion.buckets_num() {
+            v.push(String::from("0"));
+        }
+        v.push(self.error_rate.to_string());
+        v.push(self.averaged_bandwidth.to_string());
+        v.push(self.bandwidth_above_x_rate.to_string());
+        v.push(self.bandwidth_below_y_rate.to_string());
+
+        v
+    }
+}

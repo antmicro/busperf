@@ -33,7 +33,7 @@ impl DefaultAnalyzer {
         signals.append(&mut bus_desc.signals());
 
         let start = std::time::Instant::now();
-        let loaded = load_signals(simulation_data, &self.common.module_scope(), &signals);
+        let loaded = load_signals(simulation_data, self.common.module_scope(), &signals);
         let (_, clock) = &loaded[0];
         let (_, reset) = &loaded[1];
         if verbose {

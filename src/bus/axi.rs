@@ -13,7 +13,7 @@ pub struct AXIBus {
 }
 
 impl AXIBus {
-    pub fn from_yaml(common: BusCommon, yaml: &Yaml) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_yaml(yaml: &Yaml) -> Result<Self, Box<dyn std::error::Error>> {
         let ready = yaml["ready"]
             .as_str()
             .ok_or("ReadyValid bus requires ready signal")?;
