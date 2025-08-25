@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use crate::CycleType;
 
 use super::{BusCommon, BusDescription, CyclesNum};
@@ -7,6 +9,7 @@ pub struct CreditValidBus {
     common: BusCommon,
     credit: String,
     valid: String,
+    credits: Cell<u32>,
 }
 
 impl CreditValidBus {
@@ -31,6 +34,7 @@ impl CreditValidBus {
             },
             credit,
             valid,
+            credits: 0.into(),
         }
     }
 }
@@ -54,8 +58,14 @@ impl BusDescription for CreditValidBus {
         if let Ok(credit) = credit.to_bit_string().unwrap().parse::<u32>()
             && let Ok(valid) = valid.to_bit_string().unwrap().parse::<u32>()
         {
-            match (credit, valid) {
-                (1.., 1) => CycleType::Busy,
+            if credit > 0 {
+                self.credits.update(|c| c + 1);
+            }
+            match (self.credits.get(), valid) {
+                (1.., 1) => {
+                    self.credits.update(|c| c - 1);
+                    CycleType::Busy
+                }
                 (1.., 0) => CycleType::Free,
                 (0, 1) => {
                     eprintln!(
