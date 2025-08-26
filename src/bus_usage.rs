@@ -423,6 +423,7 @@ impl MultiChannelBusUsage {
     }
 
     pub fn end(&mut self) {
+        self.error_rate = self.error_num as f32 / self.correct_num as f32;
         self.averaged_bandwidth = self.cmd_to_first_data.len() as f32
             / (self.time - self.channels_usages[0].reset) as f32;
 
