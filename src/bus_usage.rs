@@ -344,6 +344,8 @@ pub struct MultiChannelBusUsage {
     error_num: u32,
     correct_num: u32,
     averaged_bandwidth: f32,
+    bandwidth_windows: Vec<f32>,
+    window_length: u32,
     bandwidth_above_x_rate: f32,
     bandwidth_below_y_rate: f32,
     pub channels_usages: Vec<SingleChannelBusUsage>,
@@ -353,7 +355,7 @@ pub struct MultiChannelBusUsage {
 }
 
 impl MultiChannelBusUsage {
-    pub fn new(bus_name: &str, x_rate: f32, y_rate: f32) -> Self {
+    pub fn new(bus_name: &str, window_length: u32, x_rate: f32, y_rate: f32) -> Self {
         MultiChannelBusUsage {
             bus_name: bus_name.to_owned(),
             cmd_to_completion: VecStatistic::new("cmd to completion"),
@@ -365,6 +367,8 @@ impl MultiChannelBusUsage {
             error_num: 0,
             correct_num: 0,
             averaged_bandwidth: 0.0,
+            bandwidth_windows: vec![],
+            window_length,
             bandwidth_above_x_rate: 0.0,
             bandwidth_below_y_rate: 0.0,
             channels_usages: vec![],
@@ -394,12 +398,69 @@ impl MultiChannelBusUsage {
         }
         self.transaction_delays.add(delay);
         self.transaction_times.push((time, resp_time));
-        self.time = time + delay;
+        println!("TIME {}", time);
+        self.time = resp_time + delay;
+    }
+
+    fn transaction_coverage_in_window(
+        &self,
+        (start, end): (u32, u32),
+        window_num: u32,
+        offset: u32,
+    ) -> f32 {
+        let win_start = window_num * self.window_length + offset;
+        let win_end = (window_num + 1) * self.window_length + offset;
+        // println!("win {} {} tran {} {}", win_start, win_end, start, end);
+
+        (win_end.min(end).saturating_sub(win_start.max(start))) as f32 / (end - start) as f32
     }
 
     pub fn end(&mut self) {
         self.averaged_bandwidth = self.cmd_to_first_data.len() as f32
             / (self.time - self.channels_usages[0].reset) as f32;
+
+        println!("{}", self.time);
+        for i in 0..(self.time / self.window_length) {
+            let half = self.window_length / 2;
+            let num: f32 = self
+                .transaction_times
+                .iter()
+                .map(|t| self.transaction_coverage_in_window(*t, i, 0))
+                // .inspect(|f| println!("FOO {}", f))
+                .sum();
+            self.bandwidth_windows
+                .push(num as f32 / self.window_length as f32);
+            // println!(
+            //     "{}-{}: {}",
+            //     self.window_length * i,
+            //     self.window_length * (i + 1),
+            //     num
+            // );
+
+            let num: f32 = self
+                .transaction_times
+                .iter()
+                .map(|t| self.transaction_coverage_in_window(*t, i, half))
+                // .inspect(|f| println!("BOO {}", f))
+                .sum();
+            self.bandwidth_windows
+                .push(num as f32 / self.window_length as f32);
+        }
+        println!("{:?}", self.bandwidth_windows);
+
+        self.bandwidth_above_x_rate = self
+            .bandwidth_windows
+            .iter()
+            .filter(|&b| *b > self.x_rate)
+            .count() as f32
+            / self.bandwidth_windows.len() as f32;
+
+        self.bandwidth_below_y_rate = self
+            .bandwidth_windows
+            .iter()
+            .filter(|&b| *b < self.y_rate)
+            .count() as f32
+            / self.bandwidth_windows.len() as f32;
     }
 
     pub fn get_data(
