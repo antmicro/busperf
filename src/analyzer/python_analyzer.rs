@@ -1,14 +1,22 @@
 use std::ffi::CString;
 
+use crate::{
+    bus::BusCommon, bus_usage::MultiChannelBusUsage, load_signals, BusUsage, SingleChannelBusUsage,
+};
+
 use super::Analyzer;
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyTuple};
+use yaml_rust2::Yaml;
 
 pub struct PythonAnalyzer {
+    common: BusCommon,
     obj: Py<PyAny>,
+    result: Option<BusUsage>,
+    signals: Vec<String>,
 }
 
 impl PythonAnalyzer {
-    pub fn new(class_name: &str) -> Self {
+    pub fn new(class_name: &str, common: BusCommon, i: &Yaml) -> Self {
         let mut s = String::from(concat!(env!("CARGO_MANIFEST_DIR"), "/plugins/python/"));
         s.push_str(class_name);
         s.push_str(".py");
@@ -28,16 +36,69 @@ impl PythonAnalyzer {
             app.call0(py)
         })
         .unwrap();
-        PythonAnalyzer { obj }
+
+        let signals = Python::with_gil(|py| -> PyResult<Vec<String>> {
+            obj.getattr(py, "get_yaml_signals")?
+                .call0(py)?
+                .extract::<Vec<String>>(py)
+        })
+        .expect("Python plugin returned bad signal names");
+        let signals = signals
+            .iter()
+            .map(|s| i[s.as_str()].as_str().unwrap().to_owned())
+            .collect();
+
+        PythonAnalyzer {
+            common,
+            obj,
+            result: None,
+            signals,
+        }
     }
 }
 
 impl Analyzer for PythonAnalyzer {
     fn analyze(&mut self, simulation_data: &mut crate::SimulationData, verbose: bool) {
-        todo!()
+        let signals = self.signals.iter().map(|s| s.as_str()).collect();
+
+        let start = std::time::Instant::now();
+        let loaded = load_signals(simulation_data, self.common.module_scope(), &signals);
+        let loaded: Vec<_> = loaded
+            .iter()
+            .map(|(_, signal)| {
+                signal
+                    .iter_changes()
+                    .map(|(t, v)| (t, v.to_bit_string().unwrap()))
+                    .collect::<Vec<(u32, String)>>()
+            })
+            .collect();
+        if verbose {
+            println!(
+                "Loading {} took {:?}",
+                self.common.bus_name(),
+                start.elapsed()
+            );
+        }
+        let results = Python::with_gil(|py| -> PyResult<Vec<(u32, u32, u32, u32, String, u32)>> {
+            self.obj
+                .getattr(py, "analyze")?
+                .call1(py, PyTuple::new(py, loaded).unwrap())?
+                .extract(py)
+        })
+        .expect("Python plugin returned bad result");
+        let mut usage = MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001);
+        for r in results {
+            println!("RESULT {}", r.4);
+            usage.add_transaction(r.0, r.1, r.2, r.3, &r.4, r.5);
+        }
+        usage
+            .channels_usages
+            .push(SingleChannelBusUsage::new("foo", 0));
+        usage.end();
+        self.result = Some(BusUsage::MultiChannel(usage));
     }
 
     fn get_results(&self) -> &crate::BusUsage {
-        todo!()
+        self.result.as_ref().unwrap()
     }
 }

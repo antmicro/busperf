@@ -21,7 +21,10 @@ impl AnalyzerBuilder {
             if custom == "AXIWrAnalyzer" {
                 Box::new(AXIWrAnalyzer::new(yaml, default_max_burst_delay))
             } else {
-                Box::new(PythonAnalyzer::new(custom))
+                let common =
+                    BusCommon::from_yaml(yaml.0.as_str().unwrap(), yaml.1, default_max_burst_delay)
+                        .unwrap();
+                Box::new(PythonAnalyzer::new(custom, common, yaml.1))
             }
         } else {
             Box::new(DefaultAnalyzer::from_yaml(yaml, default_max_burst_delay))
