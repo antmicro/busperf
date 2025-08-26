@@ -339,6 +339,7 @@ pub struct MultiChannelBusUsage {
     cmd_to_first_data: VecStatistic,
     last_data_to_completion: VecStatistic,
     transaction_delays: VecStatistic,
+    transaction_times: Vec<(u32, u32)>,
     error_rate: f32,
     error_num: u32,
     correct_num: u32,
@@ -347,16 +348,19 @@ pub struct MultiChannelBusUsage {
     bandwidth_below_y_rate: f32,
     pub channels_usages: Vec<SingleChannelBusUsage>,
     time: u32,
+    x_rate: f32,
+    y_rate: f32,
 }
 
 impl MultiChannelBusUsage {
-    pub fn new(bus_name: &str) -> Self {
+    pub fn new(bus_name: &str, x_rate: f32, y_rate: f32) -> Self {
         MultiChannelBusUsage {
             bus_name: bus_name.to_owned(),
             cmd_to_completion: VecStatistic::new("cmd to completion"),
             cmd_to_first_data: VecStatistic::new("cmd to first data"),
             last_data_to_completion: VecStatistic::new("last data to completion"),
             transaction_delays: VecStatistic::new("transaction_delays"),
+            transaction_times: vec![],
             error_rate: 0.0,
             error_num: 0,
             correct_num: 0,
@@ -365,6 +369,8 @@ impl MultiChannelBusUsage {
             bandwidth_below_y_rate: 0.0,
             channels_usages: vec![],
             time: 0,
+            x_rate,
+            y_rate,
         }
     }
 
@@ -387,11 +393,13 @@ impl MultiChannelBusUsage {
             self.error_num += 1;
         }
         self.transaction_delays.add(delay);
+        self.transaction_times.push((time, resp_time));
         self.time = time + delay;
     }
 
     pub fn end(&mut self) {
-        self.averaged_bandwidth = self.cmd_to_first_data.len() as f32 / self.time as f32;
+        self.averaged_bandwidth = self.cmd_to_first_data.len() as f32
+            / (self.time - self.channels_usages[0].reset) as f32;
     }
 
     pub fn get_data(

@@ -56,7 +56,7 @@ impl Analyzer for AXIWrAnalyzer {
         }
 
         let start = std::time::Instant::now();
-        let mut usage = MultiChannelBusUsage::new(self.common.bus_name());
+        let mut usage = MultiChannelBusUsage::new(self.common.bus_name(), 1.0, 0.0);
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let (_, awready) = &loaded[2];
