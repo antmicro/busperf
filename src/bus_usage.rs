@@ -257,7 +257,8 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         .map(|u| u.cmd_to_completion.buckets_num())
         .max()
         .unwrap();
-    for i in 0..max1 {
+    v.push(String::from("0-0"));
+    for i in 0..max1 - 1 {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
     }
     v.push(String::from("cmd_to_first_data"));
@@ -266,7 +267,8 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         .map(|u| u.cmd_to_first_data.buckets_num())
         .max()
         .unwrap();
-    for i in 0..max2 {
+    v.push(String::from("0-0"));
+    for i in 0..max2 - 1 {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
     }
     v.push(String::from("last_data_to_completion"));
@@ -275,7 +277,8 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         .map(|u| u.last_data_to_completion.buckets_num())
         .max()
         .unwrap();
-    for i in 0..max3 {
+    v.push(String::from("0-0"));
+    for i in 0..max3 - 1 {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
     }
     v.push(String::from("transaction delays"));
@@ -284,7 +287,8 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         .map(|u| u.transaction_delays.buckets_num())
         .max()
         .unwrap();
-    for i in 0..max4 {
+    v.push(String::from("0-0"));
+    for i in 0..max4 - 1 {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
     }
 
@@ -310,7 +314,7 @@ impl VecStatistic {
     pub fn get_buckets(&self) -> Vec<usize> {
         let mut buckets = vec![];
         for v in self.data.iter() {
-            let bucket = v.ilog2() as usize;
+            let bucket = if *v == 0 { 0 } else { (v.ilog2() + 1) as usize };
             if buckets.len() <= bucket {
                 buckets.resize(bucket + 1, 0);
             }
@@ -320,7 +324,10 @@ impl VecStatistic {
     }
 
     pub fn buckets_num(&self) -> u32 {
-        self.data.iter().max().unwrap().ilog2() + 1
+        if *self.data.iter().max().unwrap() == 0 {
+            return 1;
+        }
+        self.data.iter().max().unwrap().ilog2() + 2
     }
 
     pub fn add(&mut self, value: CyclesNum) {
