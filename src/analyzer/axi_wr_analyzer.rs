@@ -99,10 +99,6 @@ impl Analyzer for AXIWrAnalyzer {
                 .to_bit_string()
                 .unwrap();
             let delay = next - resp_time;
-            println!(
-                "transaction {} - {} last write {} first data {} status {} next {}",
-                time, resp_time, last_write, first_data, resp, next
-            );
             usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
         }
 

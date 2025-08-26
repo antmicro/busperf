@@ -406,7 +406,6 @@ impl MultiChannelBusUsage {
         }
         self.transaction_delays.add(delay);
         self.transaction_times.push((time, resp_time));
-        println!("TIME {}", time);
         self.time = resp_time + delay;
     }
 
@@ -418,7 +417,6 @@ impl MultiChannelBusUsage {
     ) -> f32 {
         let win_start = window_num * self.window_length + offset;
         let win_end = (window_num + 1) * self.window_length + offset;
-        // println!("win {} {} tran {} {}", win_start, win_end, start, end);
 
         (win_end.min(end).saturating_sub(win_start.max(start))) as f32 / (end - start) as f32
     }
@@ -435,22 +433,14 @@ impl MultiChannelBusUsage {
                 .transaction_times
                 .iter()
                 .map(|t| self.transaction_coverage_in_window(*t, i, 0))
-                // .inspect(|f| println!("FOO {}", f))
                 .sum();
             self.bandwidth_windows
                 .push(num as f32 / self.window_length as f32);
-            // println!(
-            //     "{}-{}: {}",
-            //     self.window_length * i,
-            //     self.window_length * (i + 1),
-            //     num
-            // );
 
             let num: f32 = self
                 .transaction_times
                 .iter()
                 .map(|t| self.transaction_coverage_in_window(*t, i, half))
-                // .inspect(|f| println!("BOO {}", f))
                 .sum();
             self.bandwidth_windows
                 .push(num as f32 / self.window_length as f32);
