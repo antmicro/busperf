@@ -85,6 +85,7 @@ impl SingleChannelBusUsage {
             CycleType::NoData => self.no_data += 1,
             CycleType::Reset => self.reset += 1,
             CycleType::Busy => unreachable!(),
+            CycleType::Unknown => self.no_transaction += 1,
         }
         self.transaction_delays[self.current_delay] += 1;
         let transaction_delay = self.transaction_delays[self.current_delay];

@@ -67,7 +67,7 @@ impl BusDescription for PythonCustomBus {
         self.signals.iter().map(|s| s.as_str()).collect()
     }
 
-    fn interpret_cycle(&self, signals: Vec<wellen::SignalValue>, _time: u32) -> crate::CycleType {
+    fn interpret_cycle(&self, signals: &Vec<wellen::SignalValue>, _time: u32) -> crate::CycleType {
         let signals: Vec<String> = signals.iter().map(|s| s.to_bit_string().unwrap()).collect();
         let ret = Python::with_gil(|py| -> PyResult<u32> {
             PyResult::Ok(

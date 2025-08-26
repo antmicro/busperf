@@ -70,7 +70,23 @@ pub fn analyze_single_bus(
 
         // let reset = signals[0];
         if reset.to_bit_string().unwrap() != common.rst_active_value().to_string() {
-            usage.add_cycle(bus_desc.interpret_cycle(values, time));
+            let type_ = bus_desc.interpret_cycle(&values, time);
+            if let CycleType::Unknown = type_ {
+                let mut state = String::from("");
+                bus_desc
+                    .signals()
+                    .iter()
+                    .zip(values)
+                    .for_each(|(name, value)| state.push_str(&format!("{}: {}, ", name, value)));
+                eprintln!(
+                    "[WARN] bus \"{}\" in unknown state outside reset at time: {} - {}",
+                    common.bus_name(),
+                    simulation_data.body.time_table[time as usize],
+                    state
+                );
+            }
+
+            usage.add_cycle(type_);
         } else {
             usage.add_cycle(CycleType::Reset);
         }

@@ -170,5 +170,5 @@ impl BusDescriptionBuilder {
 
 pub trait BusDescription {
     fn signals(&self) -> Vec<&str>;
-    fn interpret_cycle(&self, signals: Vec<SignalValue>, time: u32) -> CycleType;
+    fn interpret_cycle(&self, signals: &Vec<SignalValue>, time: u32) -> CycleType;
 }

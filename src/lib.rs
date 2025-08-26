@@ -115,6 +115,7 @@ pub enum CycleType {
     Backpressure,
     NoData,
     Reset,
+    Unknown,
 }
 
 fn generate_tabled<O>(
