@@ -109,6 +109,14 @@ impl Analyzer for AXIWrAnalyzer {
             .collect();
         usage.end(usage.channels_usages[0].reset());
 
+        if verbose {
+            println!(
+                "Calculating {} took {:?}",
+                self.common.bus_name(),
+                start.elapsed()
+            );
+        }
+
         self.result = Some(BusUsage::MultiChannel(usage));
     }
 

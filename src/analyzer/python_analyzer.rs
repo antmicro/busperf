@@ -100,6 +100,8 @@ impl Analyzer for PythonAnalyzer {
                 start.elapsed()
             );
         }
+
+        let start = std::time::Instant::now();
         let results = Python::with_gil(|py| -> PyResult<Vec<(u32, u32, u32, u32, String, u32)>> {
             self.obj
                 .getattr(py, "analyze")?
@@ -111,8 +113,16 @@ impl Analyzer for PythonAnalyzer {
         for r in results {
             usage.add_transaction(r.0, r.1, r.2, r.3, &r.4, r.5);
         }
-
         usage.end(reset);
+
+        if verbose {
+            println!(
+                "Calculating {} took {:?}",
+                self.common.bus_name(),
+                start.elapsed()
+            );
+        }
+
         self.result = Some(BusUsage::MultiChannel(usage));
     }
 

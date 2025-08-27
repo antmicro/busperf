@@ -1,6 +1,6 @@
 class AXIRdAnalyzer:
     def __init__(self):
-        print("Loaded AXIRAnalyzer")
+        print("Loaded AXIRAnalyzerPython")
 
     def get_yaml_signals(self):
         return ["ar_rdy", "ar_vld", "r_rdy", "r_vld", "r_resp"]

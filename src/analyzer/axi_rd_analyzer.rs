@@ -61,6 +61,17 @@ impl Analyzer for AXIRdAnalyzer {
         let (_, rvalid) = &loaded[5];
         let (_, r_resp) = &loaded[6];
 
+        let mut last = 0;
+        let mut reset = 0;
+        for (time, value) in rst.iter_changes() {
+            if value.to_bit_string().unwrap() == self.common.rst_active_value().to_string() {
+                last = time;
+            } else {
+                reset += time - last;
+            }
+        }
+        reset = reset / 2;
+
         let mut next = arvalid.iter_changes().map(|(t, _)| t);
         next.next();
         next.next();
@@ -85,11 +96,12 @@ impl Analyzer for AXIRdAnalyzer {
             usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
         }
 
-        usage.channels_usages = [&self.ar, &self.r]
-            .iter()
-            .map(|bus| analyze_single_bus(&self.common, *bus, simulation_data, verbose))
-            .collect();
-        usage.end(usage.channels_usages[0].reset());
+        // usage.channels_usages = [&self.ar, &self.r]
+        //     .iter()
+        //     .map(|bus| analyze_single_bus(&self.common, *bus, simulation_data, verbose))
+        //     .collect();
+        // usage.end(usage.channels_usages[0].reset());
+        usage.end(reset);
 
         if verbose {
             println!(
