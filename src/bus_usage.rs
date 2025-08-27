@@ -28,6 +28,9 @@ pub struct SingleChannelBusUsage {
     max_burst_delay: CyclesNum,
 }
 impl SingleChannelBusUsage {
+    pub fn reset(&self) -> CyclesNum {
+        self.reset
+    }
     pub(crate) fn new(name: &str, max_burst_delay: CyclesNum) -> SingleChannelBusUsage {
         SingleChannelBusUsage {
             bus_name: name.to_owned(),
@@ -421,10 +424,10 @@ impl MultiChannelBusUsage {
         (win_end.min(end).saturating_sub(win_start.max(start))) as f32 / (end - start) as f32
     }
 
-    pub fn end(&mut self) {
+    pub fn end(&mut self, time_in_reset: u32) {
         self.error_rate = self.error_num as f32 / (self.correct_num + self.error_num) as f32;
-        self.averaged_bandwidth = self.cmd_to_first_data.len() as f32
-            / (self.time - self.channels_usages[0].reset) as f32;
+        self.averaged_bandwidth =
+            self.cmd_to_first_data.len() as f32 / (self.time - time_in_reset) as f32;
 
         for i in 0..(self.time / self.window_length) + 1 {
             let half = self.window_length / 2;

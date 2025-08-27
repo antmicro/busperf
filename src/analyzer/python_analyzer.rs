@@ -20,7 +20,10 @@ impl PythonAnalyzer {
         let mut s = String::from(concat!(env!("CARGO_MANIFEST_DIR"), "/plugins/python/"));
         s.push_str(class_name);
         s.push_str(".py");
-        let code = CString::new(std::fs::read_to_string(s).unwrap()).unwrap();
+        let code = CString::new(
+            std::fs::read_to_string(s).expect(&format!("{} does not exist", class_name)),
+        )
+        .unwrap();
 
         let obj = Python::with_gil(|py| -> PyResult<Py<PyAny>> {
             let app: Py<PyAny> = PyModule::from_code(
@@ -35,7 +38,7 @@ impl PythonAnalyzer {
 
             app.call0(py)
         })
-        .unwrap();
+        .expect(&format!("Could not initialize {}", class_name));
 
         let signals = Python::with_gil(|py| -> PyResult<Vec<String>> {
             obj.getattr(py, "get_yaml_signals")?
@@ -69,6 +72,18 @@ impl Analyzer for PythonAnalyzer {
 
         let start = std::time::Instant::now();
         let loaded = load_signals(simulation_data, self.common.module_scope(), &signals);
+        let (_, rst) = &loaded[1];
+        let mut last = 0;
+        let mut reset = 0;
+        for (time, value) in rst.iter_changes() {
+            if value.to_bit_string().unwrap() == self.common.rst_active_value().to_string() {
+                last = time;
+            } else {
+                reset += time - last;
+            }
+        }
+        reset = reset / 2;
+
         let loaded: Vec<_> = loaded
             .iter()
             .map(|(_, signal)| {
@@ -96,10 +111,8 @@ impl Analyzer for PythonAnalyzer {
         for r in results {
             usage.add_transaction(r.0, r.1, r.2, r.3, &r.4, r.5);
         }
-        usage
-            .channels_usages
-            .push(SingleChannelBusUsage::new("foo", 0));
-        usage.end();
+
+        usage.end(reset);
         self.result = Some(BusUsage::MultiChannel(usage));
     }
 

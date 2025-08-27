@@ -1,3 +1,4 @@
+use axi_rd_analyzer::AXIRdAnalyzer;
 use axi_wr_analyzer::AXIWrAnalyzer;
 use default_analyzer::DefaultAnalyzer;
 use python_analyzer::PythonAnalyzer;
@@ -9,6 +10,7 @@ use crate::{
     load_signals, BusUsage, CycleType, SimulationData, SingleChannelBusUsage,
 };
 
+pub mod axi_rd_analyzer;
 pub mod axi_wr_analyzer;
 pub mod default_analyzer;
 pub mod python_analyzer;
@@ -18,13 +20,18 @@ pub struct AnalyzerBuilder {}
 impl AnalyzerBuilder {
     pub fn build(yaml: (&Yaml, &Yaml), default_max_burst_delay: u32) -> Box<dyn Analyzer> {
         if let Some(custom) = yaml.1["custom_analyzer"].as_str() {
-            if custom == "AXIWrAnalyzer" {
-                Box::new(AXIWrAnalyzer::new(yaml, default_max_burst_delay))
-            } else {
-                let common =
-                    BusCommon::from_yaml(yaml.0.as_str().unwrap(), yaml.1, default_max_burst_delay)
-                        .unwrap();
-                Box::new(PythonAnalyzer::new(custom, common, yaml.1))
+            match custom {
+                "AXIWrAnalyzer" => Box::new(AXIWrAnalyzer::new(yaml, default_max_burst_delay)),
+                "AXIRdAnalyzer" => Box::new(AXIRdAnalyzer::new(yaml, default_max_burst_delay)),
+                _ => {
+                    let common = BusCommon::from_yaml(
+                        yaml.0.as_str().unwrap(),
+                        yaml.1,
+                        default_max_burst_delay,
+                    )
+                    .unwrap();
+                    Box::new(PythonAnalyzer::new(custom, common, yaml.1))
+                }
             }
         } else {
             Box::new(DefaultAnalyzer::from_yaml(yaml, default_max_burst_delay))
