@@ -20,7 +20,7 @@ version = "0.1.0"
 dependencies = [
  "csv",
  "tabled",
- "wellen",
+ "wellen 0.17.1",
  "yaml-rust2",
 ]
 
@@ -120,6 +120,18 @@ name = "fst-reader"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db49202e746e752746ed40ba8ba5398e3f434f5729a2e84df847c3fd235b9aa7"
+dependencies = [
+ "lz4_flex",
+ "miniz_oxide",
+ "num_enum",
+ "thiserror",
+]
+
+[[package]]
+name = "fst-reader"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ead0837c896dac724675fb4710547eaa6eef452c3e18afa180c00abdf74b80a"
 dependencies = [
  "lz4_flex",
  "miniz_oxide",
@@ -452,12 +464,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a1a07cc7db3810833284e8d372ccdc6da29741639ecc70c9ec107df0fa6154c"
 
 [[package]]
+name = ""
+version = "0.1.0"
+dependencies = [
+ "wellen 0.18.4",
+]
+
+[[package]]
 name = "wellen"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7b4eaca13a9d846c2dd67f7c488d0688f3d9e87d4404d0bb0f54b5dd72c3bfc"
 dependencies = [
- "fst-reader",
+ "fst-reader 0.13.2",
+ "leb128",
+ "lz4_flex",
+ "memmap2",
+ "miniz_oxide",
+ "num_enum",
+ "rayon",
+ "rustc-hash",
+ "thiserror",
+]
+
+[[package]]
+name = "wellen"
+version = "0.18.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bac39ed171b961aaf7b0d348f6d63e8f6af4e04393325df1824429a45b0228ad"
+dependencies = [
+ "fst-reader 0.14.0",
+ "indexmap",
  "leb128",
  "lz4_flex",
  "memmap2",
