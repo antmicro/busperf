@@ -468,6 +468,7 @@ name = ""
 version = "0.1.0"
 dependencies = [
  "wellen 0.18.4",
+ "yaml-rust2",
 ]
 
 [[package]]
