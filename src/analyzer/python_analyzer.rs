@@ -94,7 +94,6 @@ impl Analyzer for PythonAnalyzer {
         .expect("Python plugin returned bad result");
         let mut usage = MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001);
         for r in results {
-            println!("RESULT {}", r.4);
             usage.add_transaction(r.0, r.1, r.2, r.3, &r.4, r.5);
         }
         usage

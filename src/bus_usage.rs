@@ -426,13 +426,7 @@ impl MultiChannelBusUsage {
         self.averaged_bandwidth = self.cmd_to_first_data.len() as f32
             / (self.time - self.channels_usages[0].reset) as f32;
 
-        println!("{}", self.time);
         for i in 0..(self.time / self.window_length) + 1 {
-            println!(
-                "{}-{}",
-                i * self.window_length,
-                (i + 1) * self.window_length
-            );
             let half = self.window_length / 2;
             let num: f32 = self
                 .transaction_times
@@ -443,11 +437,6 @@ impl MultiChannelBusUsage {
                 .push(num as f32 / self.window_length as f32);
 
             if self.time as i32 - (self.window_length * i + half) as i32 > 0 {
-                println!(
-                    "{}-{}",
-                    i * self.window_length + half,
-                    (i + 1) * self.window_length + half
-                );
                 let num: f32 = self
                     .transaction_times
                     .iter()
@@ -457,7 +446,6 @@ impl MultiChannelBusUsage {
                     .push(num as f32 / self.window_length as f32);
             }
         }
-        println!("bandwidth windows: {:?}", self.bandwidth_windows);
 
         self.bandwidth_above_x_rate = self
             .bandwidth_windows
