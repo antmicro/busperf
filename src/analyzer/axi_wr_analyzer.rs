@@ -70,7 +70,8 @@ impl Analyzer for AXIWrAnalyzer {
         let mut next = awvalid.iter_changes().map(|(t, _)| t);
         next.next();
         next.next();
-        let next = next.chain([*clk.time_indices().last().unwrap()]);
+        let last_time = clk.time_indices().last().unwrap();
+        let next = next.chain([*last_time, *last_time]);
 
         for ((time, value), next) in awvalid.iter_changes().zip(next) {
             if value.to_bit_string().unwrap() != "1" {

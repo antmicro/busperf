@@ -45,7 +45,12 @@ impl PythonAnalyzer {
         .expect("Python plugin returned bad signal names");
         let signals = signals
             .iter()
-            .map(|s| i[s.as_str()].as_str().unwrap().to_owned())
+            .map(|s| {
+                i[s.as_str()]
+                    .as_str()
+                    .expect(&format!("yaml does not have {} signal", s))
+                    .to_owned()
+            })
             .collect();
 
         PythonAnalyzer {
@@ -59,7 +64,8 @@ impl PythonAnalyzer {
 
 impl Analyzer for PythonAnalyzer {
     fn analyze(&mut self, simulation_data: &mut crate::SimulationData, verbose: bool) {
-        let signals = self.signals.iter().map(|s| s.as_str()).collect();
+        let mut signals = vec![self.common.clk_name(), self.common.rst_name()];
+        signals.append(&mut self.signals.iter().map(|s| s.as_str()).collect());
 
         let start = std::time::Instant::now();
         let loaded = load_signals(simulation_data, self.common.module_scope(), &signals);
