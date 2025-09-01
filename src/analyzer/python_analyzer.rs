@@ -103,13 +103,18 @@ impl Analyzer for PythonAnalyzer {
 
         let start = std::time::Instant::now();
         let results = Python::with_gil(|py| -> PyResult<Vec<(u32, u32, u32, u32, String, u32)>> {
-            self.obj
+            let res = self
+                .obj
                 .getattr(py, "analyze")?
-                .call1(py, PyTuple::new(py, loaded).unwrap())?
-                .extract(py)
+                .call1(py, PyTuple::new(py, loaded).unwrap())?;
+            res.extract(py)
         })
-        .expect("Python plugin returned bad result");
-        let mut usage = MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001);
+        .expect(&format!(
+            "Python plugin returned bad result {} ",
+            self.common.bus_name()
+        ));
+        let mut usage =
+            MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001, reset);
         for r in results {
             usage.add_transaction(r.0, r.1, r.2, r.3, &r.4, r.5);
         }

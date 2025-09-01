@@ -23,7 +23,7 @@ impl AXIRdAnalyzer {
         let common = BusCommon::from_yaml(name, yaml.1, default_max_burst_delay).unwrap();
         let ar = AXIBus::from_yaml(&yaml.1["ar"]).unwrap();
         let r = AXIBus::from_yaml(&yaml.1["r"]).unwrap();
-        let r_resp = yaml.1["r"]["r_resp"].as_str().unwrap().to_owned();
+        let r_resp = yaml.1["r"]["rresp"].as_str().unwrap().to_owned();
         AXIRdAnalyzer {
             common,
             ar,
@@ -52,7 +52,6 @@ impl Analyzer for AXIRdAnalyzer {
         }
 
         let start = std::time::Instant::now();
-        let mut usage = MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001);
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let (_, arready) = &loaded[2];
@@ -71,22 +70,38 @@ impl Analyzer for AXIRdAnalyzer {
             }
         }
         reset = reset / 2;
-
         let mut next = arvalid.iter_changes().map(|(t, _)| t);
         next.next();
         next.next();
         let last_time = clk.time_indices().last().unwrap();
         let next = next.chain([*last_time, *last_time]);
 
+        let mut usage =
+            MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001, *last_time);
+
+        let mut rst = rst.iter_changes().filter_map(|(t, v)| {
+            if v.to_bit_string().unwrap() == self.common.rst_active_value().to_string() {
+                Some(t)
+            } else {
+                None
+            }
+        });
+        let mut next_reset = rst.next().unwrap_or(*last_time);
         for ((time, value), next) in arvalid.iter_changes().zip(next) {
             if value.to_bit_string().unwrap() != "1" {
                 continue;
+            }
+            while next_reset < time {
+                next_reset = rst.next().unwrap_or(*last_time);
             }
             let (first_data, _) = rvalid
                 .iter_changes()
                 .find(|(t, v)| *t >= time && v.to_bit_string().unwrap() == "1")
                 .expect(&format!("time at error{}", time));
             let resp_time = first_data;
+            if next_reset < resp_time {
+                continue;
+            }
             let last_write = first_data;
             let resp = r_resp
                 .get_value_at(&r_resp.get_offset(resp_time).unwrap(), 0)

@@ -328,6 +328,9 @@ impl VecStatistic {
     }
 
     pub fn buckets_num(&self) -> u32 {
+        if self.data.len() == 0 {
+            return 0;
+        }
         if *self.data.iter().max().unwrap() == 0 {
             return 1;
         }
@@ -366,7 +369,7 @@ pub struct MultiChannelBusUsage {
 }
 
 impl MultiChannelBusUsage {
-    pub fn new(bus_name: &str, window_length: u32, x_rate: f32, y_rate: f32) -> Self {
+    pub fn new(bus_name: &str, window_length: u32, x_rate: f32, y_rate: f32, time: u32) -> Self {
         MultiChannelBusUsage {
             bus_name: bus_name.to_owned(),
             cmd_to_completion: VecStatistic::new("cmd to completion"),
@@ -383,7 +386,7 @@ impl MultiChannelBusUsage {
             bandwidth_above_x_rate: 0.0,
             bandwidth_below_y_rate: 0.0,
             channels_usages: vec![],
-            time: 0,
+            time,
             x_rate,
             y_rate,
         }

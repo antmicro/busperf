@@ -25,7 +25,7 @@ impl AXIWrAnalyzer {
         let aw = AXIBus::from_yaml(&yaml.1["aw"]).unwrap();
         let w = AXIBus::from_yaml(&yaml.1["w"]).unwrap();
         let b = AXIBus::from_yaml(&yaml.1["b"]).unwrap();
-        let b_resp = yaml.1["b"]["b_resp"].as_str().unwrap().to_owned();
+        let b_resp = yaml.1["b"]["bresp"].as_str().unwrap().to_owned();
         AXIWrAnalyzer {
             common,
             aw,
@@ -56,7 +56,6 @@ impl Analyzer for AXIWrAnalyzer {
         }
 
         let start = std::time::Instant::now();
-        let mut usage = MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001);
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let (_, awready) = &loaded[2];
@@ -72,6 +71,8 @@ impl Analyzer for AXIWrAnalyzer {
         next.next();
         let last_time = clk.time_indices().last().unwrap();
         let next = next.chain([*last_time, *last_time]);
+        let mut usage =
+            MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001, *last_time);
 
         for ((time, value), next) in awvalid.iter_changes().zip(next) {
             if value.to_bit_string().unwrap() != "1" {
