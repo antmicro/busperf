@@ -200,7 +200,7 @@ enum CycleType {
 }
 
 impl<'a> BusUsage<'a> {
-    fn new(name: &str, max_burst_delay: CyclesNum) -> BusUsage {
+    fn new(name: &str, max_burst_delay: CyclesNum) -> BusUsage<'_> {
         BusUsage {
             bus_name: name,
             busy: 0,
@@ -368,7 +368,7 @@ impl<'a> BusUsage<'a> {
         burst_delays: CyclesNum,
         current_burst: usize,
         max_burst_delay: CyclesNum,
-    ) -> BusUsage {
+    ) -> BusUsage<'_> {
         BusUsage {
             bus_name,
             busy,
@@ -498,10 +498,10 @@ pub fn calculate_ready_valid_bus<'a>(
 
     let mut usage = BusUsage::new(&bus_desc.bus_name, bus_desc.max_burst_delay);
     for i in clock.iter_changes() {
-        if let SignalValue::Binary(v, 1) = i.1 {
-            if v[0] == 0 {
-                continue;
-            }
+        if let SignalValue::Binary(v, 1) = i.1
+            && v[0] == 0
+        {
+            continue;
         }
         // We subtract one to use values just before clock signal
         let time = i.0.saturating_sub(1);
@@ -552,10 +552,10 @@ pub fn calculate_credit_valid_bus<'a>(
 
     let mut usage = BusUsage::new(&bus_desc.bus_name, bus_desc.max_burst_delay);
     for i in clock.iter_changes() {
-        if let SignalValue::Binary(v, 1) = i.1 {
-            if v[0] == 0 {
-                continue;
-            }
+        if let SignalValue::Binary(v, 1) = i.1
+            && v[0] == 0
+        {
+            continue;
         }
         // We subtract one to use values just before clock signal
         let time = i.0.saturating_sub(1);
