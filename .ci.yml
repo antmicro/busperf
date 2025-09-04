@@ -18,5 +18,6 @@ build:
     - cd ..
   script:
     - source ~/.cargo/env
+    - cargo fmt --check
     - cargo build --tests
     - cargo test
