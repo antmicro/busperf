@@ -1,13 +1,12 @@
 use std::{
     fs::File,
     io::{Read, Write},
-    process::Termination,
-    sync::{Arc, atomic::AtomicU64},
+    sync::{atomic::AtomicU64, Arc},
 };
 
 use wellen::{
-    Hierarchy, LoadOptions, SignalValue,
     viewers::{self, BodyResult},
+    Hierarchy, LoadOptions, SignalValue,
 };
 use yaml_rust2::YamlLoader;
 
@@ -93,8 +92,8 @@ pub fn load_bus_descriptions(
                     .as_str()
                     .unwrap_or("ReadyValid bus requires valid signal");
                 let max_burst_delay = i.1["max_burst_delay"].as_i64();
-                let max_burst_delay = if max_burst_delay.is_some() {
-                    max_burst_delay.unwrap().try_into().unwrap()
+                let max_burst_delay = if let Some(max_burst_delay) = max_burst_delay {
+                    max_burst_delay.try_into().unwrap()
                 } else {
                     default_max_burst_delay
                 };
@@ -127,7 +126,7 @@ pub fn load_bus_descriptions(
                     max_burst_delay: default_max_burst_delay,
                 }))
             }
-            _ => Err(format!("Invalid handshake {}", handshake))?,
+            _ => Err(format!("Invalid handshake {handshake}"))?,
         }
     }
     Ok(descs)
@@ -154,7 +153,7 @@ pub fn load_simulation_trace(filename: &str) -> SimulationData {
 
 fn load_signals<const N: usize>(
     simulation_data: &mut SimulationData,
-    scope_name: &Vec<String>,
+    scope_name: &[String],
     names: &[&str; N],
 ) -> [(wellen::SignalRef, wellen::Signal); N] {
     let hierarchy = &simulation_data.hierarchy;
@@ -162,11 +161,11 @@ fn load_signals<const N: usize>(
     let signal_refs = names.map(|r| {
         hierarchy[hierarchy
             .lookup_var(scope_name, &r.to_owned())
-            .expect(&format!("{} signal does not exist", &r))]
+            .unwrap_or_else(|| panic!("{} signal does not exist", &r))]
         .signal_ref()
     });
 
-    let mut loaded = body.source.load_signals(&signal_refs, &hierarchy, true);
+    let mut loaded = body.source.load_signals(&signal_refs, hierarchy, true);
     loaded.sort_by_key(|(signal_ref, _)| signal_refs.iter().position(|s| s == signal_ref).unwrap());
     loaded.try_into().unwrap()
 }
@@ -353,6 +352,7 @@ impl<'a> BusUsage<'a> {
         v
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn literal(
         bus_name: &str,
         busy: CyclesNum,
@@ -412,7 +412,7 @@ fn get_header(usages: &[BusUsage]) -> (Vec<String>, usize, usize) {
     for i in 0..delays {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
     }
-    v.push(format!("burst lengths"));
+    v.push("burst lengths".to_string());
     for i in 0..bursts {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
     }
@@ -422,14 +422,14 @@ fn get_header(usages: &[BusUsage]) -> (Vec<String>, usize, usize) {
 fn generate_tabled<O>(usages: &[BusUsage], verbose: bool, style: O) -> tabled::Table
 where
     O: tabled::settings::TableOption<
-            tabled::grid::records::vec_records::VecRecords<
-                tabled::grid::records::vec_records::Text<String>,
-            >,
-            tabled::grid::config::ColoredConfig,
-            tabled::grid::dimension::CompleteDimension,
+        tabled::grid::records::vec_records::VecRecords<
+            tabled::grid::records::vec_records::Text<String>,
         >,
+        tabled::grid::config::ColoredConfig,
+        tabled::grid::dimension::CompleteDimension,
+    >,
 {
-    let (header, delays, bursts) = get_header(&usages);
+    let (header, delays, bursts) = get_header(usages);
     let mut builder = tabled::builder::Builder::new();
     builder.push_record(header);
     for u in usages {
@@ -460,7 +460,7 @@ pub fn generate_md_table(write: &mut impl Write, usages: &[BusUsage], verbose: b
 
 pub fn generate_csv(write: &mut impl Write, usages: &[BusUsage], verbose: bool) {
     let mut wtr = csv::Writer::from_writer(write);
-    let (header, delays, bursts) = get_header(&usages);
+    let (header, delays, bursts) = get_header(usages);
     wtr.write_record(header).unwrap();
     for u in usages {
         wtr.write_record(u.get_data(delays, bursts, verbose))
@@ -518,7 +518,7 @@ pub fn calculate_ready_valid_bus<'a>(
                     (0, 0) => CycleType::Free,
                     (1, 0) => CycleType::NoData,
                     (0, 1) => CycleType::Backpressure,
-                    _ => panic!("signal has invalid value ready: {} valid: {}", ready, valid),
+                    _ => panic!("signal has invalid value ready: {ready} valid: {valid}"),
                 };
                 usage.add_cycle(t);
             } else {
@@ -578,17 +578,11 @@ pub fn calculate_credit_valid_bus<'a>(
                         CycleType::Busy
                     }
                     (0, 0) => CycleType::NoTransaction,
-                    _ => panic!(
-                        "signal has invalid value credit: {} valid: {}",
-                        credit, valid
-                    ),
+                    _ => panic!("signal has invalid value credit: {credit} valid: {valid}"),
                 };
                 usage.add_cycle(t);
             } else {
-                eprintln!(
-                    "bus in unknown state outside reset credit: {}, valid: {}",
-                    credit, valid
-                );
+                eprintln!("bus in unknown state outside reset credit: {credit}, valid: {valid}");
             }
         } else {
             usage.add_cycle(CycleType::NoTransaction);

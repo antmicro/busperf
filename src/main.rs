@@ -33,7 +33,7 @@ impl Args {
         match Args::parse_internal() {
             Ok(args) => args,
             Err(e) => {
-                println!("Failed to parse arguments: {}", e);
+                println!("Failed to parse arguments: {e}");
                 std::process::exit(1);
             }
         }
@@ -91,7 +91,7 @@ Options:
                     } else if desc.is_err() {
                         desc = Ok(arg.to_owned());
                     } else {
-                        Err(format!("Unknown argument {}", arg))?;
+                        Err(format!("Unknown argument {arg}"))?;
                     }
                 }
             }
@@ -113,7 +113,7 @@ fn main() {
     let descs = load_bus_descriptions(&args.bus_description, args.max_burst_delay).unwrap();
     let usages: Vec<BusUsage> = descs
         .iter()
-        .map(|d| calculate_usage(&mut data, &d))
+        .map(|d| calculate_usage(&mut data, d))
         .collect();
     let mut out: &mut dyn std::io::Write = match args.output {
         None => &mut std::io::stdout(),

@@ -19,5 +19,6 @@ build:
   script:
     - source ~/.cargo/env
     - cargo fmt --check
+    - cargo clippy -- -Dwarnings
     - cargo build --tests
     - cargo test
