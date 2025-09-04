@@ -1,12 +1,12 @@
 use std::{
     fs::File,
     io::{Read, Write},
-    sync::{atomic::AtomicU64, Arc},
+    sync::{Arc, atomic::AtomicU64},
 };
 
 use wellen::{
-    viewers::{self, BodyResult},
     Hierarchy, LoadOptions, SignalValue,
+    viewers::{self, BodyResult},
 };
 use yaml_rust2::YamlLoader;
 
@@ -422,12 +422,12 @@ fn get_header(usages: &[BusUsage]) -> (Vec<String>, usize, usize) {
 fn generate_tabled<O>(usages: &[BusUsage], verbose: bool, style: O) -> tabled::Table
 where
     O: tabled::settings::TableOption<
-        tabled::grid::records::vec_records::VecRecords<
-            tabled::grid::records::vec_records::Text<String>,
+            tabled::grid::records::vec_records::VecRecords<
+                tabled::grid::records::vec_records::Text<String>,
+            >,
+            tabled::grid::config::ColoredConfig,
+            tabled::grid::dimension::CompleteDimension,
         >,
-        tabled::grid::config::ColoredConfig,
-        tabled::grid::dimension::CompleteDimension,
-    >,
 {
     let (header, delays, bursts) = get_header(usages);
     let mut builder = tabled::builder::Builder::new();
