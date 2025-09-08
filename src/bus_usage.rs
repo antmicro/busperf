@@ -1,6 +1,6 @@
 use crate::{
-    bus::{CyclesNum, DelaysNum},
     CycleType,
+    bus::{CyclesNum, DelaysNum},
 };
 
 #[derive(PartialEq, Debug)]

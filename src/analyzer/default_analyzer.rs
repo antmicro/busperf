@@ -1,9 +1,9 @@
 use crate::{
-    bus::{BusCommon, BusDescription, BusDescriptionBuilder},
     BusUsage,
+    bus::{BusCommon, BusDescription, BusDescriptionBuilder},
 };
 
-use super::{analyze_single_bus, Analyzer};
+use super::{Analyzer, analyze_single_bus};
 
 pub struct DefaultAnalyzer {
     common: BusCommon,

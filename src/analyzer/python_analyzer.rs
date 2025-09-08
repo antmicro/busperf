@@ -1,6 +1,6 @@
 use std::ffi::CString;
 
-use crate::{bus::BusCommon, bus_usage::MultiChannelBusUsage, load_signals, BusUsage};
+use crate::{BusUsage, bus::BusCommon, bus_usage::MultiChannelBusUsage, load_signals};
 
 use super::Analyzer;
 use pyo3::{prelude::*, types::PyTuple};

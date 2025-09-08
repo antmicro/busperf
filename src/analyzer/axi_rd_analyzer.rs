@@ -1,8 +1,8 @@
-
 use crate::{
-    bus::{axi::AXIBus, BusCommon, BusDescription},
+    BusUsage,
+    bus::{BusCommon, BusDescription, axi::AXIBus},
     bus_usage::MultiChannelBusUsage,
-    load_signals, BusUsage,
+    load_signals,
 };
 
 use super::Analyzer;

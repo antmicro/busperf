@@ -1,14 +1,14 @@
 use std::{
     fs::File,
     io::{Read, Write},
-    sync::{atomic::AtomicU64, Arc},
+    sync::{Arc, atomic::AtomicU64},
 };
 
 use analyzer::{Analyzer, AnalyzerBuilder};
-use bus_usage::{get_header, get_header_multi, MultiChannelBusUsage};
+use bus_usage::{MultiChannelBusUsage, get_header, get_header_multi};
 use wellen::{
-    viewers::{self, BodyResult},
     Hierarchy, LoadOptions,
+    viewers::{self, BodyResult},
 };
 use yaml_rust2::YamlLoader;
 
@@ -125,12 +125,12 @@ fn generate_tabled<O>(
 ) -> tabled::Table
 where
     O: tabled::settings::TableOption<
-        tabled::grid::records::vec_records::VecRecords<
-            tabled::grid::records::vec_records::Text<String>,
+            tabled::grid::records::vec_records::VecRecords<
+                tabled::grid::records::vec_records::Text<String>,
+            >,
+            tabled::grid::config::ColoredConfig,
+            tabled::grid::dimension::CompleteDimension,
         >,
-        tabled::grid::config::ColoredConfig,
-        tabled::grid::dimension::CompleteDimension,
-    >,
 {
     let mut builder = tabled::builder::Builder::new();
     builder.push_record(header);
