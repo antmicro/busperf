@@ -52,13 +52,6 @@ impl BusCommon {
             Err("Reset type can be \"high\" or \"low\"")?
         };
 
-        // let max_burst_delay = i.1["max_burst_delay"].as_i64();
-        // let max_burst_delay = if max_burst_delay.is_some() {
-        //     max_burst_delay.unwrap().try_into().unwrap()
-        // } else {
-        //     default_max_burst_delay
-        // };
-
         Ok(Self::new(
             name,
             scope,

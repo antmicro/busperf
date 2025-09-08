@@ -120,11 +120,6 @@ impl Analyzer for AXIRdAnalyzer {
             usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
         }
 
-        // usage.channels_usages = [&self.ar, &self.r]
-        //     .iter()
-        //     .map(|bus| analyze_single_bus(&self.common, *bus, simulation_data, verbose))
-        //     .collect();
-        // usage.end(usage.channels_usages[0].reset());
         usage.end(reset);
 
         if verbose {

@@ -72,25 +72,6 @@ pub fn load_simulation_trace(filename: &str, verbose: bool) -> SimulationData {
     SimulationData { hierarchy, body }
 }
 
-// fn load_signals<const N: usize>(
-//     simulation_data: &mut SimulationData,
-//     scope_name: &Vec<String>,
-//     names: &[&str; N],
-// ) -> [(wellen::SignalRef, wellen::Signal); N] {
-//     let hierarchy = &simulation_data.hierarchy;
-//     let body = &mut simulation_data.body;
-//     let signal_refs = names.map(|r| {
-//         hierarchy[hierarchy
-//             .lookup_var(scope_name, &r.to_owned())
-//             .expect(&format!("{} signal does not exist", &r))]
-//         .signal_ref()
-//     });
-
-//     let mut loaded = body.source.load_signals(&signal_refs, &hierarchy, true);
-//     loaded.sort_by_key(|(signal_ref, _)| signal_refs.iter().position(|s| s == signal_ref).unwrap());
-//     loaded.try_into().unwrap()
-// }
-
 fn load_signals(
     simulation_data: &mut SimulationData,
     scope_name: &[String],
