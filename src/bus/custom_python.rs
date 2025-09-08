@@ -5,6 +5,7 @@ use pyo3::{
     prelude::*,
     types::{PyList, PyTuple},
 };
+use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
 pub struct PythonCustomBus {
@@ -42,11 +43,9 @@ impl PythonCustomBus {
         .unwrap();
 
         let signals = Python::with_gil(|py| -> PyResult<Vec<String>> {
-            PyResult::Ok(
-                obj.getattr(py, "get_signals")?
-                    .call0(py)?
-                    .extract::<Vec<String>>(py)?,
-            )
+            obj.getattr(py, "get_signals")?
+                .call0(py)?
+                .extract::<Vec<String>>(py)
         })
         .unwrap();
         let signals = signals
@@ -62,15 +61,13 @@ impl BusDescription for PythonCustomBus {
         self.signals.iter().map(|s| s.as_str()).collect()
     }
 
-    fn interpret_cycle(&self, signals: &Vec<wellen::SignalValue>, _time: u32) -> crate::CycleType {
+    fn interpret_cycle(&self, signals: &[SignalValue<'_>], _time: u32) -> crate::CycleType {
         let signals: Vec<String> = signals.iter().map(|s| s.to_bit_string().unwrap()).collect();
         let ret = Python::with_gil(|py| -> PyResult<u32> {
-            PyResult::Ok(
-                self.obj
-                    .getattr(py, "interpret_cycle")?
-                    .call1(py, PyTuple::new(py, PyList::new(py, signals)).unwrap())?
-                    .extract(py)?,
-            )
+            self.obj
+                .getattr(py, "interpret_cycle")?
+                .call1(py, PyTuple::new(py, PyList::new(py, signals)).unwrap())?
+                .extract(py)
         })
         .unwrap();
         match ret {

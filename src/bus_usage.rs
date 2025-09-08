@@ -186,6 +186,7 @@ impl SingleChannelBusUsage {
         v
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn literal(
         bus_name: &str,
         busy: CyclesNum,
@@ -247,7 +248,7 @@ pub fn get_header(usages: &[&SingleChannelBusUsage]) -> (Vec<String>, usize, usi
     for i in 0..delays {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
     }
-    v.push(format!("burst lengths"));
+    v.push("burst lengths".to_string());
     for i in 0..bursts {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
     }
@@ -328,7 +329,7 @@ impl VecStatistic {
     }
 
     pub fn buckets_num(&self) -> u32 {
-        if self.data.len() == 0 {
+        if self.data.is_empty() {
             return 0;
         }
         if *self.data.iter().max().unwrap() == 0 {
@@ -439,8 +440,7 @@ impl MultiChannelBusUsage {
                 .iter()
                 .map(|t| self.transaction_coverage_in_window(*t, i, 0))
                 .sum();
-            self.bandwidth_windows
-                .push(num as f32 / self.window_length as f32);
+            self.bandwidth_windows.push(num / self.window_length as f32);
 
             if self.time as i32 - (self.window_length * i + half) as i32 > 0 {
                 let num: f32 = self
@@ -448,8 +448,7 @@ impl MultiChannelBusUsage {
                     .iter()
                     .map(|t| self.transaction_coverage_in_window(*t, i, half))
                     .sum();
-                self.bandwidth_windows
-                    .push(num as f32 / self.window_length as f32);
+                self.bandwidth_windows.push(num / self.window_length as f32);
             }
         }
 

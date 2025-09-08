@@ -67,7 +67,7 @@ impl Analyzer for AXIRdAnalyzer {
                 reset += time - last;
             }
         }
-        reset = reset / 2;
+        reset /= 2;
         let mut next = arvalid.iter_changes().map(|(t, _)| t);
         next.next();
         next.next();
@@ -95,7 +95,7 @@ impl Analyzer for AXIRdAnalyzer {
             let (first_data, _) = rvalid
                 .iter_changes()
                 .find(|(t, v)| *t >= time && v.to_bit_string().unwrap() == "1")
-                .expect(&format!("time at error{}", time));
+                .unwrap_or_else(|| panic!("time at error{}", time));
             let resp_time = first_data;
             if next_reset < resp_time {
                 continue;

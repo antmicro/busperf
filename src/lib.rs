@@ -86,25 +86,25 @@ pub fn load_simulation_trace(filename: &str, verbose: bool) -> SimulationData {
 
 fn load_signals(
     simulation_data: &mut SimulationData,
-    scope_name: &Vec<String>,
+    scope_name: &[String],
     names: &Vec<&str>,
 ) -> Vec<(wellen::SignalRef, wellen::Signal)> {
     let hierarchy = &simulation_data.hierarchy;
     let scope_name: Vec<&str> = scope_name.iter().map(|s| s.as_str()).collect();
     let body = &mut simulation_data.body;
     let signal_refs: Vec<wellen::SignalRef> = names
-        .into_iter()
+        .iter()
         .map(|r| {
             hierarchy[hierarchy
                 .lookup_var(&scope_name, r)
-                .expect(&format!("{} signal does not exist", &r))]
+                .unwrap_or_else(|| panic!("{} signal does not exist", &r))]
             .signal_ref()
         })
         .collect();
 
     let mut loaded = body.source.load_signals(&signal_refs, hierarchy, true);
     loaded.sort_by_key(|(signal_ref, _)| signal_refs.iter().position(|s| s == signal_ref).unwrap());
-    loaded.try_into().unwrap()
+    loaded
 }
 
 pub enum CycleType {
@@ -163,7 +163,7 @@ fn print_statistics_internal<O>(
             _ => None,
         })
         .collect();
-    if single_usages.len() > 0 {
+    if !single_usages.is_empty() {
         let (header, delays, bursts) = get_header(&single_usages);
         let data = single_usages
             .iter()
@@ -184,7 +184,7 @@ fn print_statistics_internal<O>(
             _ => None,
         })
         .collect();
-    if multi_usage.len() > 0 {
+    if !multi_usage.is_empty() {
         let (header, c2c, c2d, ld2c, delays) = get_header_multi(&multi_usage);
         let data = multi_usage
             .iter()

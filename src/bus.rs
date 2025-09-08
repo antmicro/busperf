@@ -137,11 +137,11 @@ impl BusDescriptionBuilder {
                 let valid = i["valid"]
                     .as_str()
                     .ok_or("CreditValid bus requires valid signal")?;
-                return Ok(Box::new(CreditValidBus::new(
+                Ok(Box::new(CreditValidBus::new(
                     common,
                     credit.to_owned(),
                     valid.to_owned(),
-                )));
+                )))
             }
             "AHB" => {
                 let htrans = i["htrans"]
@@ -150,13 +150,13 @@ impl BusDescriptionBuilder {
                 let hready = i["hready"]
                     .as_str()
                     .ok_or("AHB bus requires hready signal")?;
-                return Ok(Box::new(AHBBus::new(htrans.to_owned(), hready.to_owned())));
+                Ok(Box::new(AHBBus::new(htrans.to_owned(), hready.to_owned())))
             }
             "Custom" => {
                 let handshake = i["custom_handshake"]
                     .as_str()
                     .ok_or("Custom bus has to specify handshake interpreter")?;
-                return Ok(Box::new(PythonCustomBus::new(handshake, i)));
+                Ok(Box::new(PythonCustomBus::new(handshake, i)))
             }
 
             _ => Err(format!("Invalid handshake {}", handshake))?,
@@ -166,5 +166,5 @@ impl BusDescriptionBuilder {
 
 pub trait BusDescription {
     fn signals(&self) -> Vec<&str>;
-    fn interpret_cycle(&self, signals: &Vec<SignalValue>, time: u32) -> CycleType;
+    fn interpret_cycle(&self, signals: &[SignalValue], time: u32) -> CycleType;
 }

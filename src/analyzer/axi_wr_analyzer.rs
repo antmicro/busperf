@@ -79,7 +79,7 @@ impl Analyzer for AXIWrAnalyzer {
             let (first_data, _) = wvalid
                 .iter_changes()
                 .find(|(t, v)| *t >= time && v.to_bit_string().unwrap() == "1")
-                .expect(&format!("time at error{}", time));
+                .unwrap_or_else(|| panic!("time at error{}", time));
             let (resp_time, _) = bvalid
                 .iter_changes()
                 .find(|(t, v)| *t > time && v.to_bit_string().unwrap() == "1")

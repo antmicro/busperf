@@ -1,3 +1,5 @@
+use wellen::SignalValue;
+
 use crate::CycleType;
 
 use super::BusDescription;
@@ -19,7 +21,7 @@ impl BusDescription for AHBBus {
         vec![self.htrans.as_str(), self.hready.as_str()]
     }
 
-    fn interpret_cycle(&self, signals: &Vec<wellen::SignalValue>, time: u32) -> crate::CycleType {
+    fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> crate::CycleType {
         let htrans = signals[0];
         let hready = signals[1];
         if let Some(htrans) = htrans.to_bit_string()

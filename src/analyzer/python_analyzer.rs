@@ -1,8 +1,6 @@
 use std::ffi::CString;
 
-use crate::{
-    bus::BusCommon, bus_usage::MultiChannelBusUsage, load_signals, BusUsage,
-};
+use crate::{bus::BusCommon, bus_usage::MultiChannelBusUsage, load_signals, BusUsage};
 
 use super::Analyzer;
 use pyo3::{prelude::*, types::PyTuple};
@@ -21,7 +19,7 @@ impl PythonAnalyzer {
         s.push_str(class_name);
         s.push_str(".py");
         let code = CString::new(
-            std::fs::read_to_string(s).expect(&format!("{} does not exist", class_name)),
+            std::fs::read_to_string(s).unwrap_or_else(|_| panic!("{} does not exist", class_name)),
         )
         .unwrap();
 
@@ -38,7 +36,7 @@ impl PythonAnalyzer {
 
             app.call0(py)
         })
-        .expect(&format!("Could not initialize {}", class_name));
+        .unwrap_or_else(|_| panic!("Could not initialize {}", class_name));
 
         let signals = Python::with_gil(|py| -> PyResult<Vec<String>> {
             obj.getattr(py, "get_yaml_signals")?
@@ -51,7 +49,7 @@ impl PythonAnalyzer {
             .map(|s| {
                 i[s.as_str()]
                     .as_str()
-                    .expect(&format!("yaml does not have {} signal", s))
+                    .unwrap_or_else(|| panic!("yaml does not have {} signal", s))
                     .to_owned()
             })
             .collect();
@@ -82,7 +80,7 @@ impl Analyzer for PythonAnalyzer {
                 reset += time - last;
             }
         }
-        reset = reset / 2;
+        reset /= 2;
 
         let loaded: Vec<_> = loaded
             .iter()
@@ -102,6 +100,7 @@ impl Analyzer for PythonAnalyzer {
         }
 
         let start = std::time::Instant::now();
+        #[allow(clippy::type_complexity)]
         let results = Python::with_gil(|py| -> PyResult<Vec<(u32, u32, u32, u32, String, u32)>> {
             let res = self
                 .obj
@@ -109,10 +108,12 @@ impl Analyzer for PythonAnalyzer {
                 .call1(py, PyTuple::new(py, loaded).unwrap())?;
             res.extract(py)
         })
-        .expect(&format!(
-            "Python plugin returned bad result {} ",
-            self.common.bus_name()
-        ));
+        .unwrap_or_else(|_| {
+            panic!(
+                "Python plugin returned bad result {} ",
+                self.common.bus_name()
+            )
+        });
         let mut usage =
             MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001, reset);
         for r in results {

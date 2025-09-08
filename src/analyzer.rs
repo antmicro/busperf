@@ -63,13 +63,12 @@ pub fn analyze_single_bus(
     }
 
     let start = std::time::Instant::now();
-    let mut usage = SingleChannelBusUsage::new(&common.bus_name(), common.max_burst_delay());
+    let mut usage = SingleChannelBusUsage::new(common.bus_name(), common.max_burst_delay());
     for i in clock.iter_changes() {
-        if let SignalValue::Binary(v, 1) = i.1 {
-            if v[0] == 0 {
+        if let SignalValue::Binary(v, 1) = i.1
+            && v[0] == 0 {
                 continue;
             }
-        }
         // We subtract one to use values just before clock signal
         let time = i.0.saturating_sub(1);
         let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);

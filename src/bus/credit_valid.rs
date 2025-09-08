@@ -1,3 +1,5 @@
+use wellen::SignalValue;
+
 use crate::CycleType;
 
 use super::{BusCommon, BusDescription};
@@ -24,7 +26,7 @@ impl BusDescription for CreditValidBus {
         vec![self.credit.as_str(), self.valid.as_str()]
     }
 
-    fn interpret_cycle(&self, signals: &Vec<wellen::SignalValue>, time: u32) -> crate::CycleType {
+    fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> crate::CycleType {
         let credit = signals[0];
         let valid = signals[1];
         if let Ok(credit) = credit.to_bit_string().unwrap().parse::<u32>()
