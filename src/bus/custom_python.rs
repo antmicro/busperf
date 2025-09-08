@@ -15,19 +15,12 @@ pub struct PythonCustomBus {
 
 impl PythonCustomBus {
     pub fn new(class_name: &str, i: &Yaml) -> Self {
-        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/plugins/python/");
         let mut s = String::from(concat!(env!("CARGO_MANIFEST_DIR"), "/plugins/python/"));
         s.push_str(class_name);
         s.push_str(".py");
         let code = CString::new(std::fs::read_to_string(s).unwrap()).unwrap();
-        // println!("{:?}", code);
 
         let obj = Python::with_gil(|py| -> PyResult<Py<PyAny>> {
-            let syspath = py
-                .import("sys")?
-                .getattr("path")?
-                .downcast_into::<PyList>()?;
-            syspath.insert(0, path)?;
             let app: Py<PyAny> = PyModule::from_code(
                 py,
                 &code,
