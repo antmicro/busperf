@@ -20,7 +20,6 @@ pub use bus_usage::BusUsage;
 pub use bus_usage::SingleChannelBusUsage;
 
 use bus::CyclesNum;
-use bus::DelaysNum;
 
 pub fn load_bus_analyzers(
     filename: &str,
@@ -103,7 +102,7 @@ fn load_signals(
         })
         .collect();
 
-    let mut loaded = body.source.load_signals(&signal_refs, &hierarchy, true);
+    let mut loaded = body.source.load_signals(&signal_refs, hierarchy, true);
     loaded.sort_by_key(|(signal_ref, _)| signal_refs.iter().position(|s| s == signal_ref).unwrap());
     loaded.try_into().unwrap()
 }
@@ -121,7 +120,7 @@ pub enum CycleType {
 fn generate_tabled<O>(
     header: &Vec<String>,
     data: &Vec<Vec<String>>,
-    verbose: bool,
+    _verbose: bool,
     style: O,
 ) -> tabled::Table
 where

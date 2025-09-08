@@ -7,12 +7,12 @@ fn tuttest() {
         .output()
         .unwrap();
     for line in String::from_utf8(out.stdout).unwrap().lines() {
-        if line != "" {
+        if !line.is_empty() {
             let words: Vec<&str> = line.split_whitespace().collect();
             println!("{line}");
             let out = Command::new(words[0]).args(&words[1..]).output().unwrap();
             if !out.status.success() {
-                panic!("Failed to run {}\n {out:?}", line);
+                panic!("Failed to run {line}\n {out:?}");
             }
         }
     }

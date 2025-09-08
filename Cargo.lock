@@ -27,7 +27,7 @@ dependencies = [
  "csv",
  "pyo3",
  "tabled",
- "wellen",
+ "wellen 0.17.1",
  "yaml-rust2",
 ]
 
@@ -135,6 +135,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "fst-reader"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c946f675da6bf21c4fbe21b8681deeac0edec787db48d252f9a976c3f35d6616"
+dependencies = [
+ "lz4_flex",
+ "miniz_oxide",
+ "num_enum",
+ "thiserror",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -160,9 +172,9 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "indexmap"
-version = "2.10.0"
+version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe4cd85333e22411419a0bcae1297d25e58c9443848b11dc6a86fefe8c78a661"
+checksum = "f2481980430f9f78649238835720ddccc57e52df14ffce1c6f37391d61b563e9"
 dependencies = [
  "equivalent",
  "hashbrown",
@@ -209,9 +221,9 @@ checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
 
 [[package]]
 name = "memmap2"
-version = "0.9.7"
+version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "483758ad303d734cec05e5c12b41d7e93e6a6390c5e9dae6bdeb7c1259012d28"
+checksum = "843a98750cd611cc2965a8213b53b43e715f13c37a9e096c6408e69990961db7"
 dependencies = [
  "libc",
 ]
@@ -537,9 +549,9 @@ dependencies = [
 
 [[package]]
 name = "twox-hash"
-version = "2.1.1"
+version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b907da542cbced5261bd3256de1b3a1bf340a3d37f93425a07362a1d687de56"
+checksum = "9ea3136b675547379c4bd395ca6b938e5ad3c3d20fad76e7fe85f9e0d011419c"
 
 [[package]]
 name = "unicode-ident"
@@ -560,12 +572,38 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7264e107f553ccae879d21fbea1d6724ac785e8c3bfc762137959b5802826ef3"
 
 [[package]]
+name = ""
+version = "0.1.0"
+dependencies = [
+ "wellen 0.18.5",
+ "yaml-rust2",
+]
+
+[[package]]
 name = "wellen"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7b4eaca13a9d846c2dd67f7c488d0688f3d9e87d4404d0bb0f54b5dd72c3bfc"
 dependencies = [
- "fst-reader",
+ "fst-reader 0.13.2",
+ "leb128",
+ "lz4_flex",
+ "memmap2",
+ "miniz_oxide",
+ "num_enum",
+ "rayon",
+ "rustc-hash",
+ "thiserror",
+]
+
+[[package]]
+name = "wellen"
+version = "0.18.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0feaa332e5089f9e606211e04bc0af4a191bd732a890e93ea1f65cfb50c9507f"
+dependencies = [
+ "fst-reader 0.14.1",
+ "indexmap",
  "leb128",
  "lz4_flex",
  "memmap2",
@@ -578,9 +616,9 @@ dependencies = [
 
 [[package]]
 name = "winnow"
-version = "0.7.12"
+version = "0.7.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3edebf492c8125044983378ecb5766203ad3b4c2f7a922bd7dd207f6d443e95"
+checksum = "21a0236b59786fed61e2a80582dd500fe61f18b5dca67a4a067d0bc9039339cf"
 dependencies = [
  "memchr",
 ]
