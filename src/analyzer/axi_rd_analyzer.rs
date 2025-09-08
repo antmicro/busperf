@@ -15,12 +15,18 @@ pub struct AXIRdAnalyzer {
     r: AXIBus,
     r_resp: String,
     result: Option<BusUsage>,
+    window_length: u32,
+    x_rate: f32,
+    y_rate: f32,
 }
 
 impl AXIRdAnalyzer {
     pub fn build_from_yaml(
         yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml),
         default_max_burst_delay: u32,
+        window_length: u32,
+        x_rate: f32,
+        y_rate: f32,
     ) -> Result<Self, Box<dyn Error>> {
         let (name, dict) = yaml;
         let name = name
@@ -39,6 +45,9 @@ impl AXIRdAnalyzer {
             r,
             r_resp,
             result: None,
+            window_length,
+            x_rate,
+            y_rate,
         })
     }
 }
@@ -85,8 +94,13 @@ impl Analyzer for AXIRdAnalyzer {
         let last_time = clk.time_indices().last().unwrap();
         let next_time_iter = next_time_iter.chain([*last_time, *last_time]);
 
-        let mut usage =
-            MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001, *last_time);
+        let mut usage = MultiChannelBusUsage::new(
+            self.common.bus_name(),
+            self.window_length,
+            self.x_rate,
+            self.y_rate,
+            *last_time,
+        );
 
         let mut rst = rst.iter_changes().filter_map(|(t, v)| {
             if v.to_bit_string().unwrap() == self.common.rst_active_value().to_string() {

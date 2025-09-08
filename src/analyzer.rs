@@ -22,6 +22,9 @@ impl AnalyzerBuilder {
     pub fn build(
         yaml: (&Yaml, &Yaml),
         default_max_burst_delay: u32,
+        window_length: u32,
+        x_rate: f32,
+        y_rate: f32,
     ) -> Result<Box<dyn Analyzer>, Box<dyn std::error::Error>> {
         let (name, dict) = yaml;
         Ok(if let Some(custom) = dict["custom_analyzer"].as_str() {
@@ -29,10 +32,16 @@ impl AnalyzerBuilder {
                 "AXIWrAnalyzer" => Box::new(AXIWrAnalyzer::build_from_yaml(
                     yaml,
                     default_max_burst_delay,
+                    window_length,
+                    x_rate,
+                    y_rate,
                 )?),
                 "AXIRdAnalyzer" => Box::new(AXIRdAnalyzer::build_from_yaml(
                     yaml,
                     default_max_burst_delay,
+                    window_length,
+                    x_rate,
+                    y_rate,
                 )?),
                 _ => {
                     let common = BusCommon::from_yaml(

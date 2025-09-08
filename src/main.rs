@@ -26,6 +26,9 @@ struct Args {
     verbose: bool,
     output: Option<String>,
     output_type: OutputType,
+    window_length: u32,
+    x_rate: f32,
+    y_rate: f32,
 }
 
 impl Args {
@@ -42,6 +45,9 @@ impl Args {
         let mut trace = Err("Needs simulation trace");
         let mut desc = Err("Needs bus description");
         let mut max_burst_delay = 0;
+        let mut window_length = 10000;
+        let mut x_rate = 0.0006;
+        let mut y_rate = 0.00001;
         let mut verbose = false;
         let mut output = None;
         let mut output_type = OutputType::Pretty;
@@ -54,6 +60,18 @@ impl Args {
                         max_burst_delay = a.parse()?;
                     }
                     None => Err("Expected burst delay")?,
+                },
+                "--window" => match args.next() {
+                    Some(a) => window_length = a.parse()?,
+                    None => Err("Expected window length")?,
+                },
+                "--x_rate" => match args.next() {
+                    Some(a) => x_rate = a.parse()?,
+                    None => Err("Expected x_rate")?,
+                },
+                "--y_rate" => match args.next() {
+                    Some(a) => y_rate = a.parse()?,
+                    None => Err("Expected y_rate")?,
                 },
                 "-v" | "--verbose" => {
                     verbose = true;
@@ -103,6 +121,9 @@ Options:
             verbose,
             output,
             output_type,
+            window_length,
+            x_rate,
+            y_rate,
         })
     }
 }
@@ -110,7 +131,14 @@ Options:
 fn main() {
     let args = Args::parse();
     let mut data = load_simulation_trace(&args.simulation_trace, args.verbose);
-    let mut analyzers = load_bus_analyzers(&args.bus_description, args.max_burst_delay).unwrap();
+    let mut analyzers = load_bus_analyzers(
+        &args.bus_description,
+        args.max_burst_delay,
+        args.window_length,
+        args.x_rate,
+        args.y_rate,
+    )
+    .unwrap();
     for a in analyzers.iter_mut() {
         a.analyze(&mut data, args.verbose);
     }

@@ -14,12 +14,18 @@ pub struct AXIWrAnalyzer {
     b: AXIBus,
     b_resp: String,
     result: Option<BusUsage>,
+    window_length: u32,
+    x_rate: f32,
+    y_rate: f32,
 }
 
 impl AXIWrAnalyzer {
     pub fn build_from_yaml(
         yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml),
         default_max_burst_delay: u32,
+        window_length: u32,
+        x_rate: f32,
+        y_rate: f32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let (name, dict) = yaml;
         let name = name.as_str().ok_or("Bus name should be a valid string")?;
@@ -38,6 +44,9 @@ impl AXIWrAnalyzer {
             b,
             b_resp,
             result: None,
+            window_length,
+            x_rate,
+            y_rate,
         })
     }
 }
@@ -76,8 +85,13 @@ impl Analyzer for AXIWrAnalyzer {
         next.next();
         let last_time = clk.time_indices().last().unwrap();
         let next = next.chain([*last_time, *last_time]);
-        let mut usage =
-            MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001, *last_time);
+        let mut usage = MultiChannelBusUsage::new(
+            self.common.bus_name(),
+            self.window_length,
+            self.x_rate,
+            self.y_rate,
+            *last_time,
+        );
 
         for ((time, value), next) in awvalid.iter_changes().zip(next) {
             if value.to_bit_string().unwrap() != "1" {

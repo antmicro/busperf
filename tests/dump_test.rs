@@ -2,7 +2,7 @@ use busperf::*;
 
 fn test(trace: &str, yaml: &str, max_burst_delay: u32, correct: &[BusUsage]) {
     let mut data = load_simulation_trace(trace, false);
-    let mut descs = load_bus_analyzers(yaml, max_burst_delay).unwrap();
+    let mut descs = load_bus_analyzers(yaml, max_burst_delay, 10000, 0.0006, 0.00001).unwrap();
     assert_eq!(correct.len(), descs.len());
     for (desc, correct) in descs.iter_mut().zip(correct) {
         desc.analyze(&mut data, false);

@@ -24,6 +24,9 @@ use bus::CyclesNum;
 pub fn load_bus_analyzers(
     filename: &str,
     default_max_burst_delay: CyclesNum,
+    window_length: u32,
+    x_rate: f32,
+    y_rate: f32,
 ) -> Result<Vec<Box<dyn Analyzer>>, Box<dyn std::error::Error>> {
     let mut f = File::open(filename)?;
     let mut s = String::new();
@@ -36,7 +39,7 @@ pub fn load_bus_analyzers(
         .ok_or("YAML should define interfaces")?
         .iter()
     {
-        match AnalyzerBuilder::build(i, default_max_burst_delay) {
+        match AnalyzerBuilder::build(i, default_max_burst_delay, window_length, x_rate, y_rate) {
             Ok(analyzer) => analyzers.push(analyzer),
             Err(e) => {
                 match i.0.as_str() {
