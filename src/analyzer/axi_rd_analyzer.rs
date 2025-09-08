@@ -79,11 +79,11 @@ impl Analyzer for AXIRdAnalyzer {
             }
         }
         reset /= 2;
-        let mut next = arvalid.iter_changes().map(|(t, _)| t);
-        next.next();
-        next.next();
+        let mut next_time_iter = arvalid.iter_changes().map(|(t, _)| t);
+        next_time_iter.next();
+        next_time_iter.next();
         let last_time = clk.time_indices().last().unwrap();
-        let next = next.chain([*last_time, *last_time]);
+        let next_time_iter = next_time_iter.chain([*last_time, *last_time]);
 
         let mut usage =
             MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001, *last_time);
@@ -96,7 +96,7 @@ impl Analyzer for AXIRdAnalyzer {
             }
         });
         let mut next_reset = rst.next().unwrap_or(*last_time);
-        for ((time, value), next) in arvalid.iter_changes().zip(next) {
+        for ((time, value), next) in arvalid.iter_changes().zip(next_time_iter) {
             if value.to_bit_string().unwrap() != "1" {
                 continue;
             }
