@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use crate::{
     BusUsage,
     bus::{BusCommon, BusDescription, axi::AXIBus},
@@ -16,19 +18,28 @@ pub struct AXIRdAnalyzer {
 }
 
 impl AXIRdAnalyzer {
-    pub fn new(yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml), default_max_burst_delay: u32) -> Self {
-        let name = yaml.0.as_str().unwrap();
-        let common = BusCommon::from_yaml(name, yaml.1, default_max_burst_delay).unwrap();
-        let ar = AXIBus::from_yaml(&yaml.1["ar"]).unwrap();
-        let r = AXIBus::from_yaml(&yaml.1["r"]).unwrap();
-        let r_resp = yaml.1["r"]["rresp"].as_str().unwrap().to_owned();
-        AXIRdAnalyzer {
+    pub fn build_from_yaml(
+        yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml),
+        default_max_burst_delay: u32,
+    ) -> Result<Self, Box<dyn Error>> {
+        let (name, dict) = yaml;
+        let name = name
+            .as_str()
+            .ok_or("Name of bus should be a valid string")?;
+        let common = BusCommon::from_yaml(name, dict, default_max_burst_delay)?;
+        let ar = AXIBus::from_yaml(&dict["ar"])?;
+        let r = AXIBus::from_yaml(&dict["r"])?;
+        let r_resp = dict["r"]["rresp"]
+            .as_str()
+            .ok_or("AXI bus should have rresp signal")?
+            .to_owned();
+        Ok(AXIRdAnalyzer {
             common,
             ar,
             r,
             r_resp,
             result: None,
-        }
+        })
     }
 }
 

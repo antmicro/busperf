@@ -14,52 +14,52 @@ pub struct PythonAnalyzer {
 }
 
 impl PythonAnalyzer {
-    pub fn new(class_name: &str, common: BusCommon, i: &Yaml) -> Self {
+    pub fn new(
+        class_name: &str,
+        common: BusCommon,
+        i: &Yaml,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let mut s = String::from(concat!(env!("CARGO_MANIFEST_DIR"), "/plugins/python/"));
         s.push_str(class_name);
         s.push_str(".py");
-        let code = CString::new(
-            std::fs::read_to_string(s).unwrap_or_else(|_| panic!("{} does not exist", class_name)),
-        )
-        .unwrap();
+        let Ok(code) = std::fs::read_to_string(s) else {
+            return Err("Failed to load python code.")?;
+        };
+        let code = CString::new(code)?;
 
-        let obj = Python::with_gil(|py| -> PyResult<Py<PyAny>> {
-            let app: Py<PyAny> = PyModule::from_code(
-                py,
-                &code,
-                &CString::new(class_name).unwrap(),
-                &CString::new(class_name).unwrap(),
-            )
-            .unwrap()
-            .getattr("create")?
-            .into();
+        let class_name_cstring = CString::new(class_name)?;
+        let Ok(obj) = Python::with_gil(|py| -> PyResult<Py<PyAny>> {
+            let app: Py<PyAny> =
+                PyModule::from_code(py, &code, &class_name_cstring, &class_name_cstring)?
+                    .getattr("create")?
+                    .into();
 
             app.call0(py)
-        })
-        .unwrap_or_else(|_| panic!("Could not initialize {}", class_name));
+        }) else {
+            return Err(format!("Could not initialize {}", class_name))?;
+        };
 
-        let signals = Python::with_gil(|py| -> PyResult<Vec<String>> {
+        let Ok(signals) = Python::with_gil(|py| -> PyResult<Vec<String>> {
             obj.getattr(py, "get_yaml_signals")?
                 .call0(py)?
                 .extract::<Vec<String>>(py)
-        })
-        .expect("Python plugin returned bad signal names");
+        }) else {
+            return Err("Python plugin returned bad signal names")?;
+        };
         let signals = signals
             .iter()
-            .map(|s| {
-                i[s.as_str()]
-                    .as_str()
-                    .unwrap_or_else(|| panic!("yaml does not have {} signal", s))
-                    .to_owned()
+            .map(|s| match i[s.as_str()].as_str() {
+                Some(string) => Ok(string.to_owned()),
+                None => Err(format!("Yaml should define {} signal", s)),
             })
-            .collect();
+            .collect::<Result<_, _>>()?;
 
-        PythonAnalyzer {
+        Ok(PythonAnalyzer {
             common,
             obj,
             result: None,
             signals,
-        }
+        })
     }
 }
 

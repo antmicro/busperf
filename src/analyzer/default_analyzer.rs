@@ -15,16 +15,18 @@ impl DefaultAnalyzer {
     pub fn from_yaml(
         yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml),
         default_max_burst_delay: u32,
-    ) -> Self {
-        let name = yaml.0.as_str().expect("Invalid bus name");
-        let common = BusCommon::from_yaml(name, yaml.1, default_max_burst_delay).unwrap();
-        let bus_desc = BusDescriptionBuilder::build(name, yaml.1, default_max_burst_delay)
-            .expect("Failed to load bus");
-        DefaultAnalyzer {
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let (name, dict) = yaml;
+        let name = name
+            .as_str()
+            .ok_or("Name of bus should be a valid string")?;
+        let common = BusCommon::from_yaml(name, dict, default_max_burst_delay)?;
+        let bus_desc = BusDescriptionBuilder::build(name, dict, default_max_burst_delay)?;
+        Ok(DefaultAnalyzer {
             common,
             bus_desc,
             result: None,
-        }
+        })
     }
 }
 

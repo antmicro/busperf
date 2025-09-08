@@ -17,21 +17,28 @@ pub struct AXIWrAnalyzer {
 }
 
 impl AXIWrAnalyzer {
-    pub fn new(yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml), default_max_burst_delay: u32) -> Self {
-        let name = yaml.0.as_str().unwrap();
-        let common = BusCommon::from_yaml(name, yaml.1, default_max_burst_delay).unwrap();
-        let aw = AXIBus::from_yaml(&yaml.1["aw"]).unwrap();
-        let w = AXIBus::from_yaml(&yaml.1["w"]).unwrap();
-        let b = AXIBus::from_yaml(&yaml.1["b"]).unwrap();
-        let b_resp = yaml.1["b"]["bresp"].as_str().unwrap().to_owned();
-        AXIWrAnalyzer {
+    pub fn build_from_yaml(
+        yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml),
+        default_max_burst_delay: u32,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let (name, dict) = yaml;
+        let name = name.as_str().ok_or("Bus name should be a valid string")?;
+        let common = BusCommon::from_yaml(name, yaml.1, default_max_burst_delay)?;
+        let aw = AXIBus::from_yaml(&dict["aw"])?;
+        let w = AXIBus::from_yaml(&dict["w"])?;
+        let b = AXIBus::from_yaml(&dict["b"])?;
+        let b_resp = dict["b"]["bresp"]
+            .as_str()
+            .ok_or("AXI bus should have a bresp signal")?
+            .to_owned();
+        Ok(AXIWrAnalyzer {
             common,
             aw,
             w,
             b,
             b_resp,
             result: None,
-        }
+        })
     }
 }
 

@@ -36,8 +36,15 @@ pub fn load_bus_analyzers(
         .ok_or("YAML should define interfaces")?
         .iter()
     {
-        let analyzer: Box<dyn Analyzer> = AnalyzerBuilder::build(i, default_max_burst_delay);
-        analyzers.push(analyzer);
+        match AnalyzerBuilder::build(i, default_max_burst_delay) {
+            Ok(analyzer) => analyzers.push(analyzer),
+            Err(e) => {
+                match i.0.as_str() {
+                    Some(name) => eprintln!("Failed to load {}, {:?}", name, e),
+                    None => eprintln!("Failed to load bus which does not have a name: {:?}", e),
+                };
+            }
+        }
     }
     Ok(analyzers)
 }

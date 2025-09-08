@@ -19,24 +19,33 @@ pub mod python_analyzer;
 pub struct AnalyzerBuilder {}
 
 impl AnalyzerBuilder {
-    pub fn build(yaml: (&Yaml, &Yaml), default_max_burst_delay: u32) -> Box<dyn Analyzer> {
-        if let Some(custom) = yaml.1["custom_analyzer"].as_str() {
+    pub fn build(
+        yaml: (&Yaml, &Yaml),
+        default_max_burst_delay: u32,
+    ) -> Result<Box<dyn Analyzer>, Box<dyn std::error::Error>> {
+        let (name, dict) = yaml;
+        Ok(if let Some(custom) = dict["custom_analyzer"].as_str() {
             match custom {
-                "AXIWrAnalyzer" => Box::new(AXIWrAnalyzer::new(yaml, default_max_burst_delay)),
-                "AXIRdAnalyzer" => Box::new(AXIRdAnalyzer::new(yaml, default_max_burst_delay)),
+                "AXIWrAnalyzer" => Box::new(AXIWrAnalyzer::build_from_yaml(
+                    yaml,
+                    default_max_burst_delay,
+                )?),
+                "AXIRdAnalyzer" => Box::new(AXIRdAnalyzer::build_from_yaml(
+                    yaml,
+                    default_max_burst_delay,
+                )?),
                 _ => {
                     let common = BusCommon::from_yaml(
-                        yaml.0.as_str().unwrap(),
-                        yaml.1,
+                        name.as_str().ok_or("Bus should have a valid name")?,
+                        dict,
                         default_max_burst_delay,
-                    )
-                    .unwrap();
-                    Box::new(PythonAnalyzer::new(custom, common, yaml.1))
+                    )?;
+                    Box::new(PythonAnalyzer::new(custom, common, dict)?)
                 }
             }
         } else {
-            Box::new(DefaultAnalyzer::from_yaml(yaml, default_max_burst_delay))
-        }
+            Box::new(DefaultAnalyzer::from_yaml(yaml, default_max_burst_delay)?)
+        })
     }
 }
 
