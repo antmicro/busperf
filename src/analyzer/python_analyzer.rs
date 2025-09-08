@@ -116,8 +116,15 @@ impl Analyzer for PythonAnalyzer {
         });
         let mut usage =
             MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001, reset);
-        for r in results {
-            usage.add_transaction(r.0, r.1, r.2, r.3, &r.4, r.5);
+        for (start_time, resp_time, last_write, first_data, resp_code, delay_to_next) in results {
+            usage.add_transaction(
+                start_time,
+                resp_time,
+                last_write,
+                first_data,
+                &resp_code,
+                delay_to_next,
+            );
         }
         usage.end(reset);
 
