@@ -150,17 +150,13 @@ impl BusDescriptionBuilder {
                 let hready = i["hready"]
                     .as_str()
                     .ok_or("AHB bus requires hready signal")?;
-                return Ok(Box::new(AHBBus::new(
-                    common,
-                    htrans.to_owned(),
-                    hready.to_owned(),
-                )));
+                return Ok(Box::new(AHBBus::new(htrans.to_owned(), hready.to_owned())));
             }
             "Custom" => {
                 let handshake = i["custom_handshake"]
                     .as_str()
                     .ok_or("Custom bus has to specify handshake interpreter")?;
-                return Ok(Box::new(PythonCustomBus::new(common, handshake, i)));
+                return Ok(Box::new(PythonCustomBus::new(handshake, i)));
             }
 
             _ => Err(format!("Invalid handshake {}", handshake))?,

@@ -1,6 +1,6 @@
 use std::ffi::CString;
 
-use super::{BusCommon, BusDescription};
+use super::BusDescription;
 use pyo3::{
     prelude::*,
     types::{PyList, PyTuple},
@@ -8,13 +8,12 @@ use pyo3::{
 use yaml_rust2::Yaml;
 
 pub struct PythonCustomBus {
-    common: BusCommon,
     obj: Py<PyAny>,
     signals: Vec<String>,
 }
 
 impl PythonCustomBus {
-    pub fn new(common: BusCommon, class_name: &str, i: &Yaml) -> Self {
+    pub fn new(class_name: &str, i: &Yaml) -> Self {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/plugins/python/");
         let mut s = String::from(concat!(env!("CARGO_MANIFEST_DIR"), "/plugins/python/"));
         s.push_str(class_name);
@@ -54,11 +53,7 @@ impl PythonCustomBus {
             .iter()
             .map(|s| i[s.as_str()].as_str().unwrap().to_owned())
             .collect();
-        PythonCustomBus {
-            common,
-            obj,
-            signals,
-        }
+        PythonCustomBus { obj, signals }
     }
 }
 

@@ -1,7 +1,7 @@
 use std::ffi::CString;
 
 use crate::{
-    bus::BusCommon, bus_usage::MultiChannelBusUsage, load_signals, BusUsage, SingleChannelBusUsage,
+    bus::BusCommon, bus_usage::MultiChannelBusUsage, load_signals, BusUsage,
 };
 
 use super::Analyzer;

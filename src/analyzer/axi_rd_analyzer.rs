@@ -1,13 +1,11 @@
-use pyo3::buffer::Element;
 
 use crate::{
-    analyzer::default_analyzer::DefaultAnalyzer,
-    bus::{axi::AXIBus, BusCommon, BusDescription, BusDescriptionBuilder},
+    bus::{axi::AXIBus, BusCommon, BusDescription},
     bus_usage::MultiChannelBusUsage,
     load_signals, BusUsage,
 };
 
-use super::{analyze_single_bus, Analyzer};
+use super::Analyzer;
 
 pub struct AXIRdAnalyzer {
     common: BusCommon,
@@ -54,9 +52,9 @@ impl Analyzer for AXIRdAnalyzer {
         let start = std::time::Instant::now();
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
-        let (_, arready) = &loaded[2];
+        let (_, _arready) = &loaded[2];
         let (_, arvalid) = &loaded[3];
-        let (_, rready) = &loaded[4];
+        let (_, _rready) = &loaded[4];
         let (_, rvalid) = &loaded[5];
         let (_, r_resp) = &loaded[6];
 

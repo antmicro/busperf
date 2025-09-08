@@ -1,21 +1,16 @@
 use crate::CycleType;
 
-use super::{BusCommon, BusDescription};
+use super::BusDescription;
 
 #[derive(Debug)]
 pub struct AHBBus {
-    common: BusCommon,
     htrans: String,
     hready: String,
 }
 
 impl AHBBus {
-    pub fn new(common: BusCommon, htrans: String, hready: String) -> Self {
-        AHBBus {
-            common,
-            htrans,
-            hready,
-        }
+    pub fn new(htrans: String, hready: String) -> Self {
+        AHBBus { htrans, hready }
     }
 }
 

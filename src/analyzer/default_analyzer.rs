@@ -1,9 +1,6 @@
-use wellen::SignalValue;
-
 use crate::{
     bus::{BusCommon, BusDescription, BusDescriptionBuilder},
-    bus_usage::SingleChannelBusUsage,
-    load_signals, BusUsage, CycleType,
+    BusUsage,
 };
 
 use super::{analyze_single_bus, Analyzer};
@@ -15,13 +12,6 @@ pub struct DefaultAnalyzer {
 }
 
 impl DefaultAnalyzer {
-    pub fn new(common: BusCommon, bus_desc: Box<dyn BusDescription>) -> Self {
-        DefaultAnalyzer {
-            common,
-            bus_desc,
-            result: None,
-        }
-    }
     pub fn from_yaml(
         yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml),
         default_max_burst_delay: u32,

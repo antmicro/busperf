@@ -3,7 +3,6 @@ use yaml_rust2::Yaml;
 
 use crate::CycleType;
 
-use super::BusCommon;
 use super::BusDescription;
 
 #[derive(Debug)]
@@ -32,7 +31,7 @@ impl BusDescription for AXIBus {
         vec![self.ready.as_str(), self.valid.as_str()]
     }
 
-    fn interpret_cycle(&self, signals: &Vec<SignalValue>, time: u32) -> CycleType {
+    fn interpret_cycle(&self, signals: &Vec<SignalValue>, _time: u32) -> CycleType {
         let ready = signals[0];
         let valid = signals[1];
         if let Ok(ready) = ready.to_bit_string().unwrap().parse::<u32>()

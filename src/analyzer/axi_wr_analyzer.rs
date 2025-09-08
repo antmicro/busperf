@@ -1,8 +1,6 @@
-use pyo3::buffer::Element;
 
 use crate::{
-    analyzer::default_analyzer::DefaultAnalyzer,
-    bus::{axi::AXIBus, BusCommon, BusDescription, BusDescriptionBuilder},
+    bus::{axi::AXIBus, BusCommon, BusDescription},
     bus_usage::MultiChannelBusUsage,
     load_signals, BusUsage,
 };
@@ -57,12 +55,12 @@ impl Analyzer for AXIWrAnalyzer {
 
         let start = std::time::Instant::now();
         let (_, clk) = &loaded[0];
-        let (_, rst) = &loaded[1];
-        let (_, awready) = &loaded[2];
+        let (_, _rst) = &loaded[1];
+        let (_, _awready) = &loaded[2];
         let (_, awvalid) = &loaded[3];
-        let (_, wready) = &loaded[4];
+        let (_, _wready) = &loaded[4];
         let (_, wvalid) = &loaded[5];
-        let (_, bready) = &loaded[6];
+        let (_, _bready) = &loaded[6];
         let (_, bvalid) = &loaded[7];
         let (_, b_resp) = &loaded[8];
 
