@@ -9,6 +9,7 @@ pub enum BusUsage {
     MultiChannel(MultiChannelBusUsage),
 }
 
+/// Contains statistics for a single channel bus
 #[derive(PartialEq, Debug)]
 pub struct SingleChannelBusUsage {
     pub bus_name: String,
@@ -19,18 +20,25 @@ pub struct SingleChannelBusUsage {
     free: CyclesNum,
     reset: CyclesNum,
     transaction_delays: Vec<CyclesNum>,
+    // Temporary value used during calculation
     current_delay: usize,
     transaction_delay_buckets: Vec<DelaysNum>,
     burst_lengths: Vec<CyclesNum>,
     burst_length_buckets: Vec<u32>,
+    // Total numer of cycles of delays during bursts
     burst_delays: CyclesNum,
+    // Temporary value used during calculation
     current_burst: usize,
+    // Maximum number of cycles that can occur during a burst, if delay is longer than this that means that those are separate transactions
     max_burst_delay: CyclesNum,
 }
 impl SingleChannelBusUsage {
     pub fn reset(&self) -> CyclesNum {
         self.reset
     }
+
+    /// Creates SingleChannelBusUsage with all statistics initialized to 0.
+    /// To fill it with data use add_cycle() method for every cycle in the simulation. Later call end() to finish calculations.
     pub(crate) fn new(name: &str, max_burst_delay: CyclesNum) -> SingleChannelBusUsage {
         SingleChannelBusUsage {
             bus_name: name.to_owned(),
@@ -51,6 +59,7 @@ impl SingleChannelBusUsage {
         }
     }
 
+    /// Updates statistics by adding a cycle of given type
     pub(crate) fn add_cycle(&mut self, t: CycleType) {
         if let CycleType::Busy = t {
             self.add_busy_cycle();
@@ -111,6 +120,9 @@ impl SingleChannelBusUsage {
         }
     }
 
+    /// Cleans up temporary values in bucket statistics and makes this struct ready for display
+    // TODO: maybe we should split SingleChannelBusUsage into 2 structs: one used for accumulating statistics
+    // and other with valid results that would be a result of that method
     pub(crate) fn end(&mut self) {
         let burst_length = self.burst_lengths[self.current_burst];
         if burst_length > 0 {
@@ -134,6 +146,7 @@ impl SingleChannelBusUsage {
         }
     }
 
+    /// Returns values of all statistics as a vector for text output purposes
     pub fn get_data(&self, delays_num: usize, bursts_num: usize, verbose: bool) -> Vec<String> {
         let time =
             (self.busy + self.backpressure + self.no_data + self.free + self.no_transaction) as f32;
@@ -186,6 +199,7 @@ impl SingleChannelBusUsage {
         v
     }
 
+    /// Creates SingleChannelBusUsage with given values - for tests purposes
     #[allow(clippy::too_many_arguments)]
     pub fn literal(
         bus_name: &str,
@@ -224,6 +238,7 @@ impl SingleChannelBusUsage {
     }
 }
 
+/// Returns values for a header of text output
 pub fn get_header(usages: &[&SingleChannelBusUsage]) -> (Vec<String>, usize, usize) {
     let delays = usages
         .iter()
@@ -255,6 +270,7 @@ pub fn get_header(usages: &[&SingleChannelBusUsage]) -> (Vec<String>, usize, usi
     (v, delays, bursts)
 }
 
+/// Returns values for a header of text output
 pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, u32, u32, u32) {
     let mut v = vec![String::from("bus_name"), String::from("cmd_to_completion")];
     let max1 = usages
@@ -306,6 +322,7 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
     (v, max1, max2, max3, max4)
 }
 
+/// Statistic that should be represented in buckets
 #[derive(PartialEq, Debug)]
 pub struct VecStatistic {
     name: &'static str,
@@ -316,6 +333,7 @@ impl VecStatistic {
     pub fn new(name: &'static str) -> VecStatistic {
         VecStatistic { name, data: vec![] }
     }
+    /// Returns values of the buckets
     pub fn get_buckets(&self) -> Vec<usize> {
         let mut buckets = vec![];
         for v in self.data.iter() {
@@ -347,6 +365,7 @@ impl VecStatistic {
     }
 }
 
+/// Contains statistics for a multichannel bus
 #[derive(PartialEq, Debug)]
 pub struct MultiChannelBusUsage {
     pub bus_name: String,
@@ -356,7 +375,9 @@ pub struct MultiChannelBusUsage {
     transaction_delays: VecStatistic,
     transaction_times: Vec<(u32, u32)>,
     error_rate: f32,
+    // Temporary value - number of failed transactions
     error_num: u32,
+    // Temporary value - number of correct transactions
     correct_num: u32,
     averaged_bandwidth: f32,
     bandwidth_windows: Vec<f32>,
@@ -365,11 +386,14 @@ pub struct MultiChannelBusUsage {
     bandwidth_below_y_rate: f32,
     pub channels_usages: Vec<SingleChannelBusUsage>,
     time: u32,
+    /// We have a statistic that calculates % of time that the bandwidth was ABOVE this value
     x_rate: f32,
+    /// We have a statistic that calculates % of time that the bandwidth was BELOW this value
     y_rate: f32,
 }
 
 impl MultiChannelBusUsage {
+    /// Creates empty MultiChannelBusUsage with all statistics initialized to zero. Should be filled with add_transaction()
     pub fn new(bus_name: &str, window_length: u32, x_rate: f32, y_rate: f32, time: u32) -> Self {
         MultiChannelBusUsage {
             bus_name: bus_name.to_owned(),
@@ -393,6 +417,7 @@ impl MultiChannelBusUsage {
         }
     }
 
+    /// Updates statistics given new transaction. When all transactions are added you should call end() to finish calculation of statistics.
     pub fn add_transaction(
         &mut self,
         time: u32,
@@ -428,6 +453,8 @@ impl MultiChannelBusUsage {
         (win_end.min(end).saturating_sub(win_start.max(start))) as f32 / (end - start) as f32
     }
 
+    /// Finishes calculation of statistics and makes sure that all temporary values are already taken into account
+    // TODO: maybe we should split this struct in two as we should with SingleChannelBusUsage
     pub fn end(&mut self, time_in_reset: u32) {
         self.error_rate = self.error_num as f32 / (self.correct_num + self.error_num) as f32;
         self.averaged_bandwidth =
@@ -467,6 +494,7 @@ impl MultiChannelBusUsage {
             / self.bandwidth_windows.len() as f32;
     }
 
+    /// Returns data of all statistics as Strings for text output purposes
     pub fn get_data(
         &self,
         verbose: bool,
