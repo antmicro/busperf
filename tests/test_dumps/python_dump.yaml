@@ -20,7 +20,7 @@ interfaces:
     reset_type: "low"
 
     handshake: "Custom"
-    custom_handshake: "Test2"
+    custom_handshake: "PythonTest"
     ready: "b_ready"
     valid: "b_valid"
  
