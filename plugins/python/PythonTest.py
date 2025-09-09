@@ -12,7 +12,6 @@ class Analyzer:
             return 3
         if signals[0] == "1" and signals[1] == "0":
             return 4
-        # print(signals[0], signals[1])
         return 2
             
 
