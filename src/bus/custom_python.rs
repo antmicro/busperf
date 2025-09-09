@@ -15,9 +15,15 @@ pub struct PythonCustomBus {
 
 impl PythonCustomBus {
     pub fn new(class_name: &str, i: &Yaml) -> Self {
-        let mut s = String::from(concat!(env!("CARGO_MANIFEST_DIR"), "/plugins/python/"));
-        s.push_str(class_name);
-        s.push_str(".py");
+        // we want to search in the location of the binary
+        let s = match std::env::current_exe() {
+            Ok(mut path) => {
+                path.pop(); // remove executable name
+                path.push(format!("plugins/python/{}.py", class_name)); // add path to the plugin
+                path
+            }
+            Err(_) => todo!(),
+        };
         let code = CString::new(std::fs::read_to_string(s).unwrap()).unwrap();
 
         let obj = Python::with_gil(|py| -> PyResult<Py<PyAny>> {
