@@ -1,6 +1,10 @@
+use wellen::SignalValue;
+
 use crate::{
-    BusUsage,
+    BusUsage, CycleType, SingleChannelBusUsage,
+    analyzer::AnalyzerInternal,
     bus::{BusCommon, BusDescription, BusDescriptionBuilder},
+    load_signals,
 };
 
 use super::{Analyzer, analyze_single_bus};
@@ -27,6 +31,69 @@ impl DefaultAnalyzer {
             bus_desc,
             result: None,
         })
+    }
+}
+
+impl AnalyzerInternal for DefaultAnalyzer {
+    fn bus_name(&self) -> &str {
+        self.common.bus_name()
+    }
+
+    fn load_signals(
+        &self,
+        simulation_data: &mut crate::SimulationData,
+    ) -> Vec<(wellen::SignalRef, wellen::Signal)> {
+        let mut signals = vec![self.common.clk_name(), self.common.rst_name()];
+        signals.append(&mut self.bus_desc.signals());
+
+        load_signals(simulation_data, self.common.module_scope(), &signals)
+    }
+
+    fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, wellen::Signal)>) {
+        let (_, clock) = &loaded[0];
+        let (_, reset) = &loaded[1];
+        let mut usage =
+            SingleChannelBusUsage::new(self.common.bus_name(), self.common.max_burst_delay());
+        for (time, value) in clock.iter_changes() {
+            if let SignalValue::Binary(v, 1) = value
+                && v[0] == 0
+            {
+                continue;
+            }
+            // We subtract one to use values just before clock signal
+            let time = time.saturating_sub(1);
+            let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
+            let values: Vec<SignalValue> = loaded[2..]
+                .iter()
+                .map(|(_, s)| s.get_value_at(&s.get_offset(time).unwrap(), 0))
+                .collect();
+
+            if reset.to_bit_string().unwrap() != self.common.rst_active_value().to_string() {
+                let type_ = self.bus_desc.interpret_cycle(&values, time);
+                if let CycleType::Unknown = type_ {
+                    let mut state = String::from("");
+                    self.bus_desc
+                        .signals()
+                        .iter()
+                        .zip(values)
+                        .for_each(|(name, value)| {
+                            state.push_str(&format!("{}: {}, ", name, value))
+                        });
+                    eprintln!(
+                        "[WARN] bus \"{}\" in unknown state outside reset at time index: {} - {}",
+                        self.common.bus_name(),
+                        time,
+                        state
+                    );
+                }
+
+                usage.add_cycle(type_);
+            } else {
+                usage.add_cycle(CycleType::Reset);
+            }
+        }
+        usage.end();
+        self.result = Some(BusUsage::SingleChannel(usage));
     }
 }
 
