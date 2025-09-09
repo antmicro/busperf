@@ -106,8 +106,7 @@ impl AnalyzerInternal for AXIRdAnalyzer {
         signals.append(&mut self.r.signals());
         signals.push(&self.r_resp);
 
-        let loaded = load_signals(simulation_data, self.common.module_scope(), &signals);
-        loaded
+        load_signals(simulation_data, self.common.module_scope(), &signals)
     }
 
     fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, Signal)>) {
@@ -194,8 +193,7 @@ impl AnalyzerInternal for AXIWrAnalyzer {
         signals.append(&mut self.b.signals());
         signals.push(&self.b_resp);
 
-        let loaded = load_signals(simulation_data, self.common.module_scope(), &signals);
-        loaded
+        load_signals(simulation_data, self.common.module_scope(), &signals)
     }
 
     fn bus_name(&self) -> &str {
