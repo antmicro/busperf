@@ -1,6 +1,6 @@
 use default_analyzer::DefaultAnalyzer;
 use python_analyzer::PythonAnalyzer;
-use wellen::SignalValue;
+use wellen::{Signal, SignalRef, SignalValue};
 use yaml_rust2::Yaml;
 
 use crate::{
@@ -56,8 +56,26 @@ impl AnalyzerBuilder {
     }
 }
 
-pub trait Analyzer {
-    fn analyze(&mut self, simulation_data: &mut SimulationData, verbose: bool);
+trait AnalyzerInternal {
+    fn bus_name(&self) -> &str;
+    fn load_signals(&self, simulation_data: &mut SimulationData) -> Vec<(SignalRef, Signal)>;
+    fn calculate(&mut self, loaded: Vec<(SignalRef, Signal)>);
+}
+
+pub trait Analyzer: AnalyzerInternal {
+    fn analyze(&mut self, simulation_data: &mut SimulationData, verbose: bool) {
+        let start = std::time::Instant::now();
+        let loaded = self.load_signals(simulation_data);
+        if verbose {
+            println!("Loading {} took {:?}", self.bus_name(), start.elapsed());
+        }
+
+        let start = std::time::Instant::now();
+        self.calculate(loaded);
+        if verbose {
+            println!("Calculating {} took {:?}", self.bus_name(), start.elapsed());
+        }
+    }
     fn get_results(&self) -> &BusUsage;
 }
 

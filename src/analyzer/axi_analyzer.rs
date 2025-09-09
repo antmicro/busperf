@@ -4,7 +4,7 @@ use wellen::Signal;
 
 use crate::{
     BusUsage,
-    analyzer::analyze_single_bus,
+    analyzer::AnalyzerInternal,
     bus::{BusCommon, BusDescription, axi::AXIBus},
     bus_usage::MultiChannelBusUsage,
     load_signals,
@@ -48,6 +48,17 @@ fn count_reset(rst: &Signal, active_value: u8) -> u32 {
     reset / 2
 }
 
+// This function creates an iterator that is offset by 2 changes (skips first cycle).
+// It is used for calculating time between transactions. It adds the last time index of clk
+// (which is the end of simulation) so that iterator have same number of elements as original
+fn create_next_transaction_iter(signal: &Signal, clk: &Signal) -> impl Iterator<Item = u32> {
+    let mut next_time_iter = signal.iter_changes().map(|(t, _)| t);
+    next_time_iter.next();
+    next_time_iter.next();
+    let last_time = clk.time_indices().last().unwrap();
+    next_time_iter.chain([*last_time, *last_time])
+}
+
 macro_rules! build_from_yaml {
     ( $( $bus_name:tt $bus_type:ident ),* ; $($signal_name:tt $($signal_init:tt)*),* ) => {
         pub fn build_from_yaml(
@@ -85,24 +96,21 @@ impl AXIRdAnalyzer {
     build_from_yaml!(ar AXIBus, r AXIBus; r_resp ["r"]["rresp"].as_str().ok_or("AXI bus should have rresp signal")?.to_owned());
 }
 
-impl Analyzer for AXIRdAnalyzer {
-    fn analyze(&mut self, simulation_data: &mut crate::SimulationData, verbose: bool) {
+impl AnalyzerInternal for AXIRdAnalyzer {
+    fn load_signals(
+        &self,
+        simulation_data: &mut crate::SimulationData,
+    ) -> Vec<(wellen::SignalRef, Signal)> {
         let mut signals = vec![self.common.clk_name(), self.common.rst_name()];
         signals.append(&mut self.ar.signals());
         signals.append(&mut self.r.signals());
         signals.push(&self.r_resp);
 
-        let start = std::time::Instant::now();
         let loaded = load_signals(simulation_data, self.common.module_scope(), &signals);
-        if verbose {
-            println!(
-                "Loading {} took {:?}",
-                self.common.bus_name(),
-                start.elapsed()
-            );
-        }
+        loaded
+    }
 
-        let start = std::time::Instant::now();
+    fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, Signal)>) {
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let (_, _arready) = &loaded[2];
@@ -112,11 +120,9 @@ impl Analyzer for AXIRdAnalyzer {
         let (_, r_resp) = &loaded[6];
 
         let reset = count_reset(rst, self.common.rst_active_value());
-        let mut next_time_iter = arvalid.iter_changes().map(|(t, _)| t);
-        next_time_iter.next();
-        next_time_iter.next();
+
+        let next_time_iter = create_next_transaction_iter(arvalid, clk);
         let last_time = clk.time_indices().last().unwrap();
-        let next_time_iter = next_time_iter.chain([*last_time, *last_time]);
 
         let mut usage = MultiChannelBusUsage::new(
             self.common.bus_name(),
@@ -159,18 +165,15 @@ impl Analyzer for AXIRdAnalyzer {
         }
 
         usage.end(reset);
-
-        if verbose {
-            println!(
-                "Calculating {} took {:?}",
-                self.common.bus_name(),
-                start.elapsed()
-            );
-        }
-
         self.result = Some(BusUsage::MultiChannel(usage));
     }
 
+    fn bus_name(&self) -> &str {
+        self.common.bus_name()
+    }
+}
+
+impl Analyzer for AXIRdAnalyzer {
     fn get_results(&self) -> &crate::BusUsage {
         self.result.as_ref().unwrap()
     }
@@ -180,27 +183,28 @@ impl AXIWrAnalyzer {
     build_from_yaml!(aw AXIBus, w AXIBus, b AXIBus; b_resp ["b"]["bresp"].as_str().ok_or("AXI bus should have a bresp signal")?.to_owned());
 }
 
-impl Analyzer for AXIWrAnalyzer {
-    fn analyze(&mut self, simulation_data: &mut crate::SimulationData, verbose: bool) {
+impl AnalyzerInternal for AXIWrAnalyzer {
+    fn load_signals(
+        &self,
+        simulation_data: &mut crate::SimulationData,
+    ) -> Vec<(wellen::SignalRef, Signal)> {
         let mut signals = vec![self.common.clk_name(), self.common.rst_name()];
         signals.append(&mut self.aw.signals());
         signals.append(&mut self.w.signals());
         signals.append(&mut self.b.signals());
         signals.push(&self.b_resp);
 
-        let start = std::time::Instant::now();
         let loaded = load_signals(simulation_data, self.common.module_scope(), &signals);
-        if verbose {
-            println!(
-                "Loading {} took {:?}",
-                self.common.bus_name(),
-                start.elapsed()
-            );
-        }
+        loaded
+    }
 
-        let start = std::time::Instant::now();
+    fn bus_name(&self) -> &str {
+        self.common.bus_name()
+    }
+
+    fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, Signal)>) {
         let (_, clk) = &loaded[0];
-        let (_, _rst) = &loaded[1];
+        let (_, rst) = &loaded[1];
         let (_, _awready) = &loaded[2];
         let (_, awvalid) = &loaded[3];
         let (_, _wready) = &loaded[4];
@@ -209,11 +213,10 @@ impl Analyzer for AXIWrAnalyzer {
         let (_, bvalid) = &loaded[7];
         let (_, b_resp) = &loaded[8];
 
-        let mut next = awvalid.iter_changes().map(|(t, _)| t);
-        next.next();
-        next.next();
+        let reset = count_reset(rst, self.common.rst_active_value());
+        let next_transaction_iter = create_next_transaction_iter(awvalid, clk);
         let last_time = clk.time_indices().last().unwrap();
-        let next = next.chain([*last_time, *last_time]);
+
         let mut usage = MultiChannelBusUsage::new(
             self.common.bus_name(),
             self.window_length,
@@ -222,7 +225,7 @@ impl Analyzer for AXIWrAnalyzer {
             *last_time,
         );
 
-        for ((time, value), next) in awvalid.iter_changes().zip(next) {
+        for ((time, value), next) in awvalid.iter_changes().zip(next_transaction_iter) {
             if value.to_bit_string().unwrap() != "1" {
                 continue;
             }
@@ -252,23 +255,12 @@ impl Analyzer for AXIWrAnalyzer {
             usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
         }
 
-        usage.channels_usages = [&self.aw, &self.w, &self.b]
-            .iter()
-            .map(|bus| analyze_single_bus(&self.common, *bus, simulation_data, verbose))
-            .collect();
-        usage.end(usage.channels_usages[0].reset());
-
-        if verbose {
-            println!(
-                "Calculating {} took {:?}",
-                self.common.bus_name(),
-                start.elapsed()
-            );
-        }
-
+        usage.end(reset);
         self.result = Some(BusUsage::MultiChannel(usage));
     }
+}
 
+impl Analyzer for AXIWrAnalyzer {
     fn get_results(&self) -> &crate::BusUsage {
         self.result.as_ref().unwrap()
     }
