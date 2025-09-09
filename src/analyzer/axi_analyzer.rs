@@ -177,35 +177,7 @@ impl Analyzer for AXIRdAnalyzer {
 }
 
 impl AXIWrAnalyzer {
-    pub fn build_from_yaml(
-        yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml),
-        default_max_burst_delay: u32,
-        window_length: u32,
-        x_rate: f32,
-        y_rate: f32,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let (name, dict) = yaml;
-        let name = name.as_str().ok_or("Bus name should be a valid string")?;
-        let common = BusCommon::from_yaml(name, yaml.1, default_max_burst_delay)?;
-        let aw = AXIBus::from_yaml(&dict["aw"])?;
-        let w = AXIBus::from_yaml(&dict["w"])?;
-        let b = AXIBus::from_yaml(&dict["b"])?;
-        let b_resp = dict["b"]["bresp"]
-            .as_str()
-            .ok_or("AXI bus should have a bresp signal")?
-            .to_owned();
-        Ok(AXIWrAnalyzer {
-            common,
-            aw,
-            w,
-            b,
-            b_resp,
-            result: None,
-            window_length,
-            x_rate,
-            y_rate,
-        })
-    }
+    build_from_yaml!(aw AXIBus, w AXIBus, b AXIBus; b_resp ["b"]["bresp"].as_str().ok_or("AXI bus should have a bresp signal")?.to_owned());
 }
 
 impl Analyzer for AXIWrAnalyzer {
