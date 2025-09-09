@@ -56,7 +56,7 @@ impl AnalyzerBuilder {
     }
 }
 
-trait AnalyzerInternal {
+pub trait AnalyzerInternal {
     fn bus_name(&self) -> &str;
     fn load_signals(&self, simulation_data: &mut SimulationData) -> Vec<(SignalRef, Signal)>;
     fn calculate(&mut self, loaded: Vec<(SignalRef, Signal)>);

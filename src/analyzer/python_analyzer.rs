@@ -1,6 +1,9 @@
 use std::ffi::CString;
 
-use crate::{BusUsage, bus::BusCommon, bus_usage::MultiChannelBusUsage, load_signals};
+use crate::{
+    BusUsage, analyzer::AnalyzerInternal, bus::BusCommon, bus_usage::MultiChannelBusUsage,
+    load_signals,
+};
 
 use super::Analyzer;
 use pyo3::{prelude::*, types::PyTuple};
@@ -63,13 +66,22 @@ impl PythonAnalyzer {
     }
 }
 
-impl Analyzer for PythonAnalyzer {
-    fn analyze(&mut self, simulation_data: &mut crate::SimulationData, verbose: bool) {
+impl AnalyzerInternal for PythonAnalyzer {
+    fn bus_name(&self) -> &str {
+        self.common.bus_name()
+    }
+
+    fn load_signals(
+        &self,
+        simulation_data: &mut crate::SimulationData,
+    ) -> Vec<(wellen::SignalRef, wellen::Signal)> {
         let mut signals = vec![self.common.clk_name(), self.common.rst_name()];
         signals.append(&mut self.signals.iter().map(|s| s.as_str()).collect());
 
-        let start = std::time::Instant::now();
-        let loaded = load_signals(simulation_data, self.common.module_scope(), &signals);
+        load_signals(simulation_data, self.common.module_scope(), &signals)
+    }
+
+    fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, wellen::Signal)>) {
         let (_, rst) = &loaded[1];
         let mut last = 0;
         let mut reset = 0;
@@ -91,15 +103,7 @@ impl Analyzer for PythonAnalyzer {
                     .collect::<Vec<(u32, String)>>()
             })
             .collect();
-        if verbose {
-            println!(
-                "Loading {} took {:?}",
-                self.common.bus_name(),
-                start.elapsed()
-            );
-        }
 
-        let start = std::time::Instant::now();
         #[allow(clippy::type_complexity)]
         let results = Python::with_gil(|py| -> PyResult<Vec<(u32, u32, u32, u32, String, u32)>> {
             let res = self
@@ -128,17 +132,11 @@ impl Analyzer for PythonAnalyzer {
         }
         usage.end(reset);
 
-        if verbose {
-            println!(
-                "Calculating {} took {:?}",
-                self.common.bus_name(),
-                start.elapsed()
-            );
-        }
-
         self.result = Some(BusUsage::MultiChannel(usage));
     }
+}
 
+impl Analyzer for PythonAnalyzer {
     fn get_results(&self) -> &crate::BusUsage {
         self.result.as_ref().unwrap()
     }
