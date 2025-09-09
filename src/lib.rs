@@ -69,8 +69,7 @@ pub fn load_simulation_trace(filename: &str, verbose: bool) -> SimulationData {
     let body = viewers::read_body(header.body, &hierarchy, Some(Arc::new(AtomicU64::new(0))))
         .expect("Failed to load body.");
     if verbose {
-        // println!("loading trace took {}", start.elapsed().as_millis());
-        println!("{}", start.elapsed().as_millis());
+        println!("Loading trace took {:?}", start.elapsed());
     }
     SimulationData { hierarchy, body }
 }

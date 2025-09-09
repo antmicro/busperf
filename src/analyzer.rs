@@ -93,8 +93,7 @@ pub fn analyze_single_bus(
     let (_, clock) = &loaded[0];
     let (_, reset) = &loaded[1];
     if verbose {
-        // println!("loading took {:?}", start.elapsed());
-        print!("{}\t", start.elapsed().as_millis());
+        println!("Loading took {:?}", start.elapsed());
     }
 
     let start = std::time::Instant::now();
@@ -113,7 +112,6 @@ pub fn analyze_single_bus(
             .map(|(_, s)| s.get_value_at(&s.get_offset(time).unwrap(), 0))
             .collect();
 
-        // let reset = signals[0];
         if reset.to_bit_string().unwrap() != common.rst_active_value().to_string() {
             let type_ = bus_desc.interpret_cycle(&values, time);
             if let CycleType::Unknown = type_ {
@@ -138,8 +136,7 @@ pub fn analyze_single_bus(
     }
     usage.end();
     if verbose {
-        // println!("calculating took {:?}", start.elapsed());
-        println!("{}\t", start.elapsed().as_millis());
+        println!("calculating took {:?}", start.elapsed());
     }
 
     usage
