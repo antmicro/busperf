@@ -1,5 +1,3 @@
-use axi_rd_analyzer::AXIRdAnalyzer;
-use axi_wr_analyzer::AXIWrAnalyzer;
 use default_analyzer::DefaultAnalyzer;
 use python_analyzer::PythonAnalyzer;
 use wellen::SignalValue;
@@ -7,12 +5,12 @@ use yaml_rust2::Yaml;
 
 use crate::{
     BusUsage, CycleType, SimulationData, SingleChannelBusUsage,
+    analyzer::axi_analyzer::{AXIRdAnalyzer, AXIWrAnalyzer},
     bus::{BusCommon, BusDescription},
     load_signals,
 };
 
-pub mod axi_rd_analyzer;
-pub mod axi_wr_analyzer;
+pub mod axi_analyzer;
 pub mod default_analyzer;
 pub mod python_analyzer;
 
