@@ -1,8 +1,6 @@
-use std::ffi::CString;
-
 use crate::{
     BusUsage, analyzer::AnalyzerInternal, bus::BusCommon, bus_usage::MultiChannelBusUsage,
-    load_signals,
+    load_signals, plugins::load_python_plugin,
 };
 
 use super::Analyzer;
@@ -22,25 +20,7 @@ impl PythonAnalyzer {
         common: BusCommon,
         i: &Yaml,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut s = String::from(concat!(env!("CARGO_MANIFEST_DIR"), "/plugins/python/"));
-        s.push_str(class_name);
-        s.push_str(".py");
-        let Ok(code) = std::fs::read_to_string(s) else {
-            return Err("Failed to load python code.")?;
-        };
-        let code = CString::new(code)?;
-
-        let class_name_cstring = CString::new(class_name)?;
-        let Ok(obj) = Python::with_gil(|py| -> PyResult<Py<PyAny>> {
-            let app: Py<PyAny> =
-                PyModule::from_code(py, &code, &class_name_cstring, &class_name_cstring)?
-                    .getattr("create")?
-                    .into();
-
-            app.call0(py)
-        }) else {
-            return Err(format!("Could not initialize {}", class_name))?;
-        };
+        let obj = load_python_plugin(class_name)?;
 
         let Ok(signals) = Python::with_gil(|py| -> PyResult<Vec<String>> {
             obj.getattr(py, "get_yaml_signals")?

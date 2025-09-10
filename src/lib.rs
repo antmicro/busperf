@@ -15,6 +15,7 @@ use yaml_rust2::YamlLoader;
 mod analyzer;
 mod bus;
 mod bus_usage;
+mod plugins;
 
 pub use bus_usage::BusUsage;
 pub use bus_usage::SingleChannelBusUsage;
