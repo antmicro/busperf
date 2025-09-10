@@ -304,3 +304,22 @@ fn python_dump() {
         &[correct_a, correct_b],
     );
 }
+
+#[test]
+fn axi_test() {
+    let mut data = load_simulation_trace("tests/test_dumps/axi.vcd", false);
+    let mut descs = load_bus_analyzers(
+        "tests/taxi_descriptions/axi_ram.yaml",
+        0,
+        10000,
+        0.0006,
+        0.00001,
+    )
+    .unwrap();
+    for desc in descs.iter_mut() {
+        desc.analyze(&mut data, false);
+        let usage = desc.get_results();
+        println!("{usage:?}");
+    }
+    assert!(descs.len() == 3)
+}
