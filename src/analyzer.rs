@@ -6,7 +6,7 @@ use yaml_rust2::Yaml;
 use crate::{
     BusUsage, CycleType, SimulationData, SingleChannelBusUsage,
     analyzer::axi_analyzer::{AXIRdAnalyzer, AXIWrAnalyzer},
-    bus::{BusCommon, BusDescription},
+    bus::{BusCommon, BusDescription, is_value_of_type},
     load_signals,
 };
 
@@ -112,7 +112,7 @@ pub fn analyze_single_bus(
             .map(|(_, s)| s.get_value_at(&s.get_offset(time).unwrap(), 0))
             .collect();
 
-        if reset.to_bit_string().unwrap() != common.rst_active_value().to_string() {
+        if !is_value_of_type(reset, common.rst_active_value()) {
             let type_ = bus_desc.interpret_cycle(&values, time);
             if let CycleType::Unknown = type_ {
                 let mut state = String::from("");

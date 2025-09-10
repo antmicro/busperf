@@ -1,7 +1,10 @@
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use crate::CycleType;
+use crate::{
+    CycleType,
+    bus::{ValueType, is_value_of_type},
+};
 
 use super::BusDescription;
 
@@ -34,18 +37,14 @@ impl BusDescription for AXIBus {
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], _time: u32) -> CycleType {
         let ready = signals[0];
         let valid = signals[1];
-        if let Ok(ready) = ready.to_bit_string().unwrap().parse::<u32>()
-            && let Ok(valid) = valid.to_bit_string().unwrap().parse::<u32>()
-        {
-            match (ready, valid) {
-                (1, 1) => CycleType::Busy,
-                (0, 0) => CycleType::Free,
-                (1, 0) => CycleType::NoData,
-                (0, 1) => CycleType::Backpressure,
-                _ => panic!("signal has invalid value ready: {} valid: {}", ready, valid),
-            }
-        } else {
-            CycleType::Unknown
+        match (
+            is_value_of_type(ready, ValueType::V1),
+            is_value_of_type(valid, ValueType::V1),
+        ) {
+            (true, true) => CycleType::Busy,
+            (false, false) => CycleType::Free,
+            (true, false) => CycleType::NoData,
+            (false, true) => CycleType::Backpressure,
         }
     }
 }

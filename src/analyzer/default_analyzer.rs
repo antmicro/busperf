@@ -3,7 +3,7 @@ use wellen::SignalValue;
 use crate::{
     BusUsage, CycleType, SingleChannelBusUsage,
     analyzer::AnalyzerInternal,
-    bus::{BusCommon, BusDescription, BusDescriptionBuilder},
+    bus::{BusCommon, BusDescription, BusDescriptionBuilder, is_value_of_type},
     load_signals,
 };
 
@@ -68,7 +68,7 @@ impl AnalyzerInternal for DefaultAnalyzer {
                 .map(|(_, s)| s.get_value_at(&s.get_offset(time).unwrap(), 0))
                 .collect();
 
-            if reset.to_bit_string().unwrap() != self.common.rst_active_value().to_string() {
+            if !is_value_of_type(reset, self.common.rst_active_value()) {
                 let type_ = self.bus_desc.interpret_cycle(&values, time);
                 if let CycleType::Unknown = type_ {
                     let mut state = String::from("");

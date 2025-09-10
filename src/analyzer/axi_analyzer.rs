@@ -5,7 +5,7 @@ use wellen::Signal;
 use crate::{
     BusUsage,
     analyzer::AnalyzerInternal,
-    bus::{BusCommon, BusDescription, axi::AXIBus},
+    bus::{BusCommon, BusDescription, ValueType, axi::AXIBus, is_value_of_type},
     bus_usage::MultiChannelBusUsage,
     load_signals,
 };
@@ -35,11 +35,11 @@ pub struct AXIWrAnalyzer {
     y_rate: f32,
 }
 
-fn count_reset(rst: &Signal, active_value: u8) -> u32 {
+fn count_reset(rst: &Signal, active_value: ValueType) -> u32 {
     let mut last = 0;
     let mut reset = 0;
     for (time, value) in rst.iter_changes() {
-        if value.to_bit_string().unwrap() == active_value.to_string() {
+        if is_value_of_type(value, active_value) {
             last = time;
         } else {
             reset += time - last;
@@ -132,7 +132,7 @@ impl AnalyzerInternal for AXIRdAnalyzer {
         );
 
         let mut rst = rst.iter_changes().filter_map(|(t, v)| {
-            if v.to_bit_string().unwrap() == self.common.rst_active_value().to_string() {
+            if is_value_of_type(v, self.common.rst_active_value()) {
                 Some(t)
             } else {
                 None
@@ -140,7 +140,7 @@ impl AnalyzerInternal for AXIRdAnalyzer {
         });
         let mut next_reset = rst.next().unwrap_or(*last_time);
         for ((time, value), next) in arvalid.iter_changes().zip(next_time_iter) {
-            if value.to_bit_string().unwrap() != "1" {
+            if !is_value_of_type(value, ValueType::V1) {
                 continue;
             }
             while next_reset < time {
@@ -148,7 +148,7 @@ impl AnalyzerInternal for AXIRdAnalyzer {
             }
             let (first_data, _) = rvalid
                 .iter_changes()
-                .find(|(t, v)| *t >= time && v.to_bit_string().unwrap() == "1")
+                .find(|(t, v)| *t >= time && is_value_of_type(*v, ValueType::V1))
                 .unwrap_or_else(|| panic!("time at error{}", time));
             let resp_time = first_data;
             if next_reset < resp_time {
@@ -224,21 +224,21 @@ impl AnalyzerInternal for AXIWrAnalyzer {
         );
 
         for ((time, value), next) in awvalid.iter_changes().zip(next_transaction_iter) {
-            if value.to_bit_string().unwrap() != "1" {
+            if !is_value_of_type(value, ValueType::V1) {
                 continue;
             }
             let (first_data, _) = wvalid
                 .iter_changes()
-                .find(|(t, v)| *t >= time && v.to_bit_string().unwrap() == "1")
+                .find(|(t, v)| *t >= time && is_value_of_type(*v, ValueType::V1))
                 .unwrap_or_else(|| panic!("time at error{}", time));
             let (resp_time, _) = bvalid
                 .iter_changes()
-                .find(|(t, v)| *t > time && v.to_bit_string().unwrap() == "1")
+                .find(|(t, v)| *t > time && is_value_of_type(*v, ValueType::V1))
                 .unwrap();
             let (last_write, _) = wvalid
                 .iter_changes()
                 .max_by_key(|(t, v)| {
-                    if *t < time || *t > resp_time || v.to_bit_string().unwrap() == "1" {
+                    if *t < time || *t > resp_time || is_value_of_type(*v, ValueType::V1) {
                         0
                     } else {
                         *t

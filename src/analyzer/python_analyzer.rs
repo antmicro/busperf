@@ -1,6 +1,10 @@
 use crate::{
-    BusUsage, analyzer::AnalyzerInternal, bus::BusCommon, bus_usage::MultiChannelBusUsage,
-    load_signals, plugins::load_python_plugin,
+    BusUsage,
+    analyzer::AnalyzerInternal,
+    bus::{BusCommon, is_value_of_type},
+    bus_usage::MultiChannelBusUsage,
+    load_signals,
+    plugins::load_python_plugin,
 };
 
 use super::Analyzer;
@@ -66,7 +70,7 @@ impl AnalyzerInternal for PythonAnalyzer {
         let mut last = 0;
         let mut reset = 0;
         for (time, value) in rst.iter_changes() {
-            if value.to_bit_string().unwrap() == self.common.rst_active_value().to_string() {
+            if is_value_of_type(value, self.common.rst_active_value()) {
                 last = time;
             } else {
                 reset += time - last;

@@ -98,8 +98,12 @@ impl BusCommon {
         self.max_burst_delay
     }
 
-    pub fn rst_active_value(&self) -> u8 {
-        self.rst_active_value
+    pub fn rst_active_value(&self) -> ValueType {
+        match self.rst_active_value {
+            0 => ValueType::V0,
+            1 => ValueType::V1,
+            _ => ValueType::X,
+        }
     }
 }
 
@@ -160,4 +164,32 @@ impl BusDescriptionBuilder {
 pub trait BusDescription {
     fn signals(&self) -> Vec<&str>;
     fn interpret_cycle(&self, signals: &[SignalValue], time: u32) -> CycleType;
+}
+
+#[derive(Clone, Copy)]
+pub enum ValueType {
+    V0,
+    V1,
+    X,
+    // Z,
+}
+
+pub fn is_value_of_type(value: SignalValue, type_: ValueType) -> bool {
+    match value {
+        SignalValue::Binary(items, 1) => match type_ {
+            ValueType::V0 => items[0] == 0,
+            ValueType::V1 => items[0] == 1,
+            ValueType::X => false,
+            // ValueType::Z => false,
+        },
+        SignalValue::Binary(_, _) => false,
+        SignalValue::FourValue(items, 1) => {
+            println!("{items:?} = {}", value.to_bit_string().unwrap());
+            false
+        }
+        SignalValue::FourValue(_items, _) => panic!(),
+        SignalValue::NineValue(_items, _) => todo!(),
+        SignalValue::String(_) => false,
+        SignalValue::Real(_) => false,
+    }
 }
