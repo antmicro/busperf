@@ -149,7 +149,7 @@ impl BusDescriptionBuilder {
                 let handshake = i["custom_handshake"]
                     .as_str()
                     .ok_or("Custom bus has to specify handshake interpreter")?;
-                Ok(Box::new(PythonCustomBus::new(handshake, i)))
+                Ok(Box::new(PythonCustomBus::new(handshake, i)?))
             }
 
             _ => Err(format!("Invalid handshake {}", handshake))?,

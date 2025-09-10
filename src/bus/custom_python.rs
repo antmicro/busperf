@@ -1,4 +1,4 @@
-use std::ffi::CString;
+use std::{ffi::CString, path::PathBuf};
 
 use super::BusDescription;
 use pyo3::{
@@ -14,44 +14,49 @@ pub struct PythonCustomBus {
 }
 
 impl PythonCustomBus {
-    pub fn new(class_name: &str, i: &Yaml) -> Self {
+    pub fn new(class_name: &str, i: &Yaml) -> Result<Self, Box<dyn std::error::Error>> {
         // we want to search in the location of the binary
-        let s = match std::env::current_exe() {
-            Ok(mut path) => {
-                path.pop(); // remove executable name
-                path.push(format!("plugins/python/{}.py", class_name)); // add path to the plugin
-                path
+        let mut path = match std::env::var("CARGO_MANIFEST_DIR") {
+            Ok(path) => PathBuf::from(path),
+            Err(_) => {
+                match std::env::current_exe() {
+                    Ok(mut path) => {
+                        path.pop(); // remove executable name
+                        path
+                    }
+                    Err(_) => Err("Failed to get plugins path.")?,
+                }
             }
-            Err(_) => todo!(),
         };
-        let code = CString::new(std::fs::read_to_string(s).unwrap()).unwrap();
+        path.push(format!("plugins/python/{}.py", class_name)); // add path to the plugin
+        let code = CString::new(std::fs::read_to_string(path)?)?;
 
         let obj = Python::with_gil(|py| -> PyResult<Py<PyAny>> {
             let app: Py<PyAny> = PyModule::from_code(
                 py,
                 &code,
-                &CString::new(class_name).unwrap(),
-                &CString::new(class_name).unwrap(),
-            )
-            .unwrap()
+                &CString::new(class_name)?,
+                &CString::new(class_name)?,
+            )?
             .getattr("create")?
             .into();
 
             app.call0(py)
-        })
-        .unwrap();
+        })?;
 
         let signals = Python::with_gil(|py| -> PyResult<Vec<String>> {
             obj.getattr(py, "get_signals")?
                 .call0(py)?
                 .extract::<Vec<String>>(py)
-        })
-        .unwrap();
+        })?;
         let signals = signals
             .iter()
-            .map(|s| i[s.as_str()].as_str().unwrap().to_owned())
-            .collect();
-        PythonCustomBus { obj, signals }
+            .map(|s| match i[s.as_str()].as_str() {
+                Some(string) => Ok(string.to_owned()),
+                None => Err(format!("Yaml should define {} signal", s)),
+            })
+            .collect::<Result<_, _>>()?;
+        Ok(PythonCustomBus { obj, signals })
     }
 }
 
