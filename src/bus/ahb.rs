@@ -27,14 +27,15 @@ impl BusDescription for AHBBus {
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> crate::CycleType {
         let htrans = signals[0];
         let hready = signals[1];
-        if let SignalValue::Binary(htrans_v, 2) = htrans {
+        if let SignalValue::Binary(htrans_v, 2) = htrans
+            && let Some(hready_v) = get_value(hready)
+        {
             /*
             00 - IDLE
             01 - BUSY
             10 - NOSEQ
             11 - SEQ
             */
-            let hready_v = get_value(hready);
             use ValueType::V0;
             use ValueType::V1;
             match (htrans_v[0], hready_v) {
