@@ -1,7 +1,10 @@
 use std::cell::Cell;
 use wellen::SignalValue;
 
-use crate::CycleType;
+use crate::{
+    CycleType,
+    bus::{ValueType, get_value},
+};
 
 use super::{BusCommon, BusDescription};
 
@@ -32,30 +35,35 @@ impl BusDescription for CreditValidBus {
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> crate::CycleType {
         let credit = signals[0];
         let valid = signals[1];
-        if let Ok(credit) = credit.to_bit_string().unwrap().parse::<u32>()
-            && let Ok(valid) = valid.to_bit_string().unwrap().parse::<u32>()
+        if let Some(credit_v) = get_value(credit)
+            && let Some(valid_v) = get_value(valid)
         {
-            if credit > 0 {
+            use ValueType::V0;
+            use ValueType::V1;
+            if matches!(credit_v, V1) {
                 self.credits.update(|c| c + 1);
             }
-            match (self.credits.get(), valid) {
-                (1.., 1) => {
+            match (self.credits.get(), valid_v) {
+                (1.., V1) => {
                     self.credits.update(|c| c - 1);
                     CycleType::Busy
                 }
-                (1.., 0) => CycleType::Free,
-                (0, 1) => {
+                (1.., V0) => CycleType::Free,
+                (0, V1) => {
                     eprintln!(
                         "[WARN]: Credit is 0 and valid 1 on credit/valid bus {} time: {}",
                         self.common.bus_name, time
                     );
                     CycleType::Busy
                 }
-                (0, 0) => CycleType::NoTransaction,
-                _ => panic!(
-                    "signal has invalid value credit: {} valid: {}",
-                    credit, valid
-                ),
+                (0, V0) => CycleType::NoTransaction,
+                _ => {
+                    eprintln!(
+                        "signal has invalid value credit: {} valid: {}",
+                        credit, valid
+                    );
+                    CycleType::NoTransaction
+                }
             }
         } else {
             eprintln!(

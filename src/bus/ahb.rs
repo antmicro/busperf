@@ -1,8 +1,8 @@
 use wellen::SignalValue;
 
 use crate::{
-    bus::{get_value, ValueType},
     CycleType,
+    bus::{ValueType, get_value},
 };
 
 use super::BusDescription;
