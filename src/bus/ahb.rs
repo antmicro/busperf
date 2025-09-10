@@ -1,6 +1,9 @@
 use wellen::SignalValue;
 
-use crate::CycleType;
+use crate::{
+    bus::{get_value, ValueType},
+    CycleType,
+};
 
 use super::BusDescription;
 
@@ -24,27 +27,28 @@ impl BusDescription for AHBBus {
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> crate::CycleType {
         let htrans = signals[0];
         let hready = signals[1];
-        if let Some(htrans) = htrans.to_bit_string()
-            && let Ok(hready) = hready.to_bit_string().unwrap().parse::<u32>()
-        {
+        if let SignalValue::Binary(htrans_v, 2) = htrans {
             /*
             00 - IDLE
             01 - BUSY
             10 - NOSEQ
             11 - SEQ
             */
-            match (htrans.as_str(), hready) {
-                ("11", 1) | ("10", 1) => CycleType::Busy,
-                ("00", 1) => CycleType::Free,
-                ("01", 1) => CycleType::NoData,
-                ("00", 0) | ("01", 0) => {
+            let hready_v = get_value(hready);
+            use ValueType::V0;
+            use ValueType::V1;
+            match (htrans_v[0], hready_v) {
+                (0b11, V1) | (0b10, V1) => CycleType::Busy,
+                (0b00, V1) => CycleType::Free,
+                (0b01, V1) => CycleType::NoData,
+                (0b00, V0) | (0b01, V0) => {
                     eprintln!(
                         "ahb bus in disallowed state htrans: {} hready: {}, time: {}",
                         htrans, hready, time
                     );
                     CycleType::Backpressure
                 }
-                (_, 0) => CycleType::Backpressure,
+                (_, V0) => CycleType::Backpressure,
                 _ => panic!(
                     "signal has invalid value hready: {} htrans: {}",
                     hready, htrans

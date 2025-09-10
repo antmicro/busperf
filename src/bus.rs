@@ -174,6 +174,24 @@ pub enum ValueType {
     // Z,
 }
 
+pub fn get_value(value: SignalValue) -> ValueType {
+    match value {
+        SignalValue::Binary(items, 1) => match items[0] {
+            0 => ValueType::V0,
+            1 => ValueType::V1,
+            _ => unreachable!(),
+        },
+        SignalValue::Binary(_, _) => panic!("get_value called on signal with more than one bit"),
+        SignalValue::FourValue(items, 1) => match items[0] {
+            _ => todo!(),
+        },
+        SignalValue::FourValue(_, _) => panic!("get_value called on signal with more than one bit"),
+        SignalValue::NineValue(_, _) => panic!("get_value called on nine value"),
+        SignalValue::String(_) => panic!("get_value called on string"),
+        SignalValue::Real(_) => panic!("get_value called on real"),
+    }
+}
+
 pub fn is_value_of_type(value: SignalValue, type_: ValueType) -> bool {
     match value {
         SignalValue::Binary(items, 1) => match type_ {
