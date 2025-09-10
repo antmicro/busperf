@@ -94,7 +94,12 @@ fn load_signals(
         .collect();
 
     let mut loaded = body.source.load_signals(&signal_refs, hierarchy, true);
-    loaded.sort_by_key(|(signal_ref, _)| signal_refs.iter().position(|s| s == signal_ref).unwrap());
+    loaded.sort_by_key(|(signal_ref, _)| {
+        signal_refs
+            .iter()
+            .position(|s| s == signal_ref)
+            .expect("There should be one loaded signal for each signal_ref")
+    });
     loaded
 }
 
@@ -165,7 +170,7 @@ fn print_statistics_internal<O>(
             "{}",
             generate_tabled(&header, &data, verbose, style.clone())
         )
-        .unwrap();
+        .expect("Writing table failed");
     }
 
     let multi_usage: Vec<&MultiChannelBusUsage> = usages
@@ -181,7 +186,8 @@ fn print_statistics_internal<O>(
             .iter()
             .map(|u| u.get_data(verbose, c2c, c2d, ld2c, delays))
             .collect();
-        writeln!(write, "{}", generate_tabled(&header, &data, verbose, style)).unwrap();
+        writeln!(write, "{}", generate_tabled(&header, &data, verbose, style))
+            .expect("Writing table failed");
     }
 }
 pub fn print_statistics(write: &mut impl Write, usages: &[&BusUsage], verbose: bool) {
@@ -202,10 +208,10 @@ pub fn generate_csv(write: &mut impl Write, usages: &[&BusUsage], verbose: bool)
         })
         .collect();
     let (header, delays, bursts) = get_header(&usages);
-    wtr.write_record(header).unwrap();
+    wtr.write_record(header).expect("Writing to csv failed");
     for u in usages {
         wtr.write_record(u.get_data(delays, bursts, verbose))
-            .unwrap();
+            .expect("Writing to csv failed");
     }
-    wtr.flush().unwrap();
+    wtr.flush().expect("Writing to csv failed");
 }

@@ -9,6 +9,7 @@ use crate::{
 
 use super::Analyzer;
 use pyo3::{prelude::*, types::PyTuple};
+use wellen::TimeTable;
 use yaml_rust2::Yaml;
 
 pub struct PythonAnalyzer {
@@ -65,7 +66,11 @@ impl AnalyzerInternal for PythonAnalyzer {
         load_signals(simulation_data, self.common.module_scope(), &signals)
     }
 
-    fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, wellen::Signal)>) {
+    fn calculate(
+        &mut self,
+        loaded: Vec<(wellen::SignalRef, wellen::Signal)>,
+        _time_table: &TimeTable,
+    ) {
         let (_, rst) = &loaded[1];
         let mut last = 0;
         let mut reset = 0;
@@ -83,7 +88,7 @@ impl AnalyzerInternal for PythonAnalyzer {
             .map(|(_, signal)| {
                 signal
                     .iter_changes()
-                    .map(|(t, v)| (t, v.to_bit_string().unwrap()))
+                    .map(|(t, v)| (t, v.to_bit_string().expect("Function never returns None")))
                     .collect::<Vec<(u32, String)>>()
             })
             .collect();
@@ -93,7 +98,7 @@ impl AnalyzerInternal for PythonAnalyzer {
             let res = self
                 .obj
                 .getattr(py, "analyze")?
-                .call1(py, PyTuple::new(py, loaded).unwrap())?;
+                .call1(py, PyTuple::new(py, loaded)?)?;
             res.extract(py)
         })
         .unwrap_or_else(|_| {
@@ -121,7 +126,7 @@ impl AnalyzerInternal for PythonAnalyzer {
 }
 
 impl Analyzer for PythonAnalyzer {
-    fn get_results(&self) -> &crate::BusUsage {
-        self.result.as_ref().unwrap()
+    fn get_results(&self) -> Option<&BusUsage> {
+        self.result.as_ref()
     }
 }

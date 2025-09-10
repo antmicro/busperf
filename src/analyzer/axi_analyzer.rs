@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use wellen::Signal;
+use wellen::{Signal, TimeTable};
 
 use crate::{
     BusUsage,
@@ -55,7 +55,10 @@ fn create_next_transaction_iter(signal: &Signal, clk: &Signal) -> impl Iterator<
     let mut next_time_iter = signal.iter_changes().map(|(t, _)| t);
     next_time_iter.next();
     next_time_iter.next();
-    let last_time = clk.time_indices().last().unwrap();
+    let last_time = clk
+        .time_indices()
+        .last()
+        .expect("Iterator should not be empty");
     next_time_iter.chain([*last_time, *last_time])
 }
 
@@ -109,7 +112,7 @@ impl AnalyzerInternal for AXIRdAnalyzer {
         load_signals(simulation_data, self.common.module_scope(), &signals)
     }
 
-    fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, Signal)>) {
+    fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, Signal)>, time_table: &TimeTable) {
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let (_, _arready) = &loaded[2];
@@ -121,7 +124,7 @@ impl AnalyzerInternal for AXIRdAnalyzer {
         let reset = count_reset(rst, self.common.rst_active_value());
 
         let next_time_iter = create_next_transaction_iter(arvalid, clk);
-        let last_time = clk.time_indices().last().unwrap();
+        let last_time = clk.time_indices().last().expect("Clock should have values");
 
         let mut usage = MultiChannelBusUsage::new(
             self.common.bus_name(),
@@ -146,19 +149,30 @@ impl AnalyzerInternal for AXIRdAnalyzer {
             while next_reset < time {
                 next_reset = rst.next().unwrap_or(*last_time);
             }
-            let (first_data, _) = rvalid
+            let Some((first_data, _)) = rvalid
                 .iter_changes()
                 .find(|(t, v)| *t >= time && is_value_of_type(*v, ValueType::V1))
-                .unwrap_or_else(|| panic!("time at error{}", time));
+            else {
+                eprintln!(
+                    "[WARN] Unfinished transaction at time: {}",
+                    time_table[time as usize]
+                );
+                continue;
+            };
             let resp_time = first_data;
             if next_reset < resp_time {
                 continue;
             }
             let last_write = first_data;
             let resp = r_resp
-                .get_value_at(&r_resp.get_offset(resp_time).unwrap(), 0)
+                .get_value_at(
+                    &r_resp
+                        .get_offset(resp_time)
+                        .expect("There should be a response available at response time"),
+                    0,
+                )
                 .to_bit_string()
-                .unwrap();
+                .expect("Function never returns None");
             let delay = next - resp_time;
             usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
         }
@@ -173,8 +187,8 @@ impl AnalyzerInternal for AXIRdAnalyzer {
 }
 
 impl Analyzer for AXIRdAnalyzer {
-    fn get_results(&self) -> &crate::BusUsage {
-        self.result.as_ref().unwrap()
+    fn get_results(&self) -> Option<&crate::BusUsage> {
+        self.result.as_ref()
     }
 }
 
@@ -200,7 +214,7 @@ impl AnalyzerInternal for AXIWrAnalyzer {
         self.common.bus_name()
     }
 
-    fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, Signal)>) {
+    fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, Signal)>, time_table: &TimeTable) {
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let (_, _awready) = &loaded[2];
@@ -213,7 +227,7 @@ impl AnalyzerInternal for AXIWrAnalyzer {
 
         let reset = count_reset(rst, self.common.rst_active_value());
         let next_transaction_iter = create_next_transaction_iter(awvalid, clk);
-        let last_time = clk.time_indices().last().unwrap();
+        let last_time = clk.time_indices().last().expect("Clock should have values");
 
         let mut usage = MultiChannelBusUsage::new(
             self.common.bus_name(),
@@ -227,28 +241,48 @@ impl AnalyzerInternal for AXIWrAnalyzer {
             if !is_value_of_type(value, ValueType::V1) {
                 continue;
             }
-            let (first_data, _) = wvalid
+            let Some((first_data, _)) = wvalid
                 .iter_changes()
                 .find(|(t, v)| *t >= time && is_value_of_type(*v, ValueType::V1))
-                .unwrap_or_else(|| panic!("time at error{}", time));
-            let (resp_time, _) = bvalid
+            else {
+                eprintln!(
+                    "[WARN Unfinished transaction at time: {}]",
+                    time_table[time as usize]
+                );
+                continue;
+            };
+            let Some((resp_time, _)) = bvalid
                 .iter_changes()
                 .find(|(t, v)| *t > time && is_value_of_type(*v, ValueType::V1))
-                .unwrap();
-            let (last_write, _) = wvalid
-                .iter_changes()
-                .max_by_key(|(t, v)| {
-                    if *t < time || *t > resp_time || is_value_of_type(*v, ValueType::V1) {
-                        0
-                    } else {
-                        *t
-                    }
-                })
-                .unwrap();
+            else {
+                eprintln!(
+                    "[WARN Unfinished transaction at time: {}]",
+                    time_table[time as usize]
+                );
+                continue;
+            };
+            let Some((last_write, _)) = wvalid.iter_changes().max_by_key(|(t, v)| {
+                if *t < time || *t > resp_time || is_value_of_type(*v, ValueType::V1) {
+                    0
+                } else {
+                    *t
+                }
+            }) else {
+                eprintln!(
+                    "[WARN Unfinished transaction at time: {}]",
+                    time_table[time as usize]
+                );
+                continue;
+            };
             let resp = b_resp
-                .get_value_at(&b_resp.get_offset(resp_time).unwrap(), 0)
+                .get_value_at(
+                    &b_resp
+                        .get_offset(resp_time)
+                        .expect("Response should be valid at response time"),
+                    0,
+                )
                 .to_bit_string()
-                .unwrap();
+                .expect("Function never returns None");
             let delay = next - resp_time;
             usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
         }
@@ -259,7 +293,7 @@ impl AnalyzerInternal for AXIWrAnalyzer {
 }
 
 impl Analyzer for AXIWrAnalyzer {
-    fn get_results(&self) -> &crate::BusUsage {
-        self.result.as_ref().unwrap()
+    fn get_results(&self) -> Option<&BusUsage> {
+        self.result.as_ref()
     }
 }

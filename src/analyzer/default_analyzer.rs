@@ -1,4 +1,4 @@
-use wellen::SignalValue;
+use wellen::{SignalValue, TimeTable};
 
 use crate::{
     BusUsage, CycleType, SingleChannelBusUsage,
@@ -49,7 +49,11 @@ impl AnalyzerInternal for DefaultAnalyzer {
         load_signals(simulation_data, self.common.module_scope(), &signals)
     }
 
-    fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, wellen::Signal)>) {
+    fn calculate(
+        &mut self,
+        loaded: Vec<(wellen::SignalRef, wellen::Signal)>,
+        time_table: &TimeTable,
+    ) {
         let (_, clock) = &loaded[0];
         let (_, reset) = &loaded[1];
         let mut usage =
@@ -62,10 +66,13 @@ impl AnalyzerInternal for DefaultAnalyzer {
             }
             // We subtract one to use values just before clock signal
             let time = time.saturating_sub(1);
-            let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
+            let reset =
+                reset.get_value_at(&reset.get_offset(time).expect("Value should be valid"), 0);
             let values: Vec<SignalValue> = loaded[2..]
                 .iter()
-                .map(|(_, s)| s.get_value_at(&s.get_offset(time).unwrap(), 0))
+                .map(|(_, s)| {
+                    s.get_value_at(&s.get_offset(time).expect("Value should be valid"), 0)
+                })
                 .collect();
 
             if !is_value_of_type(reset, self.common.rst_active_value()) {
@@ -80,9 +87,9 @@ impl AnalyzerInternal for DefaultAnalyzer {
                             state.push_str(&format!("{}: {}, ", name, value))
                         });
                     eprintln!(
-                        "[WARN] bus \"{}\" in unknown state outside reset at time index: {} - {}",
+                        "[WARN] bus \"{}\" in unknown state outside reset at time: {} - {}",
                         self.common.bus_name(),
-                        time,
+                        time_table[time as usize],
                         state
                     );
                 }
@@ -103,7 +110,7 @@ impl Analyzer for DefaultAnalyzer {
         self.result = Some(BusUsage::SingleChannel(usage));
     }
 
-    fn get_results(&self) -> &crate::BusUsage {
-        self.result.as_ref().unwrap()
+    fn get_results(&self) -> Option<&BusUsage> {
+        self.result.as_ref()
     }
 }

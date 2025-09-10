@@ -7,7 +7,7 @@ fn test(trace: &str, yaml: &str, max_burst_delay: u32, correct: &[BusUsage]) {
     for (desc, correct) in descs.iter_mut().zip(correct) {
         desc.analyze(&mut data, false);
         let usage = desc.get_results();
-        assert_eq!(usage, correct);
+        assert_eq!(usage, Some(correct));
     }
 }
 
@@ -318,8 +318,7 @@ fn axi_test() {
     .unwrap();
     for desc in descs.iter_mut() {
         desc.analyze(&mut data, false);
-        let usage = desc.get_results();
-        println!("{usage:?}");
+        assert!(matches!(desc.get_results(), Some(_)))
     }
     assert!(descs.len() == 3)
 }

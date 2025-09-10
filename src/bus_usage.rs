@@ -244,12 +244,12 @@ pub fn get_header(usages: &[&SingleChannelBusUsage]) -> (Vec<String>, usize, usi
         .iter()
         .map(|u| u.transaction_delay_buckets.len())
         .max()
-        .unwrap();
+        .unwrap_or(0);
     let bursts = usages
         .iter()
         .map(|u| u.burst_length_buckets.len())
         .max()
-        .unwrap();
+        .unwrap_or(0);
 
     let mut v = vec![
         String::from("bus_name"),
@@ -277,7 +277,7 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         .iter()
         .map(|u| u.cmd_to_completion.buckets_num())
         .max()
-        .unwrap();
+        .unwrap_or(1);
     v.push(String::from("0-0"));
     for i in 0..max1 - 1 {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
@@ -287,7 +287,7 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         .iter()
         .map(|u| u.cmd_to_first_data.buckets_num())
         .max()
-        .unwrap();
+        .unwrap_or(1);
     v.push(String::from("0-0"));
     for i in 0..max2 - 1 {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
@@ -297,7 +297,7 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         .iter()
         .map(|u| u.last_data_to_completion.buckets_num())
         .max()
-        .unwrap();
+        .unwrap_or(1);
     v.push(String::from("0-0"));
     for i in 0..max3 - 1 {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
@@ -307,7 +307,7 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         .iter()
         .map(|u| u.transaction_delays.buckets_num())
         .max()
-        .unwrap();
+        .unwrap_or(1);
     v.push(String::from("0-0"));
     for i in 0..max4 - 1 {
         v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
@@ -347,13 +347,16 @@ impl VecStatistic {
     }
 
     pub fn buckets_num(&self) -> u32 {
-        if self.data.is_empty() {
-            return 0;
+        match self.data.iter().max() {
+            Some(&max) => {
+                if max == 0 {
+                    1
+                } else {
+                    max.ilog2() + 2
+                }
+            }
+            None => 0,
         }
-        if *self.data.iter().max().unwrap() == 0 {
-            return 1;
-        }
-        self.data.iter().max().unwrap().ilog2() + 2
     }
 
     pub fn add(&mut self, value: CyclesNum) {

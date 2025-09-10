@@ -142,7 +142,13 @@ fn main() {
     for a in analyzers.iter_mut() {
         a.analyze(&mut data, args.verbose);
     }
-    let usages: Vec<&BusUsage> = analyzers.iter().map(|a| a.get_results()).collect();
+    let usages: Vec<&BusUsage> = analyzers
+        .iter()
+        .map(|a| {
+            a.get_results()
+                .expect("Results should be ready after analysis")
+        })
+        .collect();
     let mut out: &mut dyn std::io::Write = match args.output {
         None => &mut std::io::stdout(),
         Some(filename) => &mut std::fs::File::create(filename).unwrap(),

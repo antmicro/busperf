@@ -1,6 +1,6 @@
 use default_analyzer::DefaultAnalyzer;
 use python_analyzer::PythonAnalyzer;
-use wellen::{Signal, SignalRef, SignalValue};
+use wellen::{Signal, SignalRef, SignalValue, TimeTable};
 use yaml_rust2::Yaml;
 
 use crate::{
@@ -59,7 +59,7 @@ impl AnalyzerBuilder {
 pub trait AnalyzerInternal {
     fn bus_name(&self) -> &str;
     fn load_signals(&self, simulation_data: &mut SimulationData) -> Vec<(SignalRef, Signal)>;
-    fn calculate(&mut self, loaded: Vec<(SignalRef, Signal)>);
+    fn calculate(&mut self, loaded: Vec<(SignalRef, Signal)>, time_table: &TimeTable);
 }
 
 pub trait Analyzer: AnalyzerInternal {
@@ -71,12 +71,12 @@ pub trait Analyzer: AnalyzerInternal {
         }
 
         let start = std::time::Instant::now();
-        self.calculate(loaded);
+        self.calculate(loaded, &simulation_data.body.time_table);
         if verbose {
             println!("Calculating {} took {:?}", self.bus_name(), start.elapsed());
         }
     }
-    fn get_results(&self) -> &BusUsage;
+    fn get_results(&self) -> Option<&BusUsage>;
 }
 
 pub fn analyze_single_bus(
@@ -106,10 +106,21 @@ pub fn analyze_single_bus(
         }
         // We subtract one to use values just before clock signal
         let time = time.saturating_sub(1);
-        let reset = reset.get_value_at(&reset.get_offset(time).unwrap(), 0);
+        let reset = reset.get_value_at(
+            &reset
+                .get_offset(time)
+                .expect("Value should be valid at that time"),
+            0,
+        );
         let values: Vec<SignalValue> = loaded[2..]
             .iter()
-            .map(|(_, s)| s.get_value_at(&s.get_offset(time).unwrap(), 0))
+            .map(|(_, s)| {
+                s.get_value_at(
+                    &s.get_offset(time)
+                        .expect("Value should be valid at that time"),
+                    0,
+                )
+            })
             .collect();
 
         if !is_value_of_type(reset, common.rst_active_value()) {

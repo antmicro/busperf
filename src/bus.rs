@@ -37,8 +37,11 @@ impl BusCommon {
             .ok_or("Scope should be array of strings")?;
         let scope = scope
             .iter()
-            .map(|module| module.as_str().unwrap().to_owned())
-            .collect();
+            .map(|module| match module.as_str() {
+                Some(s) => Ok(s.to_owned()),
+                None => Err("Each module should be a valid string"),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         let clk = i["clock"].as_str().ok_or("Bus should have clock signal")?;
         let rst = i["reset"].as_str().ok_or("Bus should have reset signal")?;
         let rst_type = i["reset_type"]
