@@ -29,7 +29,10 @@ impl PythonCustomBus {
             }
         };
         path.push(format!("plugins/python/{}.py", class_name)); // add path to the plugin
-        let code = CString::new(std::fs::read_to_string(path)?)?;
+        let code = CString::new(
+            std::fs::read_to_string(path)
+                .map_err(|e| format!("Failed to load plugin {}, {}", class_name, e))?,
+        )?;
 
         let obj = Python::with_gil(|py| -> PyResult<Py<PyAny>> {
             let app: Py<PyAny> = PyModule::from_code(
