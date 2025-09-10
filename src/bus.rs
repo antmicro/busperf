@@ -171,7 +171,7 @@ pub enum ValueType {
     V0,
     V1,
     X,
-    // Z,
+    Z,
 }
 
 pub fn get_value(value: SignalValue) -> Option<ValueType> {
@@ -183,7 +183,10 @@ pub fn get_value(value: SignalValue) -> Option<ValueType> {
         },
         SignalValue::Binary(_, _) => None,
         SignalValue::FourValue(items, 1) => match items[0] {
-            _ => todo!(),
+            // if value was 0 or 1 then it would be Binary not FourValue
+            0b10 => Some(ValueType::X),
+            0b11 => Some(ValueType::Z),
+            _ => unreachable!(),
         },
         SignalValue::FourValue(_, _) => None,
         SignalValue::NineValue(_, _) => None,
@@ -198,11 +201,11 @@ pub fn is_value_of_type(value: SignalValue, type_: ValueType) -> bool {
             ValueType::V0 => items[0] == 0,
             ValueType::V1 => items[0] == 1,
             ValueType::X => false,
-            // ValueType::Z => false,
+            ValueType::Z => false,
         },
         SignalValue::Binary(_, _) => false,
         SignalValue::FourValue(items, 1) => {
-            println!("{items:?} = {}", value.to_bit_string().unwrap());
+            println!("{items:?} = {}", value);
             false
         }
         SignalValue::FourValue(_items, _) => panic!(),
