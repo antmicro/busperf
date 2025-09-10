@@ -74,7 +74,7 @@ macro_rules! build_from_yaml {
                 .ok_or("Name of bus should be a valid string")?;
             let common = BusCommon::from_yaml(name, dict, default_max_burst_delay)?;
             $(
-                let $bus_name = $bus_type::from_yaml(&dict["$x"])?;
+                let $bus_name = $bus_type::from_yaml(&dict[stringify!($bus_name)])?;
             )*
             $(
                 let $signal_name = dict$($signal_init)*;
