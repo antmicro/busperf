@@ -15,7 +15,7 @@ pub struct PythonCustomBus {
 
 impl PythonCustomBus {
     pub fn new(class_name: &str, i: &Yaml) -> Result<Self, Box<dyn std::error::Error>> {
-        // we want to search in the location of the binary
+        // if CARGO_MANIFEST_DIR is set we search in that directory if not we want to search in the location of the binary
         let mut path = match std::env::var("CARGO_MANIFEST_DIR") {
             Ok(path) => PathBuf::from(path),
             Err(_) => {
