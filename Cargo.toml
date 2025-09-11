@@ -13,6 +13,3 @@ pyo3 = { version = "0.25.1", default-features = false, features = ["auto-initial
 tabled = "0.20.0"
 wellen = "0.17.1"
 yaml-rust2 = "0.10.3"
-
-[build-dependencies]
-symlink = "0.1.0"
