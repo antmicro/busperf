@@ -261,7 +261,7 @@ pub fn get_header(usages: &[&SingleChannelBusUsage]) -> (Vec<String>, usize, usi
         String::from("delays between transactions "),
     ];
     for i in 0..delays {
-        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
+        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
     }
     v.push("burst lengths".to_string());
     for i in 0..bursts {
@@ -280,7 +280,7 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         .unwrap_or(1);
     v.push(String::from("0-0"));
     for i in 0..max1 - 1 {
-        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
+        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
     }
     v.push(String::from("cmd_to_first_data"));
     let max2 = usages
@@ -290,7 +290,7 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         .unwrap_or(1);
     v.push(String::from("0-0"));
     for i in 0..max2 - 1 {
-        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
+        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
     }
     v.push(String::from("last_data_to_completion"));
     let max3 = usages
@@ -300,7 +300,7 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         .unwrap_or(1);
     v.push(String::from("0-0"));
     for i in 0..max3 - 1 {
-        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
+        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
     }
     v.push(String::from("transaction delays"));
     let max4 = usages
@@ -310,7 +310,7 @@ pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, 
         .unwrap_or(1);
     v.push(String::from("0-0"));
     for i in 0..max4 - 1 {
-        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1).to_string());
+        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
     }
 
     v.append(&mut vec![
