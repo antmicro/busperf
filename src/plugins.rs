@@ -16,7 +16,7 @@ pub fn load_python_plugin(class_name: &str) -> Result<Py<PyAny>, Box<dyn Error>>
 
         app.call0(py)
     })
-    .map_err(|e| format!("Failed to load plugin {}, {}", class_name, e))?;
+    .map_err(|e| format!("Failed to load plugin {class_name}, {e}"))?;
     Ok(obj)
 }
 
@@ -34,6 +34,6 @@ fn load_python_code(class_name: &str) -> Result<CString, Box<dyn Error>> {
             }
         }
     };
-    path.push(format!("plugins/python/{}.py", class_name)); // add path to the plugin
+    path.push(format!("plugins/python/{class_name}.py")); // add path to the plugin
     Ok(CString::new(std::fs::read_to_string(path)?)?)
 }

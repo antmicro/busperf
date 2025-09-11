@@ -138,12 +138,12 @@ pub fn analyze_single_bus(
         if !is_value_of_type(reset, common.rst_active_value()) {
             let type_ = bus_desc.interpret_cycle(&values, time);
             if let CycleType::Unknown = type_ {
-                let mut state = String::from("");
+                let mut state = String::new();
                 bus_desc
                     .signals()
                     .iter()
                     .zip(values)
-                    .for_each(|(name, value)| state.push_str(&format!("{}: {}, ", name, value)));
+                    .for_each(|(name, value)| state.push_str(&format!("{name}: {value}, ")));
                 eprintln!(
                     "[WARN] bus \"{}\" in unknown state outside reset at time: {} - {}",
                     common.bus_name(),
