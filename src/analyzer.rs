@@ -67,13 +67,21 @@ pub trait Analyzer: AnalyzerInternal {
         let start = std::time::Instant::now();
         let loaded = self.load_signals(simulation_data);
         if verbose {
-            println!("Loading {} took {:?}", self.bus_name(), start.elapsed());
+            println!(
+                "Loading signals for {} took {:?}",
+                self.bus_name(),
+                start.elapsed()
+            );
         }
 
         let start = std::time::Instant::now();
         self.calculate(loaded, &simulation_data.body.time_table);
         if verbose {
-            println!("Calculating {} took {:?}", self.bus_name(), start.elapsed());
+            println!(
+                "Calculating statistics for {} took {:?}",
+                self.bus_name(),
+                start.elapsed()
+            );
         }
     }
     fn get_results(&self) -> Option<&BusUsage>;
@@ -93,7 +101,11 @@ pub fn analyze_single_bus(
     let (_, clock) = &loaded[0];
     let (_, reset) = &loaded[1];
     if verbose {
-        println!("Loading took {:?}", start.elapsed());
+        println!(
+            "Loading signals for {} took {:?}",
+            common.bus_name(),
+            start.elapsed()
+        );
     }
 
     let start = std::time::Instant::now();
@@ -147,7 +159,11 @@ pub fn analyze_single_bus(
     }
     usage.end();
     if verbose {
-        println!("calculating took {:?}", start.elapsed());
+        println!(
+            "Calculating statistics for {} took {:?}",
+            common.bus_name(),
+            start.elapsed()
+        );
     }
 
     usage
