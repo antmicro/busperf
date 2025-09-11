@@ -22,3 +22,5 @@ build:
     - cargo clippy -- -Dwarnings
     - cargo build --tests
     - cargo test
+    - cargo build --tests --release
+    - cargo test --release
