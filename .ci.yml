@@ -11,6 +11,8 @@ build:
     - apt update -qq &> /dev/null
     - apt install --yes curl gcc python3 python3-setuptools libpython3-dev git &> /dev/null
     - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &> /dev/null
+    - source ~/.cargo/env
+    - cargo install cargo-deny
     - git clone https://github.com/antmicro/tuttest.git
     - cd tuttest
     - python3 setup.py build &> /dev/null
@@ -19,6 +21,7 @@ build:
   script:
     - source ~/.cargo/env
     - cargo fmt --check
+    - cargo-deny check
     - cargo clippy -- -Dwarnings
     - cargo test
     - cargo test --release
