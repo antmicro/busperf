@@ -47,7 +47,14 @@ impl AnalyzerBuilder {
                         dict,
                         default_max_burst_delay,
                     )?;
-                    Box::new(PythonAnalyzer::new(custom, common, dict)?)
+                    Box::new(PythonAnalyzer::new(
+                        custom,
+                        common,
+                        dict,
+                        window_length,
+                        x_rate,
+                        y_rate,
+                    )?)
                 }
             }
         } else {
@@ -85,6 +92,10 @@ pub trait Analyzer: AnalyzerInternal {
         }
     }
     fn get_results(&self) -> Option<&BusUsage>;
+    fn finished_analysis(&self) -> bool {
+        self.get_results().is_some()
+    }
+    fn get_signals(&self) -> Vec<String>;
 }
 
 pub fn analyze_single_bus(
@@ -109,7 +120,11 @@ pub fn analyze_single_bus(
     }
 
     let start = std::time::Instant::now();
-    let mut usage = SingleChannelBusUsage::new(common.bus_name(), common.max_burst_delay());
+    let mut usage = SingleChannelBusUsage::new(
+        common.bus_name(),
+        common.max_burst_delay(),
+        simulation_data.body.time_table[2],
+    );
     for (time, value) in clock.iter_changes() {
         if let SignalValue::Binary(v, 1) = value
             && v[0] == 0
@@ -157,7 +172,6 @@ pub fn analyze_single_bus(
             usage.add_cycle(CycleType::Reset);
         }
     }
-    usage.end();
     if verbose {
         println!(
             "Calculating statistics for {} took {:?}",

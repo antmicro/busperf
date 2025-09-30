@@ -1,5 +1,6 @@
-use busperf::*;
+use busperf::{bus_usage::Period, *};
 
+// helper function to check if analyzer returns expected result
 fn test(trace: &str, yaml: &str, max_burst_delay: u32, correct: &[BusUsage]) {
     let mut data = load_simulation_trace(trace, false);
     let mut descs = load_bus_analyzers(yaml, max_burst_delay, 10000, 0.0006, 0.00001).unwrap();
@@ -11,50 +12,18 @@ fn test(trace: &str, yaml: &str, max_burst_delay: u32, correct: &[BusUsage]) {
     }
 }
 
+// test dump.vcd - ready/valid with 2 iterfaces
 #[test]
 fn dump() {
-    let correct_a = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
-        "a_",
-        0,
-        0,
-        15,
-        0,
-        0,
-        15,
-        vec![30],
-        0,
-        vec![0, 0, 0, 0, 1],
-        vec![],
-        vec![],
-        0,
-        0,
-        0,
-    ));
-    let correct_b = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
-        "b_",
-        0,
-        0,
-        15,
-        0,
-        0,
-        15,
-        vec![30],
-        0,
-        vec![0, 0, 0, 0, 1],
-        vec![],
-        vec![],
-        0,
-        0,
-        0,
-    ));
     test(
         "tests/test_dumps/dump.vcd",
         "tests/test_dumps/dump.yaml",
         0,
-        &[correct_a, correct_b],
+        &[correct_dump_a(), correct_dump_b()],
     );
 }
 
+// test dump.vcd with reset type set to high
 #[test]
 fn dump_rst_high() {
     let correct_a = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
@@ -65,14 +34,11 @@ fn dump_rst_high() {
         0,
         0,
         15,
-        vec![15],
+        vec![Period::literal(30000, 58000, 15)],
+        vec![Period::literal(0, 28000, 15)],
         0,
-        vec![0, 0, 0, 1],
-        vec![15],
-        vec![0, 0, 0, 1],
-        0,
-        1,
-        0,
+        bus_usage::CurrentlyCalculating::Delay,
+        2000,
     ));
     let correct_b = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
         "b_",
@@ -82,14 +48,11 @@ fn dump_rst_high() {
         0,
         0,
         15,
-        vec![30],
-        0,
-        vec![0, 0, 0, 0, 1],
-        vec![],
+        vec![Period::literal(0, 58000, 30)],
         vec![],
         0,
-        0,
-        0,
+        bus_usage::CurrentlyCalculating::Delay,
+        2000,
     ));
     test(
         "tests/test_dumps/dump.vcd",
@@ -99,60 +62,29 @@ fn dump_rst_high() {
     );
 }
 
+// test test.vcd - ready/valid, one interface
 #[test]
 fn basic() {
-    let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
-        "test",
-        9,
-        5,
-        3,
-        0,
-        3,
-        1,
-        vec![1, 2, 1, 6, 2],
-        5,
-        vec![2, 2, 1],
-        vec![4, 1, 2, 1, 1],
-        vec![3, 1, 1],
-        0,
-        4,
-        0,
-    ));
     test(
         "tests/test_dumps/test.vcd",
         "tests/test_dumps/test.yaml",
         0,
-        &[correct],
+        &[correct_test()],
     );
 }
 
+// test longer path to signals
 #[test]
 fn basic_scopes() {
-    let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
-        "test",
-        9,
-        5,
-        3,
-        0,
-        3,
-        1,
-        vec![1, 2, 1, 6, 2],
-        5,
-        vec![2, 2, 1],
-        vec![4, 1, 2, 1, 1],
-        vec![3, 1, 1],
-        0,
-        4,
-        0,
-    ));
     test(
         "tests/test_dumps/test_complex_scope.vcd",
         "tests/test_dumps/test_complex_scope.yaml",
         0,
-        &[correct],
+        &[correct_test()],
     );
 }
 
+// test whether max_burst_delay functions correctly
 #[test]
 fn basic_max_burst_delay() {
     let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
@@ -162,14 +94,11 @@ fn basic_max_burst_delay() {
         3,
         0,
         3,
-        1,
-        vec![6],
-        1,
-        vec![0, 0, 1],
-        vec![11, 4],
-        vec![0, 0, 1, 1],
-        6,
-        1,
+        2,
+        vec![Period::literal(0, 2, 2), Period::literal(24, 34, 6)],
+        vec![Period::literal(4, 22, 10), Period::literal(36, 42, 4)],
+        2,
+        bus_usage::CurrentlyCalculating::Burst,
         2,
     ));
     test(
@@ -180,6 +109,7 @@ fn basic_max_burst_delay() {
     );
 }
 
+// test for credit/valid bus
 #[test]
 fn credit_valid() {
     let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
@@ -190,14 +120,21 @@ fn credit_valid() {
         3,
         3,
         1,
-        vec![1, 2, 1, 3],
-        4,
-        vec![2, 2],
-        vec![4, 1, 2, 7],
-        vec![1, 1, 2],
+        vec![
+            Period::literal(0, 0, 1),
+            Period::literal(10, 12, 2),
+            Period::literal(16, 16, 1),
+            Period::literal(22, 26, 3),
+        ],
+        vec![
+            Period::literal(2, 8, 4),
+            Period::literal(14, 14, 1),
+            Period::literal(18, 20, 2),
+            Period::literal(28, 40, 7),
+        ],
         0,
-        3,
-        0,
+        bus_usage::CurrentlyCalculating::Burst,
+        2,
     ));
     test(
         "tests/test_dumps/credit_valid.vcd",
@@ -207,6 +144,7 @@ fn credit_valid() {
     );
 }
 
+// test for ahb bus
 #[test]
 fn ahb() {
     let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
@@ -217,14 +155,23 @@ fn ahb() {
         0,
         5,
         1,
-        vec![1, 2, 1, 6, 2],
-        5,
-        vec![2, 2, 1],
-        vec![4, 1, 2, 1, 1],
-        vec![3, 1, 1],
+        vec![
+            Period::literal(0, 0, 1),
+            Period::literal(10, 12, 2),
+            Period::literal(16, 16, 1),
+            Period::literal(22, 32, 6),
+            Period::literal(36, 38, 2),
+        ],
+        vec![
+            Period::literal(2, 8, 4),
+            Period::literal(14, 14, 1),
+            Period::literal(18, 20, 2),
+            Period::literal(34, 34, 1),
+            Period::literal(40, 40, 1),
+        ],
         0,
-        4,
-        0,
+        bus_usage::CurrentlyCalculating::Burst,
+        2,
     ));
     test(
         "tests/test_dumps/ahb.vcd",
@@ -234,77 +181,29 @@ fn ahb() {
     );
 }
 
+// test python ready/valid plugin on test.vcd
 #[test]
 fn python() {
-    let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
-        "test",
-        9,
-        5,
-        3,
-        0,
-        3,
-        1,
-        vec![1, 2, 1, 6, 2],
-        5,
-        vec![2, 2, 1],
-        vec![4, 1, 2, 1, 1],
-        vec![3, 1, 1],
-        0,
-        4,
-        0,
-    ));
     test(
         "tests/test_dumps/test.vcd",
         "tests/test_dumps/python_test.yaml",
         0,
-        &[correct],
+        &[correct_test()],
     );
 }
 
+// test python ready/valid plugin on dump.vcd
 #[test]
 fn python_dump() {
-    let correct_a = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
-        "a_",
-        0,
-        0,
-        15,
-        0,
-        0,
-        15,
-        vec![30],
-        0,
-        vec![0, 0, 0, 0, 1],
-        vec![],
-        vec![],
-        0,
-        0,
-        0,
-    ));
-    let correct_b = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
-        "b_",
-        0,
-        0,
-        15,
-        0,
-        0,
-        15,
-        vec![30],
-        0,
-        vec![0, 0, 0, 0, 1],
-        vec![],
-        vec![],
-        0,
-        0,
-        0,
-    ));
     test(
         "tests/test_dumps/dump.vcd",
         "tests/test_dumps/python_dump.yaml",
         0,
-        &[correct_a, correct_b],
+        &[correct_dump_a(), correct_dump_b()],
     );
 }
 
+// test multichannel axi analyzer
 #[test]
 fn axi_test() {
     let mut data = load_simulation_trace("tests/test_dumps/axi.vcd", false);
@@ -321,4 +220,69 @@ fn axi_test() {
         assert!(matches!(desc.get_results(), Some(_)))
     }
     assert!(descs.len() == 3)
+}
+
+// functions returning correct usages for tests
+
+fn correct_test() -> BusUsage {
+    BusUsage::SingleChannel(SingleChannelBusUsage::literal(
+        "test",
+        9,
+        5,
+        3,
+        0,
+        3,
+        2,
+        vec![
+            Period::literal(0, 2, 2),
+            Period::literal(12, 14, 2),
+            Period::literal(18, 18, 1),
+            Period::literal(24, 34, 6),
+            Period::literal(38, 40, 2),
+        ],
+        vec![
+            Period::literal(4, 10, 4),
+            Period::literal(16, 16, 1),
+            Period::literal(20, 22, 2),
+            Period::literal(36, 36, 1),
+            Period::literal(42, 42, 1),
+        ],
+        0,
+        bus_usage::CurrentlyCalculating::Burst,
+        2,
+    ))
+}
+
+fn correct_dump_a() -> BusUsage {
+    BusUsage::SingleChannel(SingleChannelBusUsage::literal(
+        "a_",
+        0,
+        0,
+        15,
+        0,
+        0,
+        15,
+        vec![Period::literal(0, 58000, 30)],
+        vec![],
+        0,
+        bus_usage::CurrentlyCalculating::Delay,
+        2000,
+    ))
+}
+
+fn correct_dump_b() -> BusUsage {
+    BusUsage::SingleChannel(SingleChannelBusUsage::literal(
+        "b_",
+        0,
+        0,
+        15,
+        0,
+        0,
+        15,
+        vec![Period::literal(0, 58000, 30)],
+        vec![],
+        0,
+        bus_usage::CurrentlyCalculating::Delay,
+        2000,
+    ))
 }

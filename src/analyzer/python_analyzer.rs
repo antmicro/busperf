@@ -17,6 +17,9 @@ pub struct PythonAnalyzer {
     obj: Py<PyAny>,
     result: Option<BusUsage>,
     signals: Vec<String>,
+    window_length: u32,
+    x_rate: f32,
+    y_rate: f32,
 }
 
 impl PythonAnalyzer {
@@ -24,6 +27,9 @@ impl PythonAnalyzer {
         class_name: &str,
         common: BusCommon,
         i: &Yaml,
+        window_length: u32,
+        x_rate: f32,
+        y_rate: f32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let obj = load_python_plugin(class_name)?;
 
@@ -47,6 +53,9 @@ impl PythonAnalyzer {
             obj,
             result: None,
             signals,
+            window_length,
+            x_rate,
+            y_rate,
         })
     }
 }
@@ -69,7 +78,7 @@ impl AnalyzerInternal for PythonAnalyzer {
     fn calculate(
         &mut self,
         loaded: Vec<(wellen::SignalRef, wellen::Signal)>,
-        _time_table: &TimeTable,
+        time_table: &TimeTable,
     ) {
         let (_, rst) = &loaded[1];
         let mut last = 0;
@@ -107,17 +116,19 @@ impl AnalyzerInternal for PythonAnalyzer {
                 self.common.bus_name()
             )
         });
-        let mut usage =
-            MultiChannelBusUsage::new(self.common.bus_name(), 10000, 0.0006, 0.00001, reset);
-        for (start_time, resp_time, last_write, first_data, resp_code, delay_to_next) in results {
-            usage.add_transaction(
-                start_time,
-                resp_time,
-                last_write,
-                first_data,
-                &resp_code,
-                delay_to_next,
-            );
+        let mut usage = MultiChannelBusUsage::new(
+            self.common.bus_name(),
+            self.window_length,
+            time_table[2],
+            self.x_rate,
+            self.y_rate,
+            reset as u64 * time_table[1],
+        );
+        for (time, resp_time, last_write, first_data, resp, next) in results {
+            let [time, resp_time, last_write, first_data, next] =
+                [time, resp_time, last_write, first_data, next].map(|i| time_table[i as usize]);
+            let delay = next - resp_time;
+            usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
         }
         usage.end(reset);
 
@@ -128,5 +139,22 @@ impl AnalyzerInternal for PythonAnalyzer {
 impl Analyzer for PythonAnalyzer {
     fn get_results(&self) -> Option<&BusUsage> {
         self.result.as_ref()
+    }
+
+    fn finished_analysis(&self) -> bool {
+        self.result.is_some()
+    }
+
+    fn get_signals(&self) -> Vec<String> {
+        let scope = self.common.module_scope().join(".");
+        let mut signals = vec![
+            format!("{}.{}", scope, self.common.clk_name()),
+            format!("{}.{}", scope, self.common.rst_name()),
+        ];
+        self.signals
+            .iter()
+            .map(|s| format!("{scope}.{s}"))
+            .for_each(|s| signals.push(s));
+        signals
     }
 }

@@ -5,7 +5,6 @@ use std::{
 };
 
 use analyzer::{Analyzer, AnalyzerBuilder};
-use bus_usage::{MultiChannelBusUsage, get_header, get_header_multi};
 use wellen::{
     Hierarchy, LoadOptions,
     viewers::{self, BodyResult},
@@ -14,11 +13,15 @@ use yaml_rust2::YamlLoader;
 
 mod analyzer;
 mod bus;
-mod bus_usage;
+pub mod bus_usage;
 mod plugins;
 
 pub use bus_usage::BusUsage;
 pub use bus_usage::SingleChannelBusUsage;
+
+mod egui_visualization;
+mod surfer_integration;
+mod text_output;
 
 use bus::CyclesNum;
 
@@ -113,105 +116,57 @@ pub enum CycleType {
     Unknown,
 }
 
-fn generate_tabled<O>(
-    header: &Vec<String>,
-    data: &Vec<Vec<String>>,
-    _verbose: bool,
-    style: O,
-) -> tabled::Table
-where
-    O: tabled::settings::TableOption<
-            tabled::grid::records::vec_records::VecRecords<
-                tabled::grid::records::vec_records::Text<String>,
-            >,
-            tabled::grid::config::ColoredConfig,
-            tabled::grid::dimension::CompleteDimension,
-        >,
-{
-    let mut builder = tabled::builder::Builder::new();
-    builder.push_record(header);
-    for u in data {
-        builder.push_record(u);
-    }
-    let mut t = builder.build();
-    t.with(style);
-    t
+pub enum OutputType {
+    Pretty,
+    Csv,
+    Md,
+    Rendered,
 }
 
-fn print_statistics_internal<O>(
-    write: &mut impl Write,
-    usages: &[&BusUsage],
+impl TryFrom<&str> for OutputType {
+    type Error = &'static str;
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "text" => Ok(Self::Pretty),
+            "csv" => Ok(Self::Csv),
+            "md" => Ok(Self::Md),
+            "gui" => Ok(Self::Rendered),
+            _ => Err("Expected one of [csv, md, gui, text]"),
+        }
+    }
+}
+
+pub fn show_data(
+    mut analyzers: Vec<Box<dyn Analyzer>>,
+    type_: OutputType,
+    out: Option<&mut impl Write>,
+    simulation_data: &mut SimulationData,
+    trace_path: &str,
     verbose: bool,
-    style: O,
-) where
-    O: tabled::settings::TableOption<
-            tabled::grid::records::vec_records::VecRecords<
-                tabled::grid::records::vec_records::Text<String>,
-            >,
-            tabled::grid::config::ColoredConfig,
-            tabled::grid::dimension::CompleteDimension,
-        > + Clone,
-{
-    let single_usages: Vec<&SingleChannelBusUsage> = usages
-        .iter()
-        .filter_map(|u| match u {
-            BusUsage::SingleChannel(single) => Some(single),
-            _ => None,
-        })
-        .collect();
-    if !single_usages.is_empty() {
-        let (header, delays, bursts) = get_header(&single_usages);
-        let data = single_usages
-            .iter()
-            .map(|u| u.get_data(delays, bursts, verbose))
-            .collect();
-        writeln!(
-            write,
-            "{}",
-            generate_tabled(&header, &data, verbose, style.clone())
-        )
-        .expect("Writing table failed");
+) {
+    for a in analyzers.iter_mut() {
+        if !a.finished_analysis() {
+            a.analyze(simulation_data, verbose);
+        }
     }
 
-    let multi_usage: Vec<&MultiChannelBusUsage> = usages
-        .iter()
-        .filter_map(|u| match u {
-            BusUsage::MultiChannel(multi) => Some(multi),
-            _ => None,
-        })
-        .collect();
-    if !multi_usage.is_empty() {
-        let (header, c2c, c2d, ld2c, delays) = get_header_multi(&multi_usage);
-        let data = multi_usage
-            .iter()
-            .map(|u| u.get_data(verbose, c2c, c2d, ld2c, delays))
-            .collect();
-        writeln!(write, "{}", generate_tabled(&header, &data, verbose, style))
-            .expect("Writing table failed");
+    match type_ {
+        OutputType::Pretty => {
+            text_output::print_statistics(out.unwrap(), &analyzers, verbose);
+        }
+        OutputType::Csv => text_output::generate_csv(out.unwrap(), &analyzers, verbose),
+        OutputType::Md => text_output::generate_md_table(out.unwrap(), &analyzers, verbose),
+        OutputType::Rendered => egui_visualization::run_visualization(
+            analyzers,
+            trace_path,
+            simulation_data
+                .hierarchy
+                .timescale()
+                .unwrap_or(wellen::Timescale {
+                    factor: 1,
+                    unit: wellen::TimescaleUnit::Seconds,
+                })
+                .unit,
+        ),
     }
-}
-pub fn print_statistics(write: &mut impl Write, usages: &[&BusUsage], verbose: bool) {
-    print_statistics_internal(write, usages, verbose, tabled::settings::Style::rounded());
-}
-
-pub fn generate_md_table(write: &mut impl Write, usages: &[&BusUsage], verbose: bool) {
-    print_statistics_internal(write, usages, verbose, tabled::settings::Style::markdown());
-}
-
-pub fn generate_csv(write: &mut impl Write, usages: &[&BusUsage], verbose: bool) {
-    let mut wtr = csv::Writer::from_writer(write);
-    let usages: Vec<&SingleChannelBusUsage> = usages
-        .iter()
-        .filter_map(|u| match u {
-            BusUsage::SingleChannel(single) => Some(single),
-            _ => None,
-        })
-        .collect();
-    let (header, delays, bursts) = get_header(&usages);
-    wtr.write_record(header).expect("Writing to csv failed");
-    for u in usages {
-        wtr.write_record(u.get_data(delays, bursts, verbose))
-            .expect("Writing to csv failed");
-    }
-    wtr.flush().expect("Writing to csv failed");
 }

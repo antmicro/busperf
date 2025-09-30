@@ -56,8 +56,12 @@ impl AnalyzerInternal for DefaultAnalyzer {
     ) {
         let (_, clock) = &loaded[0];
         let (_, reset) = &loaded[1];
-        let mut usage =
-            SingleChannelBusUsage::new(self.common.bus_name(), self.common.max_burst_delay());
+        let clock_period = time_table[2];
+        let mut usage = SingleChannelBusUsage::new(
+            self.common.bus_name(),
+            self.common.max_burst_delay(),
+            clock_period,
+        );
         for (time, value) in clock.iter_changes() {
             if let SignalValue::Binary(v, 1) = value
                 && v[0] == 0
@@ -99,7 +103,6 @@ impl AnalyzerInternal for DefaultAnalyzer {
                 usage.add_cycle(CycleType::Reset);
             }
         }
-        usage.end();
         self.result = Some(BusUsage::SingleChannel(usage));
     }
 }
@@ -112,5 +115,23 @@ impl Analyzer for DefaultAnalyzer {
 
     fn get_results(&self) -> Option<&BusUsage> {
         self.result.as_ref()
+    }
+
+    fn finished_analysis(&self) -> bool {
+        self.result.is_some()
+    }
+
+    fn get_signals(&self) -> Vec<String> {
+        let scope = self.common.module_scope().join(".");
+        let mut signals = vec![
+            format!("{}.{}", scope, self.common.clk_name()),
+            format!("{}.{}", scope, self.common.rst_name()),
+        ];
+        self.bus_desc
+            .signals()
+            .iter()
+            .map(|&s| format!("{scope}.{s}"))
+            .for_each(|s| signals.push(s));
+        signals
     }
 }

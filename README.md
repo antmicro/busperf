@@ -88,31 +88,31 @@ or
 - Prints statistics about bus described in test.yaml trace in test.vcd
 <!-- name="example-test" -->
 ```
-cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml
+cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml --text
 ```
 
 - Prints all statistics sets max burst delay to 1
 <!-- name="example-test-verbose" -->
 ```
-cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml --verbose -m 1
+cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml --verbose -m 1 --text
 ```
 
 - Writes statistics to `stat.csv` formated as csv
 <!-- name="example-csv" -->
 ```
-cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o stat.csv -t csv
+cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o stat.csv --csv
 ```
 
 - Prints statistics to stdout as md
 <!-- name="example-md" -->
 ```
-cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml -t md
+cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml --md
 ```
 
 - Writes pretty printed statistics to `out`
 <!-- name="example-pretty" -->
 ```
-cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o out
+cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o out --text
 ```
 
 - Clean files generated from examples

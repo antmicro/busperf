@@ -27,10 +27,9 @@ class AXIRdAnalyzer:
             if next_reset < first_data:
                 continue
             last_data = first_data
-            delay = next_time - resp_time
             resp = next(filter(lambda r: r[0] <= resp_time, r_resp))
 
-            transactions.append((time, resp_time, last_data, first_data, resp[1], delay))
+            transactions.append((time, resp_time, last_data, first_data, resp[1], next_time))
         return transactions
 
 def create():

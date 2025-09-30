@@ -1,5 +1,4 @@
 pub type CyclesNum = u32;
-pub type DelaysNum = u32;
 
 pub mod ahb;
 pub mod axi;
@@ -187,8 +186,8 @@ pub fn get_value(value: SignalValue) -> Option<ValueType> {
         SignalValue::Binary(_, _) => None,
         SignalValue::FourValue(items, 1) => match items[0] {
             // if value was 0 or 1 then it would be Binary not FourValue
-            0b10 => Some(ValueType::X),
-            0b11 => Some(ValueType::Z),
+            66 => Some(ValueType::X),
+            67 => Some(ValueType::Z),
             _ => unreachable!(),
         },
         SignalValue::FourValue(_, _) => None,
@@ -207,10 +206,7 @@ pub fn is_value_of_type(value: SignalValue, type_: ValueType) -> bool {
             ValueType::Z => false,
         },
         SignalValue::Binary(_, _) => false,
-        SignalValue::FourValue(items, 1) => {
-            println!("{items:?} = {}", value);
-            false
-        }
+        SignalValue::FourValue(_items, 1) => false,
         SignalValue::FourValue(_items, _) => panic!(),
         SignalValue::NineValue(_items, _) => todo!(),
         SignalValue::String(_) => false,

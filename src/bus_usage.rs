@@ -1,16 +1,111 @@
-use crate::{
-    CycleType,
-    bus::{CyclesNum, DelaysNum},
-};
+use crate::{CycleType, bus::CyclesNum};
+use std::collections::HashMap;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub enum BusUsage {
     SingleChannel(SingleChannelBusUsage),
     MultiChannel(MultiChannelBusUsage),
 }
 
+impl BusUsage {
+    pub fn get_name(&self) -> &str {
+        match self {
+            BusUsage::SingleChannel(single_channel_bus_usage) => &single_channel_bus_usage.bus_name,
+            BusUsage::MultiChannel(multi_channel_bus_usage) => &multi_channel_bus_usage.bus_name,
+        }
+    }
+    pub fn get_statistics<'a>(&'a self) -> Vec<Statistic<'a>> {
+        match self {
+            BusUsage::SingleChannel(single_channel_bus_usage) => {
+                single_channel_bus_usage.get_statistics()
+            }
+            BusUsage::MultiChannel(multi_channel_bus_usage) => {
+                multi_channel_bus_usage.get_statistics()
+            }
+        }
+    }
+}
+
+pub enum Statistic<'a> {
+    Percentage(PercentageStatistic),
+    Bucket(BucketsStatistic<'a>),
+    Timeline(TimelineStatistic),
+}
+
+pub struct PercentageStatistic {
+    pub name: &'static str,
+    pub data_labels: Vec<(f32, &'static str)>,
+    pub description: &'static str,
+}
+
+impl PercentageStatistic {
+    pub fn new(
+        name: &'static str,
+        data_labels: Vec<(f32, &'static str)>,
+        description: &'static str,
+    ) -> Self {
+        PercentageStatistic {
+            name,
+            data_labels,
+            description,
+        }
+    }
+
+    pub fn display(&self) -> String {
+        self.data_labels
+            .iter()
+            .map(|(v, l)| format!("{l}: {v}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
+pub struct TimelineStatistic {
+    pub name: &'static str,
+    pub values: Vec<[f64; 2]>,
+    pub display: String,
+    pub description: &'static str,
+}
+
+impl TimelineStatistic {
+    pub fn get_data(&self) -> &Vec<[f64; 2]> {
+        &self.values
+    }
+    pub fn get_bounds(data: &[[f64; 2]]) -> (f64, f64, f64, f64) {
+        let min_x = *data
+            .iter()
+            .map(|[x, _]| x)
+            .min_by(|a, b| a.total_cmp(b))
+            .unwrap();
+        let max_x = *data
+            .iter()
+            .map(|[x, _]| x)
+            .max_by(|a, b| a.total_cmp(b))
+            .unwrap();
+        let min_y = *data
+            .iter()
+            .map(|[_, y]| y)
+            .min_by(|a, b| a.total_cmp(b))
+            .unwrap();
+        let max_y = *data
+            .iter()
+            .map(|[_, y]| y)
+            .max_by(|a, b| a.total_cmp(b))
+            .unwrap();
+        (min_x, max_x, min_y, max_y)
+    }
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum CurrentlyCalculating {
+    None,
+    Burst,
+    Delay,
+    Pause(u32),
+}
+
 /// Contains statistics for a single channel bus
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct SingleChannelBusUsage {
     pub bus_name: String,
     busy: CyclesNum,
@@ -19,27 +114,59 @@ pub struct SingleChannelBusUsage {
     no_transaction: CyclesNum,
     free: CyclesNum,
     reset: CyclesNum,
-    transaction_delays: Vec<CyclesNum>,
-    // Temporary value used during calculation
-    current_delay: usize,
-    transaction_delay_buckets: Vec<DelaysNum>,
-    burst_lengths: Vec<CyclesNum>,
-    burst_length_buckets: Vec<u32>,
-    // Total numer of cycles of delays during bursts
-    burst_delays: CyclesNum,
-    // Temporary value used during calculation
-    current_burst: usize,
-    // Maximum number of cycles that can occur during a burst, if delay is longer than this that means that those are separate transactions
+
+    transaction_delays: Vec<Period>,
+    burst_lengths: Vec<Period>,
+    current: CurrentlyCalculating,
+
     max_burst_delay: CyclesNum,
+    clk_period: RealTime,
 }
+
 impl SingleChannelBusUsage {
+    pub fn get_statistics<'a>(&'a self) -> Vec<Statistic<'a>> {
+        Vec::from([
+            Statistic::Percentage(self.get_cycles()),
+            Statistic::Bucket(BucketsStatistic {
+                name: "Transaction delays",
+                data: &self.transaction_delays,
+                clk_to_time: self.clk_period,
+                color: "Red",
+                description: "Delays between transaction in clock cycles",
+            }),
+            Statistic::Bucket(BucketsStatistic {
+                name: "Burst lengths",
+                data: &self.burst_lengths,
+                clk_to_time: self.clk_period,
+                color: "Blue",
+                description: "Burst lengths in clock cycles",
+            }),
+        ])
+    }
+    pub fn get_cycles(&self) -> PercentageStatistic {
+        PercentageStatistic {
+            data_labels: vec![
+                (self.busy as f32, "Busy"),
+                (self.backpressure as f32, "Backpressure"),
+                (self.no_data as f32, "No data"),
+                (self.no_transaction as f32, "No transaction"),
+                (self.free as f32, "Free"),
+                (self.reset as f32, "Reset"),
+            ],
+            name: "Cycles",
+            description: "How many clock cycles was bus in each state",
+        }
+    }
     pub fn reset(&self) -> CyclesNum {
         self.reset
     }
-
     /// Creates SingleChannelBusUsage with all statistics initialized to 0.
     /// To fill it with data use add_cycle() method for every cycle in the simulation. Later call end() to finish calculations.
-    pub(crate) fn new(name: &str, max_burst_delay: CyclesNum) -> SingleChannelBusUsage {
+    pub(crate) fn new(
+        name: &str,
+        max_burst_delay: CyclesNum,
+        clk_to_time: u64,
+    ) -> SingleChannelBusUsage {
         SingleChannelBusUsage {
             bus_name: name.to_owned(),
             busy: 0,
@@ -48,14 +175,11 @@ impl SingleChannelBusUsage {
             no_transaction: 0,
             free: 0,
             reset: 0,
-            transaction_delays: vec![0],
-            current_delay: 0,
-            transaction_delay_buckets: vec![],
-            burst_lengths: vec![0],
-            current_burst: 0,
-            burst_length_buckets: vec![],
-            burst_delays: 0,
+            transaction_delays: vec![],
+            burst_lengths: vec![],
+            current: CurrentlyCalculating::None,
             max_burst_delay,
+            clk_period: clk_to_time,
         }
     }
 
@@ -69,24 +193,39 @@ impl SingleChannelBusUsage {
     }
 
     fn add_busy_cycle(&mut self) {
-        self.busy += 1;
-        self.burst_lengths[self.current_burst] += 1;
-
-        let transaction_delay = self.transaction_delays[self.current_delay];
-        if transaction_delay > 0 {
-            if transaction_delay > self.max_burst_delay {
-                self.transaction_delays.push(0);
-                self.current_delay += 1;
-                let bucket = transaction_delay.ilog2() as usize;
-                if self.transaction_delay_buckets.len() <= bucket {
-                    self.transaction_delay_buckets.resize(bucket + 1, 0);
-                }
-                self.transaction_delay_buckets[bucket] += 1;
-            } else {
-                self.burst_delays += transaction_delay;
+        match self.current {
+            CurrentlyCalculating::None => {
+                self.burst_lengths
+                    .push(Period::with_duration(0, 1, self.clk_period));
+                self.current = CurrentlyCalculating::Burst;
             }
-            self.transaction_delays[self.current_delay] = 0;
+            CurrentlyCalculating::Burst => {
+                self.burst_lengths
+                    .last_mut()
+                    .expect("Should have at least one")
+                    .add_cycle(self.clk_period);
+            }
+            CurrentlyCalculating::Delay => {
+                let delay = self
+                    .transaction_delays
+                    .last()
+                    .expect("Should have at least one");
+                self.burst_lengths.push(Period::with_duration(
+                    delay.end() + self.clk_period,
+                    1,
+                    self.clk_period,
+                ));
+                self.current = CurrentlyCalculating::Burst;
+            }
+            CurrentlyCalculating::Pause(duration) => {
+                self.burst_lengths
+                    .last_mut()
+                    .expect("Should have at least one")
+                    .add_n_cycles(duration + 1, self.clk_period);
+                self.current = CurrentlyCalculating::Burst;
+            }
         }
+        self.busy += 1;
     }
 
     fn add_wasted_cycle(&mut self, t: CycleType) {
@@ -99,50 +238,52 @@ impl SingleChannelBusUsage {
             CycleType::Busy => unreachable!(),
             CycleType::Unknown => self.no_transaction += 1,
         }
-        self.transaction_delays[self.current_delay] += 1;
-        let transaction_delay = self.transaction_delays[self.current_delay];
-        let burst_length = self.burst_lengths[self.current_burst];
-        if transaction_delay > self.max_burst_delay {
-            if burst_length > transaction_delay - 1 {
-                let actual_length = burst_length - self.max_burst_delay;
-                self.burst_lengths[self.current_burst] -= self.max_burst_delay;
-                self.burst_lengths.push(0);
-                self.current_burst += 1;
-                let bucket = actual_length.ilog2() as usize;
-                if self.burst_length_buckets.len() <= bucket {
-                    self.burst_length_buckets.resize(bucket + 1, 0);
+        match self.current {
+            CurrentlyCalculating::None => {
+                self.transaction_delays
+                    .push(Period::with_duration(0, 1, self.clk_period));
+                self.current = CurrentlyCalculating::Delay
+            }
+            CurrentlyCalculating::Burst => {
+                if self.max_burst_delay == 0 {
+                    let transaction_end = self
+                        .burst_lengths
+                        .last()
+                        .expect("Should have at least one")
+                        .end();
+                    self.transaction_delays.push(Period::with_duration(
+                        transaction_end + self.clk_period,
+                        1,
+                        self.clk_period,
+                    ));
+                    self.current = CurrentlyCalculating::Delay;
+                } else {
+                    self.current = CurrentlyCalculating::Pause(1);
                 }
-                self.burst_length_buckets[bucket] += 1;
             }
-            self.burst_lengths[self.current_burst] = 0;
-        } else {
-            self.burst_lengths[self.current_burst] += 1;
-        }
-    }
-
-    /// Cleans up temporary values in bucket statistics and makes this struct ready for display
-    // TODO: maybe we should split SingleChannelBusUsage into 2 structs: one used for accumulating statistics
-    // and other with valid results that would be a result of that method
-    pub(crate) fn end(&mut self) {
-        let burst_length = self.burst_lengths[self.current_burst];
-        if burst_length > 0 {
-            let bucket = burst_length.ilog2() as usize;
-            if self.burst_length_buckets.len() <= bucket {
-                self.burst_length_buckets.resize(bucket + 1, 0);
+            CurrentlyCalculating::Delay => {
+                self.transaction_delays
+                    .last_mut()
+                    .expect("Should have at least one")
+                    .add_cycle(self.clk_period);
             }
-            self.burst_length_buckets[bucket] += 1;
-        } else {
-            self.burst_lengths.pop();
-        }
-        let transaction_delay = self.transaction_delays[self.current_delay];
-        if transaction_delay > 0 {
-            let bucket = transaction_delay.ilog2() as usize;
-            if self.transaction_delay_buckets.len() <= bucket {
-                self.transaction_delay_buckets.resize(bucket + 1, 0);
+            CurrentlyCalculating::Pause(duration) => {
+                if duration + 1 > self.max_burst_delay {
+                    let transaction_end = self
+                        .burst_lengths
+                        .last()
+                        .expect("Should have at least one")
+                        .end();
+                    self.transaction_delays.push(Period::with_duration(
+                        transaction_end + self.clk_period,
+                        duration + 1,
+                        self.clk_period,
+                    ));
+                    self.current = CurrentlyCalculating::Delay;
+                } else {
+                    self.current = CurrentlyCalculating::Pause(duration + 1);
+                }
             }
-            self.transaction_delay_buckets[bucket] += 1;
-        } else {
-            self.transaction_delays.pop();
         }
     }
 
@@ -177,10 +318,11 @@ impl SingleChannelBusUsage {
             String::from("")
         });
 
-        for num in self.transaction_delay_buckets.iter() {
+        let buckets = BucketsStatistic::new("", &self.transaction_delays, 0, "", "").get_buckets();
+        for num in buckets.iter() {
             v.push(num.to_string());
         }
-        for _ in 0..delays_num - self.transaction_delay_buckets.len() {
+        for _ in 0..delays_num - buckets.len() {
             v.push(String::from("0"));
         }
 
@@ -190,10 +332,11 @@ impl SingleChannelBusUsage {
             String::from("")
         });
 
-        for num in self.burst_length_buckets.iter() {
+        let buckets = BucketsStatistic::new("", &self.transaction_delays, 0, "", "").get_buckets();
+        for num in buckets.iter() {
             v.push(num.to_string());
         }
-        for _ in 0..bursts_num - self.burst_length_buckets.len() {
+        for _ in 0..bursts_num - buckets.len() {
             v.push(String::from("0"));
         }
         v
@@ -209,14 +352,11 @@ impl SingleChannelBusUsage {
         no_transaction: CyclesNum,
         free: CyclesNum,
         reset: CyclesNum,
-        transaction_delays: Vec<CyclesNum>,
-        current_delay: usize,
-        transaction_delay_buckets: Vec<DelaysNum>,
-        burst_lengths: Vec<CyclesNum>,
-        burst_length_buckets: Vec<u32>,
-        burst_delays: CyclesNum,
-        current_burst: usize,
+        transaction_delays: Vec<Period>,
+        burst_lengths: Vec<Period>,
         max_burst_delay: CyclesNum,
+        current: CurrentlyCalculating,
+        clk_to_time: u64,
     ) -> SingleChannelBusUsage {
         SingleChannelBusUsage {
             bus_name: bus_name.to_owned(),
@@ -227,117 +367,61 @@ impl SingleChannelBusUsage {
             free,
             reset,
             transaction_delays,
-            current_delay,
-            transaction_delay_buckets,
             burst_lengths,
-            burst_length_buckets,
-            burst_delays,
-            current_burst,
             max_burst_delay,
+            current,
+            clk_period: clk_to_time,
         }
     }
 }
 
-/// Returns values for a header of text output
-pub fn get_header(usages: &[&SingleChannelBusUsage]) -> (Vec<String>, usize, usize) {
-    let delays = usages
-        .iter()
-        .map(|u| u.transaction_delay_buckets.len())
-        .max()
-        .unwrap_or(0);
-    let bursts = usages
-        .iter()
-        .map(|u| u.burst_length_buckets.len())
-        .max()
-        .unwrap_or(0);
-
-    let mut v = vec![
-        String::from("bus_name"),
-        String::from("busy(%)"),
-        String::from("no transaction(%)"),
-        String::from("backpressure(%)"),
-        String::from("no data to send(%)"),
-        String::from("free(%)"),
-        String::from("delays between transactions "),
-    ];
-    for i in 0..delays {
-        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
-    }
-    v.push("burst lengths".to_string());
-    for i in 0..bursts {
-        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
-    }
-    (v, delays, bursts)
+#[derive(PartialEq, Debug, Clone)]
+pub struct BucketsStatistic<'a> {
+    pub name: &'static str,
+    pub data: &'a Vec<Period>,
+    pub clk_to_time: u64,
+    pub color: &'static str,
+    pub description: &'static str,
 }
 
-/// Returns values for a header of text output
-pub fn get_header_multi(usages: &[&MultiChannelBusUsage]) -> (Vec<String>, u32, u32, u32, u32) {
-    let mut v = vec![String::from("bus_name"), String::from("cmd_to_completion")];
-    let max1 = usages
-        .iter()
-        .map(|u| u.cmd_to_completion.buckets_num())
-        .max()
-        .unwrap_or(1);
-    v.push(String::from("0-0"));
-    for i in 0..max1 - 1 {
-        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
+impl<'a> BucketsStatistic<'a> {
+    pub fn new(
+        name: &'static str,
+        data: &'a Vec<Period>,
+        clk_to_time: u64,
+        color: &'static str,
+        description: &'static str,
+    ) -> BucketsStatistic<'a> {
+        BucketsStatistic {
+            name,
+            data,
+            clk_to_time,
+            color,
+            description,
+        }
     }
-    v.push(String::from("cmd_to_first_data"));
-    let max2 = usages
-        .iter()
-        .map(|u| u.cmd_to_first_data.buckets_num())
-        .max()
-        .unwrap_or(1);
-    v.push(String::from("0-0"));
-    for i in 0..max2 - 1 {
-        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
-    }
-    v.push(String::from("last_data_to_completion"));
-    let max3 = usages
-        .iter()
-        .map(|u| u.last_data_to_completion.buckets_num())
-        .max()
-        .unwrap_or(1);
-    v.push(String::from("0-0"));
-    for i in 0..max3 - 1 {
-        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
-    }
-    v.push(String::from("transaction delays"));
-    let max4 = usages
-        .iter()
-        .map(|u| u.transaction_delays.buckets_num())
-        .max()
-        .unwrap_or(1);
-    v.push(String::from("0-0"));
-    for i in 0..max4 - 1 {
-        v.push(format!("{}-{}", 1 << i, (1 << (i + 1)) - 1));
-    }
+    pub fn get_data(&self) -> HashMap<u32, usize> {
+        let mut buckets = HashMap::new();
+        for v in self.data.iter() {
+            let v = v.duration;
+            match buckets.get_mut(&v) {
+                Some(num) => {
+                    *num += 1;
+                }
 
-    v.append(&mut vec![
-        String::from("error rate"),
-        String::from("averaged_bandwidth"),
-        String::from("bandwidth_above_x_rate"),
-        String::from("bandwidth_below_y_rate"),
-    ]);
-    (v, max1, max2, max3, max4)
-}
-
-/// Statistic that should be represented in buckets
-#[derive(PartialEq, Debug)]
-pub struct VecStatistic {
-    name: &'static str,
-    data: Vec<CyclesNum>,
-}
-
-impl VecStatistic {
-    pub fn new(name: &'static str) -> VecStatistic {
-        VecStatistic { name, data: vec![] }
+                None => {
+                    buckets.insert(v, 1);
+                }
+            }
+        }
+        buckets
     }
     /// Returns values of the buckets
     pub fn get_buckets(&self) -> Vec<usize> {
         let mut buckets = vec![];
         for v in self.data.iter() {
-            let bucket = if *v == 0 { 0 } else { (v.ilog2() + 1) as usize };
+            let v: u32 = v.duration;
+            let bucket = if v == 0 { 0 } else { (v.ilog2() + 1) as usize };
             if buckets.len() <= bucket {
                 buckets.resize(bucket + 1, 0);
             }
@@ -345,10 +429,28 @@ impl VecStatistic {
         }
         buckets
     }
+    pub fn get_data_of_value(&self, value: u32) -> Vec<Period> {
+        self.data
+            .iter()
+            .filter(|d| d.duration == value)
+            .copied()
+            .collect()
+    }
+    pub fn get_data_for_bucket(&self, bucket_num: usize) -> Vec<Period> {
+        self.data
+            .iter()
+            .filter(|d| {
+                let v = d.duration;
+                let bucket = if v == 0 { 0 } else { (v.ilog2() + 1) as usize };
+                bucket == bucket_num
+            })
+            .copied()
+            .collect()
+    }
 
     pub fn buckets_num(&self) -> u32 {
-        match self.data.iter().max() {
-            Some(&max) => {
+        match self.data.iter().map(|d| d.duration).max() {
+            Some(max) => {
                 if max == 0 {
                     1
                 } else {
@@ -359,99 +461,249 @@ impl VecStatistic {
         }
     }
 
-    pub fn add(&mut self, value: CyclesNum) {
-        self.data.push(value);
+    pub fn display(&self) -> String {
+        let name = self.name;
+        if let Some(min) = self.data.iter().map(|d| d.duration).min()
+            && let Some(max) = self.data.iter().map(|d| d.duration).max()
+        {
+            format!("{name}: {min}-{max} clock cycles")
+        } else {
+            format!("{name}: no data")
+        }
     }
+}
 
-    pub fn len(&self) -> usize {
-        self.data.len()
+pub type RealTime = u64;
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub struct Period {
+    start: RealTime,
+    end: RealTime,
+    duration: CyclesNum,
+}
+
+impl Period {
+    pub fn new(start: RealTime, end: RealTime, clk_period: RealTime) -> Self {
+        let duration = ((end - start) / clk_period) as u32;
+        Self {
+            start,
+            end,
+            duration,
+        }
+    }
+    pub fn from_delay(start: RealTime, delay: RealTime, clk_period: RealTime) -> Self {
+        let end = start + delay;
+        let duration = (delay / clk_period) as u32;
+        Self {
+            start,
+            end,
+            duration,
+        }
+    }
+    pub fn with_duration(start: RealTime, duration: CyclesNum, clk_period: RealTime) -> Self {
+        let end = start + (duration - 1) as u64 * clk_period;
+        Self {
+            start,
+            end,
+            duration,
+        }
+    }
+    pub fn literal(start: RealTime, end: RealTime, duration: CyclesNum) -> Self {
+        Self {
+            start,
+            end,
+            duration,
+        }
+    }
+    #[inline]
+    pub fn add_cycle(&mut self, clk_period: RealTime) {
+        self.add_n_cycles(1, clk_period);
+    }
+    pub fn add_n_cycles(&mut self, n: CyclesNum, clk_period: RealTime) {
+        let added_time = n as u64 * clk_period;
+        self.end += added_time;
+        self.duration += n;
+    }
+    pub fn start(&self) -> RealTime {
+        self.start
+    }
+    pub fn end(&self) -> RealTime {
+        self.end
+    }
+    pub fn duration(&self) -> CyclesNum {
+        self.duration
     }
 }
 
 /// Contains statistics for a multichannel bus
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct MultiChannelBusUsage {
     pub bus_name: String,
-    cmd_to_completion: VecStatistic,
-    cmd_to_first_data: VecStatistic,
-    last_data_to_completion: VecStatistic,
-    transaction_delays: VecStatistic,
-    transaction_times: Vec<(u32, u32)>,
+    cmd_to_completion: Vec<Period>,
+    cmd_to_first_data: Vec<Period>,
+    last_data_to_completion: Vec<Period>,
+    transaction_delays: Vec<Period>,
     error_rate: f32,
-    // Temporary value - number of failed transactions
-    error_num: u32,
+    errors: Vec<RealTime>,
     // Temporary value - number of correct transactions
     correct_num: u32,
     averaged_bandwidth: f32,
-    bandwidth_windows: Vec<f32>,
+    bandwidth_windows: Vec<f64>,
     window_length: u32,
+    clock_period: RealTime,
     bandwidth_above_x_rate: f32,
     bandwidth_below_y_rate: f32,
     pub channels_usages: Vec<SingleChannelBusUsage>,
-    time: u32,
+    time: RealTime,
     /// We have a statistic that calculates % of time that the bandwidth was ABOVE this value
-    x_rate: f32,
+    x_rate: f64,
     /// We have a statistic that calculates % of time that the bandwidth was BELOW this value
-    y_rate: f32,
+    y_rate: f64,
 }
 
 impl MultiChannelBusUsage {
     /// Creates empty MultiChannelBusUsage with all statistics initialized to zero. Should be filled with add_transaction()
-    pub fn new(bus_name: &str, window_length: u32, x_rate: f32, y_rate: f32, time: u32) -> Self {
+    pub fn new(
+        bus_name: &str,
+        window_length: u32,
+        clock_period: RealTime,
+        x_rate: f32,
+        y_rate: f32,
+        time: RealTime,
+    ) -> Self {
         MultiChannelBusUsage {
             bus_name: bus_name.to_owned(),
-            cmd_to_completion: VecStatistic::new("cmd to completion"),
-            cmd_to_first_data: VecStatistic::new("cmd to first data"),
-            last_data_to_completion: VecStatistic::new("last data to completion"),
-            transaction_delays: VecStatistic::new("transaction_delays"),
-            transaction_times: vec![],
+            cmd_to_completion: vec![],
+            cmd_to_first_data: vec![],
+            last_data_to_completion: vec![],
+            transaction_delays: vec![],
             error_rate: 0.0,
-            error_num: 0,
+            errors: vec![],
             correct_num: 0,
             averaged_bandwidth: 0.0,
             bandwidth_windows: vec![],
             window_length,
+            clock_period,
             bandwidth_above_x_rate: 0.0,
             bandwidth_below_y_rate: 0.0,
             channels_usages: vec![],
             time,
-            x_rate,
-            y_rate,
+            x_rate: x_rate as f64,
+            y_rate: y_rate as f64,
         }
+    }
+
+    pub fn get_statistics<'a>(&'a self) -> Vec<Statistic<'a>> {
+        let window_to_time = (self.clock_period * self.window_length as u64) as f64;
+        Vec::from([
+            Statistic::Bucket(BucketsStatistic::new(
+                "Cmd to completion",
+                &self.cmd_to_completion,
+                self.clock_period,
+                "Red",
+                "Number of clock cycles from issuing a command to receving a reponse.",
+            )),
+            Statistic::Bucket(BucketsStatistic::new(
+                "Cmd to first data",
+                &self.cmd_to_first_data,
+                self.clock_period,
+                "Blue",
+                "Number of clock cycles from issuing a command to first data being transfered.",
+            )),
+            Statistic::Bucket(BucketsStatistic::new(
+                "Last data to completion",
+                &self.last_data_to_completion,
+                self.clock_period,
+                "Green",
+                "Number of clock cycles from last data being transfered to transaction end.",
+            )),
+            Statistic::Bucket(BucketsStatistic::new(
+                "Transaction delays",
+                &self.transaction_delays,
+                self.clock_period,
+                "Pink",
+                "Delays between transactions in clock cycles",
+            )),
+            Statistic::Timeline(TimelineStatistic {
+                name: "Error rate",
+                values: vec![],
+                display: format!("Error rate: {:.2}%", self.error_rate * 100.0),
+                description: "Percentage of transactions that resulted in error.",
+            }),
+            Statistic::Timeline(TimelineStatistic {
+                name: "Bandwidth",
+                values: self
+                    .bandwidth_windows
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| [i as f64 * window_to_time / 2.0, *v])
+                    .collect::<Vec<_>>(),
+                display: format!("Bandwidth: {:.4} t/clk", self.averaged_bandwidth),
+                description: "Averaged bandwidth in transactions per clock cycle.",
+            }),
+            Statistic::Timeline(TimelineStatistic {
+                name: "x rate",
+                values: vec![
+                    [0.0, self.x_rate],
+                    [
+                        self.bandwidth_windows.len() as f64 * window_to_time / 2.0,
+                        self.x_rate,
+                    ],
+                ],
+                display: format!(
+                    "Bandwidth above x rate: {:.2}%",
+                    self.bandwidth_above_x_rate * 100.0
+                ),
+                description: "Percentage value of time during which bandwidth was higher than x rate.",
+            }),
+            Statistic::Timeline(TimelineStatistic {
+                name: "y rate",
+                values: vec![
+                    [0.0, self.y_rate],
+                    [
+                        self.bandwidth_windows.len() as f64 * window_to_time / 2.0,
+                        self.y_rate,
+                    ],
+                ],
+                display: format!(
+                    "Bandwidth below y rate: {:.2}%",
+                    self.bandwidth_below_y_rate * 100.0
+                ),
+                description: "Percentage value of time during which bandwidth was smaller than y rate.",
+            }),
+        ])
     }
 
     /// Updates statistics given new transaction. When all transactions are added you should call end() to finish calculation of statistics.
     pub fn add_transaction(
         &mut self,
-        time: u32,
-        resp_time: u32,
-        last_write: u32,
-        first_data: u32,
+        time: RealTime,
+        resp_time: RealTime,
+        last_write: RealTime,
+        first_data: RealTime,
         resp: &str,
-        delay: u32,
+        delay: RealTime,
     ) {
-        self.cmd_to_completion.add((resp_time - time) / 2);
-        self.cmd_to_first_data.add((first_data - time) / 2);
+        self.cmd_to_completion
+            .push(Period::new(time, resp_time, self.clock_period));
+        self.cmd_to_first_data
+            .push(Period::new(time, first_data, self.clock_period));
         self.last_data_to_completion
-            .add((resp_time - last_write) / 2);
+            .push(Period::new(last_write, resp_time, self.clock_period));
         if resp.ends_with("00") || resp.ends_with("01") {
             self.correct_num += 1;
         } else {
-            self.error_num += 1;
+            self.errors.push(time)
         }
-        self.transaction_delays.add(delay);
-        self.transaction_times.push((time, resp_time));
+        self.transaction_delays
+            .push(Period::from_delay(resp_time, delay, self.clock_period));
         self.time = resp_time + delay;
     }
 
-    fn transaction_coverage_in_window(
-        &self,
-        (start, end): (u32, u32),
-        window_num: u32,
-        offset: u32,
-    ) -> f32 {
-        let win_start = window_num * self.window_length + offset;
-        let win_end = (window_num + 1) * self.window_length + offset;
+    fn transaction_coverage_in_window(&self, period: Period, window_num: u32, offset: u32) -> f32 {
+        let (start, end) = (period.start(), period.end());
+        let win_start = (window_num * self.window_length + offset) as u64 * self.clock_period;
+        let win_end = ((window_num + 1) * self.window_length + offset) as u64 * self.clock_period;
 
         (win_end.min(end).saturating_sub(win_start.max(start))) as f32 / (end - start) as f32
     }
@@ -459,26 +711,33 @@ impl MultiChannelBusUsage {
     /// Finishes calculation of statistics and makes sure that all temporary values are already taken into account
     // TODO: maybe we should split this struct in two as we should with SingleChannelBusUsage
     pub fn end(&mut self, time_in_reset: u32) {
-        self.error_rate = self.error_num as f32 / (self.correct_num + self.error_num) as f32;
-        self.averaged_bandwidth =
-            self.cmd_to_first_data.len() as f32 / (self.time - time_in_reset) as f32;
+        let error_num = self.errors.len() as u32;
+        self.error_rate = error_num as f32 / (self.correct_num + error_num) as f32;
+        self.averaged_bandwidth = self.cmd_to_first_data.len() as f32
+            / (self.time - time_in_reset as u64 * self.clock_period) as f32
+            * self.clock_period as f32;
 
-        for i in 0..(self.time / self.window_length) + 1 {
+        for i in 0..(self.time / self.window_length as u64 / self.clock_period) + 1 {
             let half = self.window_length / 2;
             let num: f32 = self
-                .transaction_times
+                .cmd_to_completion
                 .iter()
-                .map(|t| self.transaction_coverage_in_window(*t, i, 0))
+                .map(|t| self.transaction_coverage_in_window(*t, i as u32, 0))
                 .sum();
-            self.bandwidth_windows.push(num / self.window_length as f32);
+            self.bandwidth_windows
+                .push(num as f64 / self.window_length as f64);
 
-            if self.time as i32 - (self.window_length * i + half) as i32 > 0 {
+            if self.time as i64
+                - (self.window_length * i as u32 + half) as i64 * self.clock_period as i64
+                > 0
+            {
                 let num: f32 = self
-                    .transaction_times
+                    .cmd_to_completion
                     .iter()
-                    .map(|t| self.transaction_coverage_in_window(*t, i, half))
+                    .map(|t| self.transaction_coverage_in_window(*t, i as u32, half))
                     .sum();
-                self.bandwidth_windows.push(num / self.window_length as f32);
+                self.bandwidth_windows
+                    .push(num as f64 / self.window_length as f64);
             }
         }
 
@@ -495,67 +754,5 @@ impl MultiChannelBusUsage {
             .filter(|&b| *b < self.y_rate)
             .count() as f32
             / self.bandwidth_windows.len() as f32;
-    }
-
-    /// Returns data of all statistics as Strings for text output purposes
-    pub fn get_data(
-        &self,
-        verbose: bool,
-        c2c: u32,
-        c2d: u32,
-        ld2c: u32,
-        delays: u32,
-    ) -> Vec<String> {
-        let mut v = vec![self.bus_name.clone()];
-        v.push(if verbose {
-            format!("{:?}", self.cmd_to_completion.data)
-        } else {
-            String::from("")
-        });
-        for num in self.cmd_to_completion.get_buckets().iter() {
-            v.push(num.to_string());
-        }
-        for _ in 0..c2c - self.cmd_to_completion.buckets_num() {
-            v.push(String::from("0"));
-        }
-        v.push(if verbose {
-            format!("{:?}", self.cmd_to_first_data.data)
-        } else {
-            String::from("")
-        });
-        for num in self.cmd_to_first_data.get_buckets().iter() {
-            v.push(num.to_string());
-        }
-        for _ in 0..c2d - self.cmd_to_first_data.buckets_num() {
-            v.push(String::from("0"));
-        }
-        v.push(if verbose {
-            format!("{:?}", self.last_data_to_completion.data)
-        } else {
-            String::from("")
-        });
-        for num in self.last_data_to_completion.get_buckets().iter() {
-            v.push(num.to_string());
-        }
-        for _ in 0..ld2c - self.last_data_to_completion.buckets_num() {
-            v.push(String::from("0"));
-        }
-        v.push(if verbose {
-            format!("{:?}", self.transaction_delays.data)
-        } else {
-            String::from("")
-        });
-        for num in self.transaction_delays.get_buckets().iter() {
-            v.push(num.to_string());
-        }
-        for _ in 0..delays - self.transaction_delays.buckets_num() {
-            v.push(String::from("0"));
-        }
-        v.push(self.error_rate.to_string());
-        v.push(self.averaged_bandwidth.to_string());
-        v.push(self.bandwidth_above_x_rate.to_string());
-        v.push(self.bandwidth_below_y_rate.to_string());
-
-        v
     }
 }

@@ -125,13 +125,15 @@ impl AnalyzerInternal for AXIRdAnalyzer {
 
         let next_time_iter = create_next_transaction_iter(arvalid, clk);
         let last_time = clk.time_indices().last().expect("Clock should have values");
+        let clock_period = time_table[2];
 
         let mut usage = MultiChannelBusUsage::new(
             self.common.bus_name(),
             self.window_length,
+            clock_period,
             self.x_rate,
             self.y_rate,
-            *last_time,
+            time_table[*last_time as usize],
         );
 
         let mut rst = rst.iter_changes().filter_map(|(t, v)| {
@@ -173,6 +175,8 @@ impl AnalyzerInternal for AXIRdAnalyzer {
                 )
                 .to_bit_string()
                 .expect("Function never returns None");
+            let [time, resp_time, last_write, first_data, next] =
+                [time, resp_time, last_write, first_data, next].map(|i| time_table[i as usize]);
             let delay = next - resp_time;
             usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
         }
@@ -189,6 +193,25 @@ impl AnalyzerInternal for AXIRdAnalyzer {
 impl Analyzer for AXIRdAnalyzer {
     fn get_results(&self) -> Option<&crate::BusUsage> {
         self.result.as_ref()
+    }
+    fn get_signals(&self) -> Vec<String> {
+        let scope = self.common.module_scope().join(".");
+        let mut signals = vec![
+            format!("{}.{}", scope, self.common.clk_name()),
+            format!("{}.{}", scope, self.common.rst_name()),
+        ];
+        self.ar
+            .signals()
+            .iter()
+            .map(|&s| format!("{scope}.{s}"))
+            .for_each(|s| signals.push(s));
+        self.r
+            .signals()
+            .iter()
+            .map(|&s| format!("{scope}.{s}"))
+            .for_each(|s| signals.push(s));
+        signals.push(format!("{scope}.{}", self.r_resp));
+        signals
     }
 }
 
@@ -228,13 +251,15 @@ impl AnalyzerInternal for AXIWrAnalyzer {
         let reset = count_reset(rst, self.common.rst_active_value());
         let next_transaction_iter = create_next_transaction_iter(awvalid, clk);
         let last_time = clk.time_indices().last().expect("Clock should have values");
+        let clock_period = time_table[2];
 
         let mut usage = MultiChannelBusUsage::new(
             self.common.bus_name(),
             self.window_length,
+            clock_period,
             self.x_rate,
             self.y_rate,
-            *last_time,
+            time_table[*last_time as usize],
         );
 
         for ((time, value), next) in awvalid.iter_changes().zip(next_transaction_iter) {
@@ -283,6 +308,8 @@ impl AnalyzerInternal for AXIWrAnalyzer {
                 )
                 .to_bit_string()
                 .expect("Function never returns None");
+            let [time, resp_time, last_write, first_data, next] =
+                [time, resp_time, last_write, first_data, next].map(|i| time_table[i as usize]);
             let delay = next - resp_time;
             usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
         }
@@ -295,5 +322,29 @@ impl AnalyzerInternal for AXIWrAnalyzer {
 impl Analyzer for AXIWrAnalyzer {
     fn get_results(&self) -> Option<&BusUsage> {
         self.result.as_ref()
+    }
+    fn get_signals(&self) -> Vec<String> {
+        let scope = self.common.module_scope().join(".");
+        let mut signals = vec![
+            format!("{}.{}", scope, self.common.clk_name()),
+            format!("{}.{}", scope, self.common.rst_name()),
+        ];
+        self.aw
+            .signals()
+            .iter()
+            .map(|&s| format!("{scope}.{s}"))
+            .for_each(|s| signals.push(s));
+        self.w
+            .signals()
+            .iter()
+            .map(|&s| format!("{scope}.{s}"))
+            .for_each(|s| signals.push(s));
+        self.b
+            .signals()
+            .iter()
+            .map(|&s| format!("{scope}.{s}"))
+            .for_each(|s| signals.push(s));
+        signals.push(format!("{scope}.{}", self.b_resp));
+        signals
     }
 }
