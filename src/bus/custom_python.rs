@@ -1,4 +1,4 @@
-use crate::plugins::load_python_plugin;
+use crate::{bus::SignalPath, plugins::load_python_plugin};
 
 use super::BusDescription;
 use pyo3::{
@@ -10,11 +10,15 @@ use yaml_rust2::Yaml;
 
 pub struct PythonCustomBus {
     obj: Py<PyAny>,
-    signals: Vec<String>,
+    signals: Vec<SignalPath>,
 }
 
 impl PythonCustomBus {
-    pub fn new(class_name: &str, i: &Yaml) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_yaml(
+        class_name: &str,
+        i: &Yaml,
+        bus_scope: &[String],
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let obj = load_python_plugin(class_name)?;
         let signals = Python::with_gil(|py| -> PyResult<Vec<String>> {
             obj.getattr(py, "get_signals")?
@@ -23,18 +27,15 @@ impl PythonCustomBus {
         })?;
         let signals = signals
             .iter()
-            .map(|s| match i[s.as_str()].as_str() {
-                Some(string) => Ok(string.to_owned()),
-                None => Err(format!("Yaml should define {} signal", s)),
-            })
+            .map(|s| SignalPath::from_yaml_ref_with_prefix(bus_scope, &i[s.as_str()]))
             .collect::<Result<_, _>>()?;
         Ok(PythonCustomBus { obj, signals })
     }
 }
 
 impl BusDescription for PythonCustomBus {
-    fn signals(&self) -> Vec<&str> {
-        self.signals.iter().map(|s| s.as_str()).collect()
+    fn signals(&self) -> Vec<&SignalPath> {
+        self.signals.iter().collect()
     }
 
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], _time: u32) -> crate::CycleType {

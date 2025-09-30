@@ -101,7 +101,7 @@ pub enum CurrentlyCalculating {
     None,
     Burst,
     Delay,
-    Pause(u32),
+    Pause(i32),
 }
 
 /// Contains statistics for a single channel bus
@@ -287,61 +287,6 @@ impl SingleChannelBusUsage {
         }
     }
 
-    /// Returns values of all statistics as a vector for text output purposes
-    pub fn get_data(&self, delays_num: usize, bursts_num: usize, verbose: bool) -> Vec<String> {
-        let time =
-            (self.busy + self.backpressure + self.no_data + self.free + self.no_transaction) as f32;
-        let mut v = vec![
-            self.bus_name.to_string(),
-            format!("{}({:.2})", self.busy, self.busy as f32 / time * 100.0),
-            format!(
-                "{}({:.2})",
-                self.no_transaction,
-                self.no_transaction as f32 / time * 100.0
-            ),
-            format!(
-                "{}({:.2})",
-                self.backpressure,
-                self.backpressure as f32 / time * 100.0
-            ),
-            format!(
-                "{}({:.2})",
-                self.no_data,
-                self.no_data as f32 / time * 100.0
-            ),
-            format!("{}({:.2})", self.free, self.free as f32 / time * 100.0),
-        ];
-
-        v.push(if verbose {
-            format!("{:?}", self.transaction_delays)
-        } else {
-            String::from("")
-        });
-
-        let buckets = BucketsStatistic::new("", &self.transaction_delays, 0, "", "").get_buckets();
-        for num in buckets.iter() {
-            v.push(num.to_string());
-        }
-        for _ in 0..delays_num - buckets.len() {
-            v.push(String::from("0"));
-        }
-
-        v.push(if verbose {
-            format!("{:?}", self.burst_lengths)
-        } else {
-            String::from("")
-        });
-
-        let buckets = BucketsStatistic::new("", &self.transaction_delays, 0, "", "").get_buckets();
-        for num in buckets.iter() {
-            v.push(num.to_string());
-        }
-        for _ in 0..bursts_num - buckets.len() {
-            v.push(String::from("0"));
-        }
-        v
-    }
-
     /// Creates SingleChannelBusUsage with given values - for tests purposes
     #[allow(clippy::too_many_arguments)]
     pub fn literal(
@@ -400,7 +345,7 @@ impl<'a> BucketsStatistic<'a> {
             description,
         }
     }
-    pub fn get_data(&self) -> HashMap<u32, usize> {
+    pub fn get_data(&self) -> HashMap<i32, usize> {
         let mut buckets = HashMap::new();
         for v in self.data.iter() {
             let v = v.duration;
@@ -408,7 +353,6 @@ impl<'a> BucketsStatistic<'a> {
                 Some(num) => {
                     *num += 1;
                 }
-
                 None => {
                     buckets.insert(v, 1);
                 }
@@ -417,31 +361,42 @@ impl<'a> BucketsStatistic<'a> {
         buckets
     }
     /// Returns values of the buckets
-    pub fn get_buckets(&self) -> Vec<usize> {
-        let mut buckets = vec![];
+    pub fn get_buckets(&self) -> HashMap<i32, usize> {
+        let mut buckets = HashMap::new();
         for v in self.data.iter() {
-            let v: u32 = v.duration;
-            let bucket = if v == 0 { 0 } else { (v.ilog2() + 1) as usize };
-            if buckets.len() <= bucket {
-                buckets.resize(bucket + 1, 0);
+            let bucket = match v.duration {
+                0 => 0,
+                v if v > 0 => (v.ilog2() + 1) as i32,
+                v => -(v.abs().ilog2() as i32 + 1),
+            };
+            match buckets.get_mut(&bucket) {
+                Some(num) => *num += 1,
+                None => {
+                    buckets.insert(bucket, 1);
+                }
             }
-            buckets[bucket] += 1;
         }
         buckets
     }
-    pub fn get_data_of_value(&self, value: u32) -> Vec<Period> {
+    fn bucket_num(cycle_num: CyclesNum) -> i32 {
+        match cycle_num {
+            0 => 0,
+            v if v > 0 => (v.ilog2() + 1) as i32,
+            v => -(v.abs().ilog2() as i32 + 1),
+        }
+    }
+    pub fn get_data_of_value(&self, value: CyclesNum) -> Vec<Period> {
         self.data
             .iter()
             .filter(|d| d.duration == value)
             .copied()
             .collect()
     }
-    pub fn get_data_for_bucket(&self, bucket_num: usize) -> Vec<Period> {
+    pub fn get_data_for_bucket(&self, bucket_num: i32) -> Vec<Period> {
         self.data
             .iter()
             .filter(|d| {
-                let v = d.duration;
-                let bucket = if v == 0 { 0 } else { (v.ilog2() + 1) as usize };
+                let bucket = BucketsStatistic::bucket_num(d.duration);
                 bucket == bucket_num
             })
             .copied()
@@ -449,18 +404,8 @@ impl<'a> BucketsStatistic<'a> {
     }
 
     pub fn buckets_num(&self) -> u32 {
-        match self.data.iter().map(|d| d.duration).max() {
-            Some(max) => {
-                if max == 0 {
-                    1
-                } else {
-                    max.ilog2() + 2
-                }
-            }
-            None => 0,
-        }
+        self.get_buckets().len() as u32
     }
-
     pub fn display(&self) -> String {
         let name = self.name;
         if let Some(min) = self.data.iter().map(|d| d.duration).min()
@@ -474,6 +419,7 @@ impl<'a> BucketsStatistic<'a> {
 }
 
 pub type RealTime = u64;
+type SignedRealTime = i64;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub struct Period {
@@ -484,7 +430,8 @@ pub struct Period {
 
 impl Period {
     pub fn new(start: RealTime, end: RealTime, clk_period: RealTime) -> Self {
-        let duration = ((end - start) / clk_period) as u32;
+        let duration = ((end as SignedRealTime - start as SignedRealTime)
+            / clk_period as SignedRealTime) as CyclesNum;
         Self {
             start,
             end,
@@ -493,7 +440,7 @@ impl Period {
     }
     pub fn from_delay(start: RealTime, delay: RealTime, clk_period: RealTime) -> Self {
         let end = start + delay;
-        let duration = (delay / clk_period) as u32;
+        let duration = (delay / clk_period) as CyclesNum;
         Self {
             start,
             end,

@@ -1,9 +1,8 @@
 use crate::{
     BusUsage,
     analyzer::AnalyzerInternal,
-    bus::{BusCommon, is_value_of_type},
+    bus::{BusCommon, SignalPath, is_value_of_type},
     bus_usage::MultiChannelBusUsage,
-    load_signals,
     plugins::load_python_plugin,
 };
 
@@ -16,7 +15,7 @@ pub struct PythonAnalyzer {
     common: BusCommon,
     obj: Py<PyAny>,
     result: Option<BusUsage>,
-    signals: Vec<String>,
+    signals: Vec<SignalPath>,
     window_length: u32,
     x_rate: f32,
     y_rate: f32,
@@ -43,7 +42,10 @@ impl PythonAnalyzer {
         let signals = signals
             .iter()
             .map(|s| match i[s.as_str()].as_str() {
-                Some(string) => Ok(string.to_owned()),
+                Some(string) => Ok(SignalPath {
+                    scope: common.module_scope().clone(),
+                    name: string.to_owned(),
+                }),
                 None => Err(format!("Yaml should define {} signal", s)),
             })
             .collect::<Result<_, _>>()?;
@@ -65,14 +67,11 @@ impl AnalyzerInternal for PythonAnalyzer {
         self.common.bus_name()
     }
 
-    fn load_signals(
-        &self,
-        simulation_data: &mut crate::SimulationData,
-    ) -> Vec<(wellen::SignalRef, wellen::Signal)> {
-        let mut signals = vec![self.common.clk_name(), self.common.rst_name()];
-        signals.append(&mut self.signals.iter().map(|s| s.as_str()).collect());
+    fn get_signals(&self) -> Vec<&SignalPath> {
+        let mut signals = vec![self.common.clk_path(), self.common.rst_path()];
+        signals.append(&mut self.signals.iter().collect());
 
-        load_signals(simulation_data, self.common.module_scope(), &signals)
+        signals
     }
 
     fn calculate(
@@ -143,18 +142,5 @@ impl Analyzer for PythonAnalyzer {
 
     fn finished_analysis(&self) -> bool {
         self.result.is_some()
-    }
-
-    fn get_signals(&self) -> Vec<String> {
-        let scope = self.common.module_scope().join(".");
-        let mut signals = vec![
-            format!("{}.{}", scope, self.common.clk_name()),
-            format!("{}.{}", scope, self.common.rst_name()),
-        ];
-        self.signals
-            .iter()
-            .map(|s| format!("{scope}.{s}"))
-            .for_each(|s| signals.push(s));
-        signals
     }
 }

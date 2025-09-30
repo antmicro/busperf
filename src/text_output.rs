@@ -69,8 +69,7 @@ fn get_data(usages: &[&BusUsage], verbose: bool) -> Vec<Vec<String>> {
                                 buckets_statistic
                                     .get_buckets()
                                     .iter()
-                                    .enumerate()
-                                    .filter_map(|(i, v)| {
+                                    .filter_map(|(&i, v)| {
                                         if *v > 0 {
                                             Some(if i < 2 {
                                                 format!("{} x{}", i, *v)

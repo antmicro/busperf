@@ -1,27 +1,30 @@
 use wellen::SignalValue;
+use yaml_rust2::Yaml;
 
 use crate::{
     CycleType,
-    bus::{ValueType, get_value},
+    bus::{SignalPath, ValueType, get_value},
+    bus_from_yaml,
 };
 
 use super::BusDescription;
 
 #[derive(Debug)]
 pub struct AHBBus {
-    htrans: String,
-    hready: String,
+    htrans: SignalPath,
+    hready: SignalPath,
 }
 
 impl AHBBus {
-    pub fn new(htrans: String, hready: String) -> Self {
+    bus_from_yaml!(AHBBus, htrans, hready);
+    pub fn new(htrans: SignalPath, hready: SignalPath) -> Self {
         AHBBus { htrans, hready }
     }
 }
 
 impl BusDescription for AHBBus {
-    fn signals(&self) -> Vec<&str> {
-        vec![self.htrans.as_str(), self.hready.as_str()]
+    fn signals(&self) -> Vec<&SignalPath> {
+        vec![&self.htrans, &self.hready]
     }
 
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> crate::CycleType {

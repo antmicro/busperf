@@ -22,7 +22,7 @@ impl Args {
             std::io::stdin()
                 .read_line(&mut buffer)
                 .expect("Failed to read output type");
-            match OutputType::try_from(&buffer.as_str()[..buffer.len() - 1]) {
+            match OutputType::try_from(buffer.as_str().trim_end()) {
                 Ok(output) => return output,
                 Err(e) => println!("{e}"),
             }
@@ -147,7 +147,7 @@ fn main() {
     let mut data = load_simulation_trace(&args.simulation_trace, args.verbose);
     let mut analyzers = load_bus_analyzers(
         &args.bus_description,
-        args.max_burst_delay,
+        args.max_burst_delay as i32,
         args.window_length,
         args.x_rate,
         args.y_rate,

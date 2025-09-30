@@ -6,7 +6,7 @@ use yaml_rust2::Yaml;
 use crate::{
     BusUsage, CycleType, SimulationData, SingleChannelBusUsage,
     analyzer::axi_analyzer::{AXIRdAnalyzer, AXIWrAnalyzer},
-    bus::{BusCommon, BusDescription, is_value_of_type},
+    bus::{BusCommon, BusDescription, CyclesNum, SignalPath, is_value_of_type},
     load_signals,
 };
 
@@ -18,8 +18,8 @@ pub struct AnalyzerBuilder {}
 
 impl AnalyzerBuilder {
     pub fn build(
-        yaml: (&Yaml, &Yaml),
-        default_max_burst_delay: u32,
+        yaml: (Yaml, Yaml),
+        default_max_burst_delay: CyclesNum,
         window_length: u32,
         x_rate: f32,
         y_rate: f32,
@@ -28,14 +28,14 @@ impl AnalyzerBuilder {
         Ok(if let Some(custom) = dict["custom_analyzer"].as_str() {
             match custom {
                 "AXIWrAnalyzer" => Box::new(AXIWrAnalyzer::build_from_yaml(
-                    yaml,
+                    (name, dict),
                     default_max_burst_delay,
                     window_length,
                     x_rate,
                     y_rate,
                 )?),
                 "AXIRdAnalyzer" => Box::new(AXIRdAnalyzer::build_from_yaml(
-                    yaml,
+                    (name, dict),
                     default_max_burst_delay,
                     window_length,
                     x_rate,
@@ -43,14 +43,14 @@ impl AnalyzerBuilder {
                 )?),
                 _ => {
                     let common = BusCommon::from_yaml(
-                        name.as_str().ok_or("Bus should have a valid name")?,
-                        dict,
+                        name.into_string().ok_or("Bus should have a valid name")?,
+                        &dict,
                         default_max_burst_delay,
                     )?;
                     Box::new(PythonAnalyzer::new(
                         custom,
                         common,
-                        dict,
+                        &dict,
                         window_length,
                         x_rate,
                         y_rate,
@@ -58,21 +58,25 @@ impl AnalyzerBuilder {
                 }
             }
         } else {
-            Box::new(DefaultAnalyzer::from_yaml(yaml, default_max_burst_delay)?)
+            Box::new(DefaultAnalyzer::from_yaml(
+                (name, dict),
+                default_max_burst_delay,
+            )?)
         })
     }
 }
 
 pub trait AnalyzerInternal {
     fn bus_name(&self) -> &str;
-    fn load_signals(&self, simulation_data: &mut SimulationData) -> Vec<(SignalRef, Signal)>;
+    fn get_signals(&self) -> Vec<&SignalPath>;
     fn calculate(&mut self, loaded: Vec<(SignalRef, Signal)>, time_table: &TimeTable);
 }
 
 pub trait Analyzer: AnalyzerInternal {
     fn analyze(&mut self, simulation_data: &mut SimulationData, verbose: bool) {
         let start = std::time::Instant::now();
-        let loaded = self.load_signals(simulation_data);
+        let signal_paths = self.get_signals();
+        let loaded = load_signals(simulation_data, &signal_paths);
         if verbose {
             println!(
                 "Loading signals for {} took {:?}",
@@ -95,7 +99,6 @@ pub trait Analyzer: AnalyzerInternal {
     fn finished_analysis(&self) -> bool {
         self.get_results().is_some()
     }
-    fn get_signals(&self) -> Vec<String>;
 }
 
 pub fn analyze_single_bus(
@@ -104,11 +107,11 @@ pub fn analyze_single_bus(
     simulation_data: &mut SimulationData,
     verbose: bool,
 ) -> SingleChannelBusUsage {
-    let mut signals = vec![common.clk_name(), common.rst_name()];
+    let mut signals = vec![common.clk_path(), common.rst_path()];
     signals.append(&mut bus_desc.signals());
 
     let start = std::time::Instant::now();
-    let loaded = load_signals(simulation_data, common.module_scope(), &signals);
+    let loaded = load_signals(simulation_data, &signals);
     let (_, clock) = &loaded[0];
     let (_, reset) = &loaded[1];
     if verbose {

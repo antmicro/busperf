@@ -25,6 +25,8 @@ mod text_output;
 
 use bus::CyclesNum;
 
+use crate::bus::SignalPath;
+
 pub fn load_bus_analyzers(
     filename: &str,
     default_max_burst_delay: CyclesNum,
@@ -35,21 +37,31 @@ pub fn load_bus_analyzers(
     let mut f = File::open(filename)?;
     let mut s = String::new();
     f.read_to_string(&mut s)?;
-    let yaml = YamlLoader::load_from_str(&s)?;
-    let doc = &yaml[0];
+    let mut yaml = YamlLoader::load_from_str(&s)?;
+    let doc = yaml.remove(0);
+    let doc = doc
+        .into_hash()
+        .ok_or("Yaml should not be empty")?
+        .remove(&yaml_rust2::Yaml::from_str("interfaces"))
+        .ok_or("Yaml should define interfaces")?
+        .into_hash()
+        .ok_or("Invalid yaml format")?;
     let mut analyzers: Vec<Box<dyn Analyzer>> = vec![];
-    for i in doc["interfaces"]
-        .as_hash()
-        .ok_or("YAML should define interfaces")?
-        .iter()
-    {
-        match AnalyzerBuilder::build(i, default_max_burst_delay, window_length, x_rate, y_rate) {
+    for (name, dict) in doc {
+        let n = name
+            .as_str()
+            .ok_or("Each bus should have a name")?
+            .to_owned();
+        match AnalyzerBuilder::build(
+            (name, dict),
+            default_max_burst_delay,
+            window_length,
+            x_rate,
+            y_rate,
+        ) {
             Ok(analyzer) => analyzers.push(analyzer),
             Err(e) => {
-                match i.0.as_str() {
-                    Some(name) => eprintln!("Failed to load {}, {:?}", name, e),
-                    None => eprintln!("Failed to load bus which does not have a name: {:?}", e),
-                };
+                eprintln!("Failed to load {}, {:?}", n, e)
             }
         }
     }
@@ -80,18 +92,16 @@ pub fn load_simulation_trace(filename: &str, verbose: bool) -> SimulationData {
 
 fn load_signals(
     simulation_data: &mut SimulationData,
-    scope_name: &[String],
-    names: &Vec<&str>,
+    signal_paths: &Vec<&SignalPath>,
 ) -> Vec<(wellen::SignalRef, wellen::Signal)> {
     let hierarchy = &simulation_data.hierarchy;
-    let scope_name: Vec<&str> = scope_name.iter().map(|s| s.as_str()).collect();
     let body = &mut simulation_data.body;
-    let signal_refs: Vec<wellen::SignalRef> = names
+    let signal_refs: Vec<wellen::SignalRef> = signal_paths
         .iter()
-        .map(|r| {
+        .map(|path| {
             hierarchy[hierarchy
-                .lookup_var(&scope_name, r)
-                .unwrap_or_else(|| panic!("{} signal does not exist", &r))]
+                .lookup_var(&path.scope, &path.name)
+                .unwrap_or_else(|| panic!("signal \"{}\" does not exist", path))]
             .signal_ref()
         })
         .collect();

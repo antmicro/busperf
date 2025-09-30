@@ -1,4 +1,4 @@
-pub type CyclesNum = u32;
+pub type CyclesNum = i32;
 
 pub mod ahb;
 pub mod axi;
@@ -15,20 +15,91 @@ use yaml_rust2::Yaml;
 use crate::CycleType;
 
 #[derive(Debug)]
+pub struct SignalPath {
+    pub scope: Vec<String>,
+    pub name: String,
+}
+
+impl std::fmt::Display for SignalPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for s in self.scope.iter() {
+            write!(f, "{}.", s)?;
+        }
+        write!(f, "{}", self.name)?;
+        Ok(())
+    }
+}
+
+impl SignalPath {
+    pub fn from_yaml_with_prefix(
+        scope: &[String],
+        yaml: Yaml,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        SignalPath::from_yaml_ref_with_prefix(scope, &yaml)
+    }
+
+    pub fn from_yaml_ref_with_prefix(
+        scope: &[String],
+        yaml: &Yaml,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        match yaml {
+            Yaml::String(name) => Ok(SignalPath {
+                scope: scope.to_vec(),
+                name: name.to_owned(),
+            }),
+            Yaml::Array(yaml_scope) => {
+                let mut yaml_scope = yaml_scope
+                    .iter()
+                    .map(|y| y.as_str().map(|y| y.to_owned()))
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or("Signal scope should be a valid string")?;
+                let name = yaml_scope.pop().ok_or("No signal name")?;
+                let mut scope = scope.to_vec();
+                scope.append(&mut yaml_scope);
+                Ok(SignalPath { scope, name })
+            }
+            _ => Err("Invalid YAML")?,
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! bus_from_yaml {
+    ( $bus_type:tt, $($signal_name:ident),* ) => {
+        pub fn from_yaml(yaml: Yaml, bus_scope: &[String]) -> Result<Self, Box<dyn std::error::Error>> {
+            let mut yaml = yaml.into_hash().ok_or("Bus yaml should not be empty")?;
+            $(
+            let $signal_name = SignalPath::from_yaml_with_prefix(
+                bus_scope,
+                yaml.remove(&Yaml::from_str(stringify!($signal_name)))
+                    .ok_or(concat!(stringify!($name), " bus requires ready signal"))?,
+            )?;
+            )*
+            Ok($bus_type::new(
+                $(
+                    $signal_name,
+                )*
+            )
+            )
+        }
+    };
+}
+
+#[derive(Debug)]
 pub struct BusCommon {
     bus_name: String,
     module_scope: Vec<String>,
-    clk_name: String,
-    rst_name: String,
+    clk_path: SignalPath,
+    rst_path: SignalPath,
     rst_active_value: u8,
     max_burst_delay: CyclesNum,
 }
 
 impl BusCommon {
     pub fn from_yaml(
-        name: &str,
+        name: String,
         yaml: &Yaml,
-        default_max_burst: u32,
+        default_max_burst: CyclesNum,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let i = yaml;
         let scope = i["scope"]
@@ -41,8 +112,10 @@ impl BusCommon {
                 None => Err("Each module should be a valid string"),
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let clk = i["clock"].as_str().ok_or("Bus should have clock signal")?;
-        let rst = i["reset"].as_str().ok_or("Bus should have reset signal")?;
+        let clk = SignalPath::from_yaml_ref_with_prefix(&scope, &i["clock"])
+            .map_err(|e| format!("Bus should have clock signal: {e}"))?;
+        let rst = SignalPath::from_yaml_ref_with_prefix(&scope, &i["reset"])
+            .map_err(|e| format!("Bus should have reset signal: {e}"))?;
         let rst_type = i["reset_type"]
             .as_str()
             .ok_or("Bus should have reset type defined")?;
@@ -64,18 +137,18 @@ impl BusCommon {
         ))
     }
     pub fn new(
-        bus_name: &str,
+        bus_name: String,
         module_scope: Vec<String>,
-        clk_name: &str,
-        rst_name: &str,
+        clk_path: SignalPath,
+        rst_path: SignalPath,
         rst_active_value: u8,
         max_burst_delay: CyclesNum,
     ) -> Self {
         BusCommon {
-            bus_name: bus_name.to_owned(),
+            bus_name,
             module_scope,
-            clk_name: clk_name.to_owned(),
-            rst_name: rst_name.to_owned(),
+            clk_path,
+            rst_path,
             rst_active_value,
             max_burst_delay,
         }
@@ -88,12 +161,12 @@ impl BusCommon {
     pub fn module_scope(&self) -> &Vec<String> {
         &self.module_scope
     }
-    pub fn clk_name(&self) -> &str {
-        &self.clk_name
+    pub fn clk_path(&self) -> &SignalPath {
+        &self.clk_path
     }
 
-    pub fn rst_name(&self) -> &str {
-        &self.rst_name
+    pub fn rst_path(&self) -> &SignalPath {
+        &self.rst_path
     }
 
     pub fn max_burst_delay(&self) -> CyclesNum {
@@ -113,13 +186,10 @@ pub struct BusDescriptionBuilder {}
 
 impl BusDescriptionBuilder {
     pub fn build(
-        name: &str,
-        yaml: &yaml_rust2::Yaml,
-        default_max_burst_delay: u32,
+        yaml: Yaml,
+        scope: &[String],
     ) -> Result<Box<dyn BusDescription>, Box<dyn std::error::Error>> {
         let i = yaml;
-
-        let common = BusCommon::from_yaml(name, i, default_max_burst_delay)?;
 
         let handshake = i["handshake"]
             .as_str()
@@ -127,35 +197,15 @@ impl BusDescriptionBuilder {
 
         match handshake {
             "ReadyValid" => {
-                return Ok(Box::new(AXIBus::from_yaml(i)?));
+                return Ok(Box::new(AXIBus::from_yaml(i, scope)?));
             }
-            "CreditValid" => {
-                let credit = i["credit"]
-                    .as_str()
-                    .ok_or("CreditValid bus requires credit signal")?;
-                let valid = i["valid"]
-                    .as_str()
-                    .ok_or("CreditValid bus requires valid signal")?;
-                Ok(Box::new(CreditValidBus::new(
-                    common,
-                    credit.to_owned(),
-                    valid.to_owned(),
-                )))
-            }
-            "AHB" => {
-                let htrans = i["htrans"]
-                    .as_str()
-                    .ok_or("AHB bus requires htrans signal")?;
-                let hready = i["hready"]
-                    .as_str()
-                    .ok_or("AHB bus requires hready signal")?;
-                Ok(Box::new(AHBBus::new(htrans.to_owned(), hready.to_owned())))
-            }
+            "CreditValid" => Ok(Box::new(CreditValidBus::from_yaml(i, scope)?)),
+            "AHB" => Ok(Box::new(AHBBus::from_yaml(i, scope)?)),
             "Custom" => {
                 let handshake = i["custom_handshake"]
                     .as_str()
                     .ok_or("Custom bus has to specify handshake interpreter")?;
-                Ok(Box::new(PythonCustomBus::new(handshake, i)?))
+                Ok(Box::new(PythonCustomBus::from_yaml(handshake, &i, scope)?))
             }
 
             _ => Err(format!("Invalid handshake {}", handshake))?,
@@ -164,11 +214,11 @@ impl BusDescriptionBuilder {
 }
 
 pub trait BusDescription {
-    fn signals(&self) -> Vec<&str>;
+    fn signals(&self) -> Vec<&SignalPath>;
     fn interpret_cycle(&self, signals: &[SignalValue], time: u32) -> CycleType;
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum ValueType {
     V0,
     V1,

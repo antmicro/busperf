@@ -1,13 +1,15 @@
-use std::error::Error;
+use std::{error::Error, iter::Peekable};
 
-use wellen::{Signal, TimeTable};
+use wellen::{Signal, SignalValue, TimeTable, TimeTableIdx};
 
 use crate::{
     BusUsage,
     analyzer::AnalyzerInternal,
-    bus::{BusCommon, BusDescription, ValueType, axi::AXIBus, is_value_of_type},
+    bus::{
+        BusCommon, BusDescription, CyclesNum, SignalPath, ValueType, axi::AXIBus, get_value,
+        is_value_of_type,
+    },
     bus_usage::MultiChannelBusUsage,
-    load_signals,
 };
 
 use super::Analyzer;
@@ -16,7 +18,7 @@ pub struct AXIRdAnalyzer {
     common: BusCommon,
     ar: AXIBus,
     r: AXIBus,
-    r_resp: String,
+    r_resp: SignalPath,
     result: Option<BusUsage>,
     window_length: u32,
     x_rate: f32,
@@ -27,8 +29,9 @@ pub struct AXIWrAnalyzer {
     common: BusCommon,
     aw: AXIBus,
     w: AXIBus,
+    w_last: Option<SignalPath>,
     b: AXIBus,
-    b_resp: String,
+    b_resp: SignalPath,
     result: Option<BusUsage>,
     window_length: u32,
     x_rate: f32,
@@ -48,39 +51,31 @@ fn count_reset(rst: &Signal, active_value: ValueType) -> u32 {
     reset / 2
 }
 
-// This function creates an iterator that is offset by 2 changes (skips first cycle).
-// It is used for calculating time between transactions. It adds the last time index of clk
-// (which is the end of simulation) so that iterator have same number of elements as original
-fn create_next_transaction_iter(signal: &Signal, clk: &Signal) -> impl Iterator<Item = u32> {
-    let mut next_time_iter = signal.iter_changes().map(|(t, _)| t);
-    next_time_iter.next();
-    next_time_iter.next();
-    let last_time = clk
-        .time_indices()
-        .last()
-        .expect("Iterator should not be empty");
-    next_time_iter.chain([*last_time, *last_time])
-}
-
 macro_rules! build_from_yaml {
-    ( $( $bus_name:tt $bus_type:ident ),* ; $($signal_name:tt $($signal_init:tt)*),* ) => {
+    ( $( $bus_name:tt $bus_type:ident ),* ; $([$signal_name:ident $($signal_init:tt)*]),* ) => {
         pub fn build_from_yaml(
-            yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml),
-            default_max_burst_delay: u32,
+            yaml: (yaml_rust2::Yaml, yaml_rust2::Yaml),
+            default_max_burst_delay: CyclesNum,
             window_length: u32,
             x_rate: f32,
             y_rate: f32,
         ) -> Result<Self, Box<dyn Error>> {
             let (name, dict) = yaml;
             let name = name
-                .as_str()
+                .into_string()
                 .ok_or("Name of bus should be a valid string")?;
-            let common = BusCommon::from_yaml(name, dict, default_max_burst_delay)?;
+            let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
             $(
-                let $bus_name = $bus_type::from_yaml(&dict[stringify!($bus_name)])?;
+                let $signal_name = SignalPath::from_yaml_ref_with_prefix(
+                    common.module_scope(),
+                    &dict$($signal_init)*)?;
             )*
+            let mut dict =  dict.into_hash().ok_or("Channels description should not be empty")?;
             $(
-                let $signal_name = dict$($signal_init)*;
+                let $bus_name = $bus_type::from_yaml(
+                    dict.remove(&yaml_rust2::Yaml::from_str(stringify!($bus_name))).ok_or("AXI analyzer should have all channels defined")?,
+                    common.module_scope(),
+                )?;
             )*
             Ok(Self {
                 common,
@@ -96,20 +91,17 @@ macro_rules! build_from_yaml {
 }
 
 impl AXIRdAnalyzer {
-    build_from_yaml!(ar AXIBus, r AXIBus; r_resp ["r"]["rresp"].as_str().ok_or("AXI bus should have rresp signal")?.to_owned());
+    build_from_yaml!(ar AXIBus, r AXIBus; [ r_resp ["r"]["rresp"] ]);
 }
 
 impl AnalyzerInternal for AXIRdAnalyzer {
-    fn load_signals(
-        &self,
-        simulation_data: &mut crate::SimulationData,
-    ) -> Vec<(wellen::SignalRef, Signal)> {
-        let mut signals = vec![self.common.clk_name(), self.common.rst_name()];
+    fn get_signals(&self) -> Vec<&SignalPath> {
+        let mut signals = vec![self.common.clk_path(), self.common.rst_path()];
         signals.append(&mut self.ar.signals());
         signals.append(&mut self.r.signals());
         signals.push(&self.r_resp);
 
-        load_signals(simulation_data, self.common.module_scope(), &signals)
+        signals
     }
 
     fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, Signal)>, time_table: &TimeTable) {
@@ -123,7 +115,6 @@ impl AnalyzerInternal for AXIRdAnalyzer {
 
         let reset = count_reset(rst, self.common.rst_active_value());
 
-        let next_time_iter = create_next_transaction_iter(arvalid, clk);
         let last_time = clk.time_indices().last().expect("Clock should have values");
         let clock_period = time_table[2];
 
@@ -136,51 +127,56 @@ impl AnalyzerInternal for AXIRdAnalyzer {
             time_table[*last_time as usize],
         );
 
-        let mut rst = rst.iter_changes().filter_map(|(t, v)| {
-            if is_value_of_type(v, self.common.rst_active_value()) {
-                Some(t)
-            } else {
-                None
-            }
-        });
-        let mut next_reset = rst.next().unwrap_or(*last_time);
-        for ((time, value), next) in arvalid.iter_changes().zip(next_time_iter) {
-            if !is_value_of_type(value, ValueType::V1) {
-                continue;
-            }
-            while next_reset < time {
-                next_reset = rst.next().unwrap_or(*last_time);
-            }
-            let Some((first_data, _)) = rvalid
-                .iter_changes()
-                .find(|(t, v)| *t >= time && is_value_of_type(*v, ValueType::V1))
-            else {
-                eprintln!(
-                    "[WARN] Unfinished transaction at time: {}",
-                    time_table[time as usize]
-                );
-                continue;
-            };
-            let resp_time = first_data;
-            if next_reset < resp_time {
-                continue;
-            }
-            let last_write = first_data;
-            let resp = r_resp
-                .get_value_at(
-                    &r_resp
-                        .get_offset(resp_time)
-                        .expect("There should be a response available at response time"),
-                    0,
-                )
-                .to_bit_string()
-                .expect("Function never returns None");
-            let [time, resp_time, last_write, first_data, next] =
-                [time, resp_time, last_write, first_data, next].map(|i| time_table[i as usize]);
-            let delay = next - resp_time;
-            usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
-        }
+        let mut ar =
+            ReadyValidTransactionIterator::new(clk, _arready, arvalid, *last_time).peekable();
+        let mut r = ReadyValidTransactionIterator::new(clk, _rready, rvalid, *last_time).peekable();
+        let mut rst = RisingSignalIterator::new(rst);
+        let mut next_rst = rst.next().unwrap_or(*last_time + 1);
 
+        while let Some(time) = ar.next() {
+            while next_rst < time {
+                next_rst = rst.next().unwrap_or(*last_time + 1);
+            }
+            if let Some(&first_data) = r.peek()
+                && next_rst > first_data
+            {
+                let next_transaction = ar.peek().unwrap_or(last_time);
+                let mut last_data = r.next().expect("Already checked");
+                while let Some(&n) = r.peek()
+                    && n < *next_transaction
+                {
+                    last_data = n;
+                    r.next();
+                }
+                let resp_time = last_data;
+                let resp = r_resp
+                    .get_value_at(
+                        &r_resp
+                            .get_offset(resp_time)
+                            .expect("There should be a response available at response time"),
+                        0,
+                    )
+                    .to_bit_string()
+                    .expect("Function never returns None");
+                let [time, resp_time, last_data, first_data, next_transaction] =
+                    [time, resp_time, last_data, first_data, *next_transaction]
+                        .map(|i| time_table[i as usize]);
+                usage.add_transaction(
+                    time,
+                    resp_time,
+                    last_data,
+                    first_data,
+                    &resp,
+                    next_transaction,
+                );
+            } else {
+                eprintln!(
+                    "[WARN] unfinished transaction on {} at {}",
+                    self.bus_name(),
+                    time_table[time as usize]
+                )
+            }
+        }
         usage.end(reset);
         self.result = Some(BusUsage::MultiChannel(usage));
     }
@@ -194,43 +190,70 @@ impl Analyzer for AXIRdAnalyzer {
     fn get_results(&self) -> Option<&crate::BusUsage> {
         self.result.as_ref()
     }
-    fn get_signals(&self) -> Vec<String> {
-        let scope = self.common.module_scope().join(".");
-        let mut signals = vec![
-            format!("{}.{}", scope, self.common.clk_name()),
-            format!("{}.{}", scope, self.common.rst_name()),
-        ];
-        self.ar
-            .signals()
-            .iter()
-            .map(|&s| format!("{scope}.{s}"))
-            .for_each(|s| signals.push(s));
-        self.r
-            .signals()
-            .iter()
-            .map(|&s| format!("{scope}.{s}"))
-            .for_each(|s| signals.push(s));
-        signals.push(format!("{scope}.{}", self.r_resp));
-        signals
-    }
 }
 
 impl AXIWrAnalyzer {
-    build_from_yaml!(aw AXIBus, w AXIBus, b AXIBus; b_resp ["b"]["bresp"].as_str().ok_or("AXI bus should have a bresp signal")?.to_owned());
+    pub fn build_from_yaml(
+        yaml: (yaml_rust2::Yaml, yaml_rust2::Yaml),
+        default_max_burst_delay: CyclesNum,
+        window_length: u32,
+        x_rate: f32,
+        y_rate: f32,
+    ) -> Result<Self, Box<dyn Error>> {
+        let (name, dict) = yaml;
+        let name = name
+            .into_string()
+            .ok_or("Name of bus should be a valid string")?;
+        let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
+        let b_resp =
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["b"]["bresp"])?;
+        let w_last =
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["w"]["wlast"]).ok();
+        let mut dict = dict
+            .into_hash()
+            .ok_or("Channels description should not be empty")?;
+        let aw = AXIBus::from_yaml(
+            dict.remove(&yaml_rust2::Yaml::from_str(stringify!(aw)))
+                .ok_or("AXI analyzer should have all channels defined")?,
+            common.module_scope(),
+        )?;
+        let w = AXIBus::from_yaml(
+            dict.remove(&yaml_rust2::Yaml::from_str(stringify!(w)))
+                .ok_or("AXI analyzer should have all channels defined")?,
+            common.module_scope(),
+        )?;
+        let b = AXIBus::from_yaml(
+            dict.remove(&yaml_rust2::Yaml::from_str(stringify!(b)))
+                .ok_or("AXI analyzer should have all channels defined")?,
+            common.module_scope(),
+        )?;
+        Ok(Self {
+            common,
+            aw,
+            w,
+            b,
+            b_resp,
+            w_last,
+            result: None,
+            window_length,
+            x_rate,
+            y_rate,
+        })
+    }
 }
 
 impl AnalyzerInternal for AXIWrAnalyzer {
-    fn load_signals(
-        &self,
-        simulation_data: &mut crate::SimulationData,
-    ) -> Vec<(wellen::SignalRef, Signal)> {
-        let mut signals = vec![self.common.clk_name(), self.common.rst_name()];
+    fn get_signals(&self) -> Vec<&SignalPath> {
+        let mut signals = vec![self.common.clk_path(), self.common.rst_path()];
         signals.append(&mut self.aw.signals());
         signals.append(&mut self.w.signals());
         signals.append(&mut self.b.signals());
         signals.push(&self.b_resp);
+        if let Some(w_last) = &self.w_last {
+            signals.push(w_last);
+        }
 
-        load_signals(simulation_data, self.common.module_scope(), &signals)
+        signals
     }
 
     fn bus_name(&self) -> &str {
@@ -240,16 +263,15 @@ impl AnalyzerInternal for AXIWrAnalyzer {
     fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, Signal)>, time_table: &TimeTable) {
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
-        let (_, _awready) = &loaded[2];
+        let (_, awready) = &loaded[2];
         let (_, awvalid) = &loaded[3];
-        let (_, _wready) = &loaded[4];
+        let (_, wready) = &loaded[4];
         let (_, wvalid) = &loaded[5];
-        let (_, _bready) = &loaded[6];
+        let (_, bready) = &loaded[6];
         let (_, bvalid) = &loaded[7];
         let (_, b_resp) = &loaded[8];
 
         let reset = count_reset(rst, self.common.rst_active_value());
-        let next_transaction_iter = create_next_transaction_iter(awvalid, clk);
         let last_time = clk.time_indices().last().expect("Clock should have values");
         let clock_period = time_table[2];
 
@@ -262,56 +284,76 @@ impl AnalyzerInternal for AXIWrAnalyzer {
             time_table[*last_time as usize],
         );
 
-        for ((time, value), next) in awvalid.iter_changes().zip(next_transaction_iter) {
-            if !is_value_of_type(value, ValueType::V1) {
-                continue;
+        let mut aw =
+            ReadyValidTransactionIterator::new(clk, awready, awvalid, *last_time).peekable();
+        let mut w = ReadyValidTransactionIterator::new(clk, wready, wvalid, *last_time).peekable();
+        let mut b = ReadyValidTransactionIterator::new(clk, bready, bvalid, *last_time).peekable();
+        let mut rst = RisingSignalIterator::new(rst);
+        let mut next_rst = rst.next().unwrap_or(*last_time + 1);
+
+        'transactions_loop: while let Some(time) = aw.next() {
+            while next_rst < time {
+                next_rst = rst.next().unwrap_or(*last_time + 1);
             }
-            let Some((first_data, _)) = wvalid
-                .iter_changes()
-                .find(|(t, v)| *t >= time && is_value_of_type(*v, ValueType::V1))
-            else {
-                eprintln!(
-                    "[WARN Unfinished transaction at time: {}]",
-                    time_table[time as usize]
-                );
-                continue;
-            };
-            let Some((resp_time, _)) = bvalid
-                .iter_changes()
-                .find(|(t, v)| *t > time && is_value_of_type(*v, ValueType::V1))
-            else {
-                eprintln!(
-                    "[WARN Unfinished transaction at time: {}]",
-                    time_table[time as usize]
-                );
-                continue;
-            };
-            let Some((last_write, _)) = wvalid.iter_changes().max_by_key(|(t, v)| {
-                if *t < time || *t > resp_time || is_value_of_type(*v, ValueType::V1) {
-                    0
+            if let Some(&first_data) = w.peek()
+                && next_rst > first_data
+                && let Some(&resp_time) = b.peek()
+                && next_rst > resp_time
+            {
+                b.next();
+                let next_transaction = aw.peek().unwrap_or(last_time);
+                let last_data = if self.w_last.is_some() {
+                    let (_, w_last) = &loaded[9];
+                    loop {
+                        let Some(last_data) = w.next() else {
+                            eprintln!(
+                                "[WARN] Transaction without w_last assertion on {} at {}",
+                                self.bus_name(),
+                                time_table[time as usize]
+                            );
+                            continue 'transactions_loop;
+                        };
+                        if get_value(w_last.get_value_at(
+                            &w_last.get_offset(last_data).expect("Should be valid"),
+                            0,
+                        ))
+                        .expect("Should be valid")
+                            == ValueType::V1
+                        {
+                            break last_data;
+                        }
+                    }
                 } else {
-                    *t
-                }
-            }) else {
-                eprintln!(
-                    "[WARN Unfinished transaction at time: {}]",
-                    time_table[time as usize]
+                    w.next().expect("Already checked")
+                };
+
+                let resp = b_resp
+                    .get_value_at(
+                        &b_resp
+                            .get_offset(resp_time)
+                            .expect("There should be a response available at response time"),
+                        0,
+                    )
+                    .to_bit_string()
+                    .expect("Function never returns None");
+                let [time, resp_time, last_data, first_data, next_transaction] =
+                    [time, resp_time, last_data, first_data, *next_transaction]
+                        .map(|i| time_table[i as usize]);
+                usage.add_transaction(
+                    time,
+                    resp_time,
+                    last_data,
+                    first_data,
+                    &resp,
+                    next_transaction,
                 );
-                continue;
-            };
-            let resp = b_resp
-                .get_value_at(
-                    &b_resp
-                        .get_offset(resp_time)
-                        .expect("Response should be valid at response time"),
-                    0,
+            } else {
+                eprintln!(
+                    "[WARN] unfinished transaction on {} at {}",
+                    self.bus_name(),
+                    time_table[time as usize]
                 )
-                .to_bit_string()
-                .expect("Function never returns None");
-            let [time, resp_time, last_write, first_data, next] =
-                [time, resp_time, last_write, first_data, next].map(|i| time_table[i as usize]);
-            let delay = next - resp_time;
-            usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
+            }
         }
 
         usage.end(reset);
@@ -323,28 +365,133 @@ impl Analyzer for AXIWrAnalyzer {
     fn get_results(&self) -> Option<&BusUsage> {
         self.result.as_ref()
     }
-    fn get_signals(&self) -> Vec<String> {
-        let scope = self.common.module_scope().join(".");
-        let mut signals = vec![
-            format!("{}.{}", scope, self.common.clk_name()),
-            format!("{}.{}", scope, self.common.rst_name()),
-        ];
-        self.aw
-            .signals()
-            .iter()
-            .map(|&s| format!("{scope}.{s}"))
-            .for_each(|s| signals.push(s));
-        self.w
-            .signals()
-            .iter()
-            .map(|&s| format!("{scope}.{s}"))
-            .for_each(|s| signals.push(s));
-        self.b
-            .signals()
-            .iter()
-            .map(|&s| format!("{scope}.{s}"))
-            .for_each(|s| signals.push(s));
-        signals.push(format!("{scope}.{}", self.b_resp));
-        signals
+}
+
+struct RisingSignalIterator<'a> {
+    signal: Box<dyn Iterator<Item = (u32, SignalValue<'a>)> + 'a>,
+}
+
+impl<'a> RisingSignalIterator<'a> {
+    fn new(signal: &'a Signal) -> Self {
+        let signal = Box::new(signal.iter_changes());
+        Self { signal }
+    }
+}
+
+impl<'a> Iterator for RisingSignalIterator<'a> {
+    type Item = TimeTableIdx;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.signal.next() {
+            Some((time, value)) => {
+                if matches!(
+                    get_value(value).expect("Value should be valid"),
+                    ValueType::V1
+                ) {
+                    Some(time)
+                } else {
+                    self.signal.next().map(|(time, _)| time)
+                }
+            }
+            None => None,
+        }
+    }
+}
+
+struct ReadyValidTransactionIterator<'a> {
+    current_time: TimeTableIdx,
+    clk: Peekable<RisingSignalIterator<'a>>,
+    ready: Peekable<Box<dyn Iterator<Item = (u32, SignalValue<'a>)> + 'a>>,
+    valid: Peekable<Box<dyn Iterator<Item = (u32, SignalValue<'a>)> + 'a>>,
+    time_end: TimeTableIdx,
+}
+
+impl<'a> ReadyValidTransactionIterator<'a> {
+    fn new(clk: &'a Signal, ready: &'a Signal, valid: &'a Signal, time_end: TimeTableIdx) -> Self {
+        let mut current_time;
+        let clk = RisingSignalIterator::new(clk).peekable();
+        let ready: Box<dyn Iterator<Item = (u32, SignalValue)>> = Box::new(ready.iter_changes());
+        let valid: Box<dyn Iterator<Item = (u32, SignalValue)>> = Box::new(valid.iter_changes());
+        let mut ready = ready.peekable();
+        let mut valid = valid.peekable();
+        let first_ready = ready.find(|(_, value)| {
+            matches!(
+                get_value(*value).expect("Signal value should be valid"),
+                ValueType::V1
+            )
+        });
+        match first_ready {
+            Some((time, _)) => current_time = time.saturating_sub(2),
+            None => current_time = time_end,
+        };
+        let first_valid = valid.find(|(_, value)| {
+            matches!(
+                get_value(*value).expect("Signal value should be valid"),
+                ValueType::V1
+            )
+        });
+        match first_valid {
+            Some((time, _)) => current_time = current_time.max(time.saturating_sub(2)),
+            None => current_time = time_end,
+        }
+
+        Self {
+            current_time,
+            clk,
+            ready,
+            valid,
+            time_end,
+        }
+    }
+}
+
+impl<'a> Iterator for ReadyValidTransactionIterator<'a> {
+    type Item = TimeTableIdx;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.current_time = loop {
+            if let Some(time) = self.clk.next() {
+                if time > self.current_time {
+                    break time;
+                }
+            } else {
+                return None;
+            }
+        };
+        if self.current_time > self.time_end {
+            return None;
+        }
+        while let Some(smaller) = match (self.ready.peek(), self.valid.peek()) {
+            (None, None) => None,
+            (None, Some(_)) => Some(&mut self.valid),
+            (Some(_), None) => Some(&mut self.ready),
+            (Some(ready), Some(valid)) => Some(if ready.0 > valid.0 {
+                &mut self.valid
+            } else {
+                &mut self.ready
+            }),
+        } {
+            let &(smaller_next, _) = smaller.peek().expect("Already checked");
+            if self.current_time >= smaller_next {
+                let (_time, v) = smaller.next().expect("Already checked in first if");
+                debug_assert!(
+                    matches!(get_value(v).unwrap(), ValueType::V0),
+                    "Next change should be to value 0"
+                );
+                match smaller.next() {
+                    Some((time, v)) => {
+                        debug_assert!(
+                            matches!(get_value(v).unwrap(), ValueType::V1),
+                            "Next change should be to value 1"
+                        );
+                        self.current_time = time.max(self.current_time);
+                    }
+                    None => return None,
+                }
+            } else {
+                return Some(self.current_time);
+            }
+        }
+        Some(self.current_time)
     }
 }

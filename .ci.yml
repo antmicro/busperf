@@ -1,5 +1,6 @@
 stages:
   - build
+  - test
 
 image: debian
 
@@ -25,3 +26,57 @@ build:
     - cargo clippy -- -Dwarnings
     - cargo test
     - cargo test --release
+  artifacts:
+    paths:
+      - target/debug/busperf
+      - target/release/busperf
+      - plugins/
+    expire_in: 1 hour
+
+test:
+  stage: test
+  only:
+    - branches
+  before_script:
+    - apt update -qq &> /dev/null
+    - apt install --yes verilator git python3 python3-venv libpython3-dev make &> /dev/null
+    - git clone https://github.com/fpganinja/taxi.git
+    - python3 -m venv env
+    - source ./env/bin/activate
+    - pip install cocotb &> /dev/null
+    - pip install cocotbext-axi &> /dev/null
+    - pip install cocotb-test &> /dev/null
+    - export WAVES=1
+    - cd taxi/src/axi/tb/
+    - cd taxi_axi_ram/
+    - make &> /dev/null &
+    - cd ..
+    - cd taxi_axi_fifo/
+    - make &> /dev/null &
+    - cd ..
+    - cd taxi_axil_ram/
+    - make &> /dev/null &
+    - cd ..
+    - cd taxi_axil_register/
+    - make &> /dev/null &
+    - cd ..
+    - wait
+    - cd ../../../../
+  script:
+    - target/debug/busperf taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/axi_ram.yaml --text
+    - target/release/busperf taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/axi_ram.yaml --text
+    - target/debug/busperf taxi/src/axi/tb/taxi_axi_fifo/dump.fst tests/taxi_descriptions/axi_fifo.yaml --text
+    - target/release/busperf taxi/src/axi/tb/taxi_axi_fifo/dump.fst tests/taxi_descriptions/axi_fifo.yaml --text
+    - target/debug/busperf taxi/src/axi/tb/taxi_axil_ram/dump.fst tests/taxi_descriptions/axil_ram.yaml --text
+    - target/release/busperf taxi/src/axi/tb/taxi_axil_ram/dump.fst tests/taxi_descriptions/axil_ram.yaml --text
+    - target/debug/busperf taxi/src/axi/tb/taxi_axil_register/dump.fst tests/taxi_descriptions/axil_register.yaml --text
+    - target/release/busperf taxi/src/axi/tb/taxi_axil_register/dump.fst tests/taxi_descriptions/axil_register.yaml --text
+  artifacts:
+    when: on_failure
+    paths:
+      - taxi/src/axi/tb/taxi_axi_ram/dump.fst
+      - taxi/src/axi/tb/taxi_axi_fifo/dump.fst
+      - taxi/src/axi/tb/taxi_axil_ram/dump.fst
+      - taxi/src/axi/tb/taxi_axil_register/dump.fst
+    expire_in: 1 hour
+   

@@ -3,8 +3,9 @@ use wellen::{SignalValue, TimeTable};
 use crate::{
     BusUsage, CycleType, SingleChannelBusUsage,
     analyzer::AnalyzerInternal,
-    bus::{BusCommon, BusDescription, BusDescriptionBuilder, is_value_of_type},
-    load_signals,
+    bus::{
+        BusCommon, BusDescription, BusDescriptionBuilder, CyclesNum, SignalPath, is_value_of_type,
+    },
 };
 
 use super::{Analyzer, analyze_single_bus};
@@ -17,15 +18,15 @@ pub struct DefaultAnalyzer {
 
 impl DefaultAnalyzer {
     pub fn from_yaml(
-        yaml: (&yaml_rust2::Yaml, &yaml_rust2::Yaml),
-        default_max_burst_delay: u32,
+        yaml: (yaml_rust2::Yaml, yaml_rust2::Yaml),
+        default_max_burst_delay: CyclesNum,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let (name, dict) = yaml;
         let name = name
-            .as_str()
+            .into_string()
             .ok_or("Name of bus should be a valid string")?;
-        let common = BusCommon::from_yaml(name, dict, default_max_burst_delay)?;
-        let bus_desc = BusDescriptionBuilder::build(name, dict, default_max_burst_delay)?;
+        let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
+        let bus_desc = BusDescriptionBuilder::build(dict, common.module_scope())?;
         Ok(DefaultAnalyzer {
             common,
             bus_desc,
@@ -39,14 +40,11 @@ impl AnalyzerInternal for DefaultAnalyzer {
         self.common.bus_name()
     }
 
-    fn load_signals(
-        &self,
-        simulation_data: &mut crate::SimulationData,
-    ) -> Vec<(wellen::SignalRef, wellen::Signal)> {
-        let mut signals = vec![self.common.clk_name(), self.common.rst_name()];
+    fn get_signals(&self) -> Vec<&SignalPath> {
+        let mut signals = vec![self.common.clk_path(), self.common.rst_path()];
         signals.append(&mut self.bus_desc.signals());
 
-        load_signals(simulation_data, self.common.module_scope(), &signals)
+        signals
     }
 
     fn calculate(
@@ -119,19 +117,5 @@ impl Analyzer for DefaultAnalyzer {
 
     fn finished_analysis(&self) -> bool {
         self.result.is_some()
-    }
-
-    fn get_signals(&self) -> Vec<String> {
-        let scope = self.common.module_scope().join(".");
-        let mut signals = vec![
-            format!("{}.{}", scope, self.common.clk_name()),
-            format!("{}.{}", scope, self.common.rst_name()),
-        ];
-        self.bus_desc
-            .signals()
-            .iter()
-            .map(|&s| format!("{scope}.{s}"))
-            .for_each(|s| signals.push(s));
-        signals
     }
 }

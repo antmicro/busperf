@@ -12,4 +12,13 @@ interfaces:
     ready: "ready"
     valid: "valid"
  
+  "test2":
+    scope: ["top"]
+    clock: ["logic", "clk"]
+    reset: ["logic", "reset"]
+    reset_type: "low"
+
+    handshake: "ReadyValid"
+    ready: ["logic", "ready"]
+    valid: ["logic", "valid"]
 

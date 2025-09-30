@@ -1,25 +1,26 @@
 use std::cell::Cell;
 use wellen::SignalValue;
+use yaml_rust2::Yaml;
 
 use crate::{
     CycleType,
-    bus::{ValueType, get_value},
+    bus::{SignalPath, ValueType, get_value},
+    bus_from_yaml,
 };
 
-use super::{BusCommon, BusDescription};
+use super::BusDescription;
 
 #[derive(Debug)]
 pub struct CreditValidBus {
-    common: BusCommon,
-    credit: String,
-    valid: String,
+    credit: SignalPath,
+    valid: SignalPath,
     credits: Cell<u32>,
 }
 
 impl CreditValidBus {
-    pub fn new(common: BusCommon, credit: String, valid: String) -> Self {
+    bus_from_yaml!(CreditValidBus, credit, valid);
+    pub fn new(credit: SignalPath, valid: SignalPath) -> Self {
         CreditValidBus {
-            common,
             credit,
             valid,
             credits: 0.into(),
@@ -28,8 +29,8 @@ impl CreditValidBus {
 }
 
 impl BusDescription for CreditValidBus {
-    fn signals(&self) -> Vec<&str> {
-        vec![self.credit.as_str(), self.valid.as_str()]
+    fn signals(&self) -> Vec<&SignalPath> {
+        vec![&self.credit, &self.valid]
     }
 
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> crate::CycleType {
@@ -51,8 +52,8 @@ impl BusDescription for CreditValidBus {
                 (1.., V0) => CycleType::Free,
                 (0, V1) => {
                     eprintln!(
-                        "[WARN]: Credit is 0 and valid 1 on credit/valid bus {} time: {}",
-                        self.common.bus_name, time
+                        "[WARN]: Credit is 0 and valid 1 on credit/valid bus time: {}",
+                        time
                     );
                     CycleType::Busy
                 }

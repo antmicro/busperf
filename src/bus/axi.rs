@@ -3,35 +3,28 @@ use yaml_rust2::Yaml;
 
 use crate::{
     CycleType,
-    bus::{ValueType, is_value_of_type},
+    bus::{SignalPath, ValueType, is_value_of_type},
+    bus_from_yaml,
 };
 
 use super::BusDescription;
 
 #[derive(Debug)]
 pub struct AXIBus {
-    ready: String,
-    valid: String,
+    ready: SignalPath,
+    valid: SignalPath,
 }
 
 impl AXIBus {
-    pub fn from_yaml(yaml: &Yaml) -> Result<Self, Box<dyn std::error::Error>> {
-        let ready = yaml["ready"]
-            .as_str()
-            .ok_or("ReadyValid bus requires ready signal")?;
-        let valid = yaml["valid"]
-            .as_str()
-            .ok_or("ReadyValid bus requires valid signal")?;
-        Ok(AXIBus::new(ready.to_owned(), valid.to_owned()))
-    }
-    pub fn new(ready: String, valid: String) -> Self {
+    bus_from_yaml!(AXIBus, ready, valid);
+    pub fn new(ready: SignalPath, valid: SignalPath) -> Self {
         AXIBus { ready, valid }
     }
 }
 
 impl BusDescription for AXIBus {
-    fn signals(&self) -> Vec<&str> {
-        vec![self.ready.as_str(), self.valid.as_str()]
+    fn signals(&self) -> Vec<&SignalPath> {
+        vec![&self.ready, &self.valid]
     }
 
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], _time: u32) -> CycleType {

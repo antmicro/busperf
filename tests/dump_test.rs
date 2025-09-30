@@ -1,15 +1,26 @@
 use busperf::{bus_usage::Period, *};
 
 // helper function to check if analyzer returns expected result
-fn test(trace: &str, yaml: &str, max_burst_delay: u32, correct: &[BusUsage]) {
+fn test(trace: &str, yaml: &str, max_burst_delay: i32, correct: &[BusUsage]) {
     let mut data = load_simulation_trace(trace, false);
-    let mut descs = load_bus_analyzers(yaml, max_burst_delay, 10000, 0.0006, 0.00001).unwrap();
+    let mut descs = load_bus_analyzers(yaml, max_burst_delay, 10000, 0.0001, 0.00001).unwrap();
     assert_eq!(correct.len(), descs.len());
     for (desc, correct) in descs.iter_mut().zip(correct) {
         desc.analyze(&mut data, false);
         let usage = desc.get_results();
         assert_eq!(usage, Some(correct));
     }
+}
+
+// helper function to check if provided number of results has been calculated
+fn test_basic(trace: &str, yaml: &str, num: usize) {
+    let mut data = load_simulation_trace(trace, false);
+    let mut descs = load_bus_analyzers(yaml, 0, 10000, 0.0001, 0.00001).unwrap();
+    for desc in descs.iter_mut() {
+        desc.analyze(&mut data, false);
+        assert!(matches!(desc.get_results(), Some(_)))
+    }
+    assert!(descs.len() == num)
 }
 
 // test dump.vcd - ready/valid with 2 iterfaces
@@ -76,11 +87,10 @@ fn basic() {
 // test longer path to signals
 #[test]
 fn basic_scopes() {
-    test(
+    test_basic(
         "tests/test_dumps/test_complex_scope.vcd",
         "tests/test_dumps/test_complex_scope.yaml",
-        0,
-        &[correct_test()],
+        2,
     );
 }
 
@@ -102,8 +112,8 @@ fn basic_max_burst_delay() {
         2,
     ));
     test(
-        "tests/test_dumps/test_complex_scope.vcd",
-        "tests/test_dumps/test_complex_scope.yaml",
+        "tests/test_dumps/test.vcd",
+        "tests/test_dumps/test.yaml",
         2,
         &[correct],
     );
@@ -206,20 +216,11 @@ fn python_dump() {
 // test multichannel axi analyzer
 #[test]
 fn axi_test() {
-    let mut data = load_simulation_trace("tests/test_dumps/axi.vcd", false);
-    let mut descs = load_bus_analyzers(
+    test_basic(
+        "tests/test_dumps/axi.vcd",
         "tests/taxi_descriptions/axi_ram.yaml",
-        0,
-        10000,
-        0.0006,
-        0.00001,
-    )
-    .unwrap();
-    for desc in descs.iter_mut() {
-        desc.analyze(&mut data, false);
-        assert!(matches!(desc.get_results(), Some(_)))
-    }
-    assert!(descs.len() == 3)
+        2,
+    );
 }
 
 // functions returning correct usages for tests

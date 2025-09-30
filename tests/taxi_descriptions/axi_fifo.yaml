@@ -1,0 +1,34 @@
+interfaces:
+  "ram_rd":
+    scope: ["test_taxi_axi_fifo", "uut"]
+    clock: "clk"
+    reset: "rst"
+    reset_type: "high"
+
+    custom_analyzer: "AXIRdAnalyzer"
+    ar:
+      ready: ["s_axi_rd", "arready"]
+      valid: ["s_axi_rd", "arvalid"]
+    r:
+      ready: ["s_axi_rd", "rready"]
+      valid: ["s_axi_rd", "rvalid"]
+      rresp: ["s_axi_rd", "rresp"]
+
+  "ram_wr":
+    scope: ["test_taxi_axi_fifo", "uut"]
+    clock: "clk"
+    reset: "rst"
+    reset_type: "high"
+
+    custom_analyzer: "AXIWrAnalyzer"
+    aw:
+      ready: ["s_axi_wr", "awready"]
+      valid: ["s_axi_wr", "awvalid"]
+    w:
+      ready: ["s_axi_wr", "wready"]
+      valid: ["s_axi_wr", "wvalid"]
+      wlast: ["s_axi_wr", "wlast"]
+    b:
+      ready: ["s_axi_wr", "bready"]
+      valid: ["s_axi_wr", "bvalid"]
+      bresp: ["s_axi_wr", "bresp"]

@@ -9,7 +9,9 @@ use egui_plot::{
 };
 use wellen::TimescaleUnit;
 
-use crate::{BusUsage, analyzer::Analyzer, bus_usage::Statistic, surfer_integration};
+use crate::{
+    BusUsage, analyzer::Analyzer, bus::CyclesNum, bus_usage::Statistic, surfer_integration,
+};
 
 pub fn run_visualization(
     analyzers: Vec<Box<dyn Analyzer>>,
@@ -41,7 +43,7 @@ enum PlotType {
 #[derive(PartialEq)]
 struct BucketsPlot {
     scale: PlotScale,
-    selected: Option<(usize, Id)>,
+    selected: Option<(CyclesNum, Id)>,
 }
 
 impl BucketsPlot {
@@ -137,7 +139,11 @@ impl eframe::App for BusperfApp {
                 result,
                 self.selected,
                 &self.trace_path,
-                self.analyzers[self.selected].get_signals(),
+                self.analyzers[self.selected]
+                    .get_signals()
+                    .iter()
+                    .map(|s| format!("{s}"))
+                    .collect(),
                 &self.waveform_time_unit,
                 (&mut self.left, &mut self.right),
             );
@@ -342,7 +348,6 @@ fn draw_buckets(
                         buckets_statistic
                             .get_buckets()
                             .into_iter()
-                            .enumerate()
                             .map(|(i, bucket)| Bar::new(i as f64, bucket as f64))
                             .collect::<Vec<_>>(),
                     )
@@ -367,7 +372,7 @@ fn draw_buckets(
             if let Some(id) = response.hovered_plot_item
                 && let Some(coords) = coords
             {
-                *selected = Some((coords.x.round() as usize, id));
+                *selected = Some((coords.x.round() as i32, id));
             } else {
                 *selected = None;
             }
@@ -380,7 +385,7 @@ fn draw_buckets(
                         let buckets_statistic = barcharts[id];
                         let data = match scale {
                             PlotScale::Log => buckets_statistic.get_data_for_bucket(*selected),
-                            PlotScale::Lin => buckets_statistic.get_data_of_value(*selected as u32),
+                            PlotScale::Lin => buckets_statistic.get_data_of_value(*selected),
                         };
                         surfer_integration::open_and_mark_periods(
                             surfer_info.trace_path,
