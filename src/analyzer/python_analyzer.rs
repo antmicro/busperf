@@ -1,8 +1,7 @@
 use crate::{
-    BusUsage,
-    analyzer::AnalyzerInternal,
+    analyzer::private::AnalyzerInternal,
     bus::{BusCommon, SignalPath, is_value_of_type},
-    bus_usage::MultiChannelBusUsage,
+    bus_usage::{BusUsage, MultiChannelBusUsage},
     plugins::load_python_plugin,
 };
 
@@ -126,8 +125,7 @@ impl AnalyzerInternal for PythonAnalyzer {
         for (time, resp_time, last_write, first_data, resp, next) in results {
             let [time, resp_time, last_write, first_data, next] =
                 [time, resp_time, last_write, first_data, next].map(|i| time_table[i as usize]);
-            let delay = next - resp_time;
-            usage.add_transaction(time, resp_time, last_write, first_data, &resp, delay);
+            usage.add_transaction(time, resp_time, last_write, first_data, &resp, next);
         }
         usage.end(reset);
 
@@ -138,9 +136,5 @@ impl AnalyzerInternal for PythonAnalyzer {
 impl Analyzer for PythonAnalyzer {
     fn get_results(&self) -> Option<&BusUsage> {
         self.result.as_ref()
-    }
-
-    fn finished_analysis(&self) -> bool {
-        self.result.is_some()
     }
 }

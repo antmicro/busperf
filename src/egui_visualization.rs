@@ -10,7 +10,10 @@ use egui_plot::{
 use wellen::TimescaleUnit;
 
 use crate::{
-    BusUsage, analyzer::Analyzer, bus::CyclesNum, bus_usage::Statistic, surfer_integration,
+    analyzer::Analyzer,
+    bus::CyclesNum,
+    bus_usage::{BusUsage, Statistic},
+    surfer_integration,
 };
 
 pub fn run_visualization(

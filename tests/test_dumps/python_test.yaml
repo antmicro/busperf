@@ -9,7 +9,7 @@ interfaces:
     reset_type: "low"
 
     handshake: "Custom"
-    custom_handshake: "PythonTest"
+    custom_handshake: "PythonReadyValid"
     ready: "ready"
     valid: "valid"
  

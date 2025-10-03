@@ -1,6 +1,7 @@
 use crate::{CycleType, bus::CyclesNum};
 use std::collections::HashMap;
 
+/// Enum that contains all bus usage types.
 #[derive(PartialEq, Debug, Clone)]
 pub enum BusUsage {
     SingleChannel(SingleChannelBusUsage),
@@ -26,12 +27,14 @@ impl BusUsage {
     }
 }
 
+/// Enum that contains all statistic types.
 pub enum Statistic<'a> {
     Percentage(PercentageStatistic),
     Bucket(BucketsStatistic<'a>),
     Timeline(TimelineStatistic),
 }
 
+/// Statistic that compares given values based on their proportions.
 pub struct PercentageStatistic {
     pub name: &'static str,
     pub data_labels: Vec<(f32, &'static str)>,
@@ -60,6 +63,7 @@ impl PercentageStatistic {
     }
 }
 
+/// Statistic that describes values continously changing in time.
 pub struct TimelineStatistic {
     pub name: &'static str,
     pub values: Vec<[f64; 2]>,
@@ -71,6 +75,7 @@ impl TimelineStatistic {
     pub fn get_data(&self) -> &Vec<[f64; 2]> {
         &self.values
     }
+    /// Gets min and max value of each axis (min_x, max_x, min_y, max_y)
     pub fn get_bounds(data: &[[f64; 2]]) -> (f64, f64, f64, f64) {
         let min_x = *data
             .iter()
@@ -96,15 +101,18 @@ impl TimelineStatistic {
     }
 }
 
+/// Stores in what state is the bus currently
+#[doc(hidden)]
 #[derive(PartialEq, Debug, Clone)]
 pub enum CurrentlyCalculating {
     None,
     Burst,
     Delay,
-    Pause(i32),
+    /// Delay during burst
+    Pause(CyclesNum),
 }
 
-/// Contains statistics for a single channel bus
+/// Contains statistics for a single channel bus.
 #[derive(PartialEq, Debug, Clone)]
 pub struct SingleChannelBusUsage {
     pub bus_name: String,
@@ -143,7 +151,7 @@ impl SingleChannelBusUsage {
             }),
         ])
     }
-    pub fn get_cycles(&self) -> PercentageStatistic {
+    fn get_cycles(&self) -> PercentageStatistic {
         PercentageStatistic {
             data_labels: vec![
                 (self.busy as f32, "Busy"),
@@ -156,9 +164,6 @@ impl SingleChannelBusUsage {
             name: "Cycles",
             description: "How many clock cycles was bus in each state",
         }
-    }
-    pub fn reset(&self) -> CyclesNum {
-        self.reset
     }
     /// Creates SingleChannelBusUsage with all statistics initialized to 0.
     /// To fill it with data use add_cycle() method for every cycle in the simulation. Later call end() to finish calculations.
@@ -320,10 +325,12 @@ impl SingleChannelBusUsage {
     }
 }
 
+/// Statistic that groups the periods by their duration and counts how many of them are in each bucket.
 #[derive(PartialEq, Debug, Clone)]
 pub struct BucketsStatistic<'a> {
     pub name: &'static str,
     pub data: &'a Vec<Period>,
+    // Clock period.
     pub clk_to_time: u64,
     pub color: &'static str,
     pub description: &'static str,
@@ -345,7 +352,8 @@ impl<'a> BucketsStatistic<'a> {
             description,
         }
     }
-    pub fn get_data(&self) -> HashMap<i32, usize> {
+    /// Returns counts of periods that are of each size
+    pub fn get_data(&self) -> HashMap<CyclesNum, usize> {
         let mut buckets = HashMap::new();
         for v in self.data.iter() {
             let v = v.duration;
@@ -360,8 +368,8 @@ impl<'a> BucketsStatistic<'a> {
         }
         buckets
     }
-    /// Returns values of the buckets
-    pub fn get_buckets(&self) -> HashMap<i32, usize> {
+    /// Returns values of the buckets that are of logarythmic scale size
+    pub fn get_buckets(&self) -> HashMap<CyclesNum, usize> {
         let mut buckets = HashMap::new();
         for v in self.data.iter() {
             let bucket = match v.duration {
@@ -385,6 +393,7 @@ impl<'a> BucketsStatistic<'a> {
             v => -(v.abs().ilog2() as i32 + 1),
         }
     }
+    // Returns periods that have specified duration
     pub fn get_data_of_value(&self, value: CyclesNum) -> Vec<Period> {
         self.data
             .iter()
@@ -392,6 +401,7 @@ impl<'a> BucketsStatistic<'a> {
             .copied()
             .collect()
     }
+    // Returns periods that belong to bucket nr [bucket_num]
     pub fn get_data_for_bucket(&self, bucket_num: i32) -> Vec<Period> {
         self.data
             .iter()
@@ -418,9 +428,11 @@ impl<'a> BucketsStatistic<'a> {
     }
 }
 
+/// Waveform time.
 pub type RealTime = u64;
 type SignedRealTime = i64;
 
+/// Contains waveform times of start and end of some period and its duration in clock cycles.
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub struct Period {
     start: RealTime,
@@ -429,7 +441,7 @@ pub struct Period {
 }
 
 impl Period {
-    pub fn new(start: RealTime, end: RealTime, clk_period: RealTime) -> Self {
+    fn new(start: RealTime, end: RealTime, clk_period: RealTime) -> Self {
         let duration = ((end as SignedRealTime - start as SignedRealTime)
             / clk_period as SignedRealTime) as CyclesNum;
         Self {
@@ -438,16 +450,7 @@ impl Period {
             duration,
         }
     }
-    pub fn from_delay(start: RealTime, delay: RealTime, clk_period: RealTime) -> Self {
-        let end = start + delay;
-        let duration = (delay / clk_period) as CyclesNum;
-        Self {
-            start,
-            end,
-            duration,
-        }
-    }
-    pub fn with_duration(start: RealTime, duration: CyclesNum, clk_period: RealTime) -> Self {
+    fn with_duration(start: RealTime, duration: CyclesNum, clk_period: RealTime) -> Self {
         let end = start + (duration - 1) as u64 * clk_period;
         Self {
             start,
@@ -455,6 +458,7 @@ impl Period {
             duration,
         }
     }
+    // Method for writing tests, you most likely want to use [Period::new] or [Period::with_duration]
     pub fn literal(start: RealTime, end: RealTime, duration: CyclesNum) -> Self {
         Self {
             start,
@@ -482,7 +486,7 @@ impl Period {
     }
 }
 
-/// Contains statistics for a multichannel bus
+/// Contains statistics for a multichannel bus.
 #[derive(PartialEq, Debug, Clone)]
 pub struct MultiChannelBusUsage {
     pub bus_name: String,
@@ -500,7 +504,6 @@ pub struct MultiChannelBusUsage {
     clock_period: RealTime,
     bandwidth_above_x_rate: f32,
     bandwidth_below_y_rate: f32,
-    pub channels_usages: Vec<SingleChannelBusUsage>,
     time: RealTime,
     /// We have a statistic that calculates % of time that the bandwidth was ABOVE this value
     x_rate: f64,
@@ -510,7 +513,7 @@ pub struct MultiChannelBusUsage {
 
 impl MultiChannelBusUsage {
     /// Creates empty MultiChannelBusUsage with all statistics initialized to zero. Should be filled with add_transaction()
-    pub fn new(
+    pub(crate) fn new(
         bus_name: &str,
         window_length: u32,
         clock_period: RealTime,
@@ -533,7 +536,6 @@ impl MultiChannelBusUsage {
             clock_period,
             bandwidth_above_x_rate: 0.0,
             bandwidth_below_y_rate: 0.0,
-            channels_usages: vec![],
             time,
             x_rate: x_rate as f64,
             y_rate: y_rate as f64,
@@ -622,14 +624,14 @@ impl MultiChannelBusUsage {
     }
 
     /// Updates statistics given new transaction. When all transactions are added you should call end() to finish calculation of statistics.
-    pub fn add_transaction(
+    pub(crate) fn add_transaction(
         &mut self,
         time: RealTime,
         resp_time: RealTime,
         last_write: RealTime,
         first_data: RealTime,
         resp: &str,
-        delay: RealTime,
+        next: RealTime,
     ) {
         self.cmd_to_completion
             .push(Period::new(time, resp_time, self.clock_period));
@@ -643,8 +645,8 @@ impl MultiChannelBusUsage {
             self.errors.push(time)
         }
         self.transaction_delays
-            .push(Period::from_delay(resp_time, delay, self.clock_period));
-        self.time = resp_time + delay;
+            .push(Period::new(resp_time, next, self.clock_period));
+        self.time = next;
     }
 
     fn transaction_coverage_in_window(&self, period: Period, window_num: u32, offset: u32) -> f32 {
@@ -657,7 +659,7 @@ impl MultiChannelBusUsage {
 
     /// Finishes calculation of statistics and makes sure that all temporary values are already taken into account
     // TODO: maybe we should split this struct in two as we should with SingleChannelBusUsage
-    pub fn end(&mut self, time_in_reset: u32) {
+    pub(crate) fn end(&mut self, time_in_reset: u32) {
         let error_num = self.errors.len() as u32;
         self.error_rate = error_num as f32 / (self.correct_num + error_num) as f32;
         self.averaged_bandwidth = self.cmd_to_first_data.len() as f32

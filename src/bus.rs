@@ -63,7 +63,6 @@ impl SignalPath {
     }
 }
 
-#[macro_export]
 macro_rules! bus_from_yaml {
     ( $bus_type:tt, $($signal_name:ident),* ) => {
         pub fn from_yaml(yaml: Yaml, bus_scope: &[String]) -> Result<Self, Box<dyn std::error::Error>> {
@@ -84,6 +83,7 @@ macro_rules! bus_from_yaml {
         }
     };
 }
+pub(crate) use bus_from_yaml;
 
 #[derive(Debug)]
 pub struct BusCommon {

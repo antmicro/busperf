@@ -1,14 +1,16 @@
 use wellen::{SignalValue, TimeTable};
 
 use crate::{
-    BusUsage, CycleType, SingleChannelBusUsage,
-    analyzer::AnalyzerInternal,
+    CycleType, SimulationData,
+    analyzer::private::AnalyzerInternal,
     bus::{
         BusCommon, BusDescription, BusDescriptionBuilder, CyclesNum, SignalPath, is_value_of_type,
     },
+    bus_usage::{BusUsage, SingleChannelBusUsage},
+    load_signals,
 };
 
-use super::{Analyzer, analyze_single_bus};
+use super::Analyzer;
 
 pub struct DefaultAnalyzer {
     common: BusCommon,
@@ -114,8 +116,89 @@ impl Analyzer for DefaultAnalyzer {
     fn get_results(&self) -> Option<&BusUsage> {
         self.result.as_ref()
     }
+}
 
-    fn finished_analysis(&self) -> bool {
-        self.result.is_some()
+pub fn analyze_single_bus(
+    common: &BusCommon,
+    bus_desc: &dyn BusDescription,
+    simulation_data: &mut SimulationData,
+    verbose: bool,
+) -> SingleChannelBusUsage {
+    let mut signals = vec![common.clk_path(), common.rst_path()];
+    signals.append(&mut bus_desc.signals());
+
+    let start = std::time::Instant::now();
+    let loaded = load_signals(simulation_data, &signals);
+    let (_, clock) = &loaded[0];
+    let (_, reset) = &loaded[1];
+    if verbose {
+        println!(
+            "Loading signals for {} took {:?}",
+            common.bus_name(),
+            start.elapsed()
+        );
     }
+
+    let start = std::time::Instant::now();
+    let mut usage = SingleChannelBusUsage::new(
+        common.bus_name(),
+        common.max_burst_delay(),
+        simulation_data.body.time_table[2],
+    );
+    for (time, value) in clock.iter_changes() {
+        if let SignalValue::Binary(v, 1) = value
+            && v[0] == 0
+        {
+            continue;
+        }
+        // We subtract one to use values just before clock signal
+        let time = time.saturating_sub(1);
+        let reset = reset.get_value_at(
+            &reset
+                .get_offset(time)
+                .expect("Value should be valid at that time"),
+            0,
+        );
+        let values: Vec<SignalValue> = loaded[2..]
+            .iter()
+            .map(|(_, s)| {
+                s.get_value_at(
+                    &s.get_offset(time)
+                        .expect("Value should be valid at that time"),
+                    0,
+                )
+            })
+            .collect();
+
+        if !is_value_of_type(reset, common.rst_active_value()) {
+            let type_ = bus_desc.interpret_cycle(&values, time);
+            if let CycleType::Unknown = type_ {
+                let mut state = String::new();
+                bus_desc
+                    .signals()
+                    .iter()
+                    .zip(values)
+                    .for_each(|(name, value)| state.push_str(&format!("{name}: {value}, ")));
+                eprintln!(
+                    "[WARN] bus \"{}\" in unknown state outside reset at time: {} - {}",
+                    common.bus_name(),
+                    simulation_data.body.time_table[time as usize],
+                    state
+                );
+            }
+
+            usage.add_cycle(type_);
+        } else {
+            usage.add_cycle(CycleType::Reset);
+        }
+    }
+    if verbose {
+        println!(
+            "Calculating statistics for {} took {:?}",
+            common.bus_name(),
+            start.elapsed()
+        );
+    }
+
+    usage
 }

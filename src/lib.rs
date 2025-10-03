@@ -11,13 +11,10 @@ use wellen::{
 };
 use yaml_rust2::YamlLoader;
 
-mod analyzer;
+pub mod analyzer;
 mod bus;
 pub mod bus_usage;
 mod plugins;
-
-pub use bus_usage::BusUsage;
-pub use bus_usage::SingleChannelBusUsage;
 
 mod egui_visualization;
 mod surfer_integration;
@@ -27,6 +24,7 @@ use bus::CyclesNum;
 
 use crate::bus::SignalPath;
 
+/// Loads descriptions of the buses from yaml file with given name.
 pub fn load_bus_analyzers(
     filename: &str,
     default_max_burst_delay: CyclesNum,
@@ -73,6 +71,10 @@ pub struct SimulationData {
     body: BodyResult,
 }
 
+/// Loads waveform file.
+///
+/// * `filename` - path to file.
+/// * `verbose` - prints how long it took to load.
 pub fn load_simulation_trace(filename: &str, verbose: bool) -> SimulationData {
     let start = std::time::Instant::now();
     let load_options = LoadOptions {
@@ -116,6 +118,13 @@ fn load_signals(
     loaded
 }
 
+/// State in which a bus was in during a clock cycle.
+///
+/// | busperf        | busy              | free               | no transaction     | backpressure    |  no data        | unknown        |
+/// |----------------|-------------------|--------------------|--------------------|-----------------|-----------------|----------------|
+/// | axi            | ready && valid    | !ready && !valid   | not used           | !ready && valid | ready && !valid | no used        |
+/// | ahb            | seq / no seq      | idle               | not used           | hready          | trans=BUSY      | other          |
+/// | credit valid   | credit>0 && valid | credit>0 && !valid | credit=0 && !valid | not used        | not used        | other          |
 pub enum CycleType {
     Busy,
     Free,
@@ -126,13 +135,20 @@ pub enum CycleType {
     Unknown,
 }
 
+/// Type of visualization of data.
 pub enum OutputType {
+    /// Pretty printed text
     Pretty,
     Csv,
     Md,
+    /// GUI
     Rendered,
 }
 
+/// * "text" -> Pretty
+/// * "csv" -> Csv
+/// * "md" -> Md
+/// * "gui" -> Rendered
 impl TryFrom<&str> for OutputType {
     type Error = &'static str;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
@@ -146,6 +162,9 @@ impl TryFrom<&str> for OutputType {
     }
 }
 
+/// Run visualization.
+///
+/// If any analyzer has not yet been run it will be run. Then visualization of type `type_` will be run.
 pub fn show_data(
     mut analyzers: Vec<Box<dyn Analyzer>>,
     type_: OutputType,

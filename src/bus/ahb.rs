@@ -1,13 +1,8 @@
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use crate::{
-    CycleType,
-    bus::{SignalPath, ValueType, get_value},
-    bus_from_yaml,
-};
-
-use super::BusDescription;
+use super::{BusDescription, SignalPath, ValueType, bus_from_yaml, get_value};
+use crate::CycleType;
 
 #[derive(Debug)]
 pub struct AHBBus {
@@ -53,17 +48,20 @@ impl BusDescription for AHBBus {
                     CycleType::Backpressure
                 }
                 (_, V0) => CycleType::Backpressure,
-                _ => panic!(
-                    "signal has invalid value hready: {} htrans: {}",
-                    hready, htrans
-                ),
+                _ => {
+                    eprintln!(
+                        "signal has invalid value hready: {} htrans: {}",
+                        hready, htrans
+                    );
+                    CycleType::Unknown
+                }
             }
         } else {
             eprintln!(
                 "bus in unknown state outside reset hready: {}, htrans: {}",
                 hready, htrans
             );
-            CycleType::NoTransaction
+            CycleType::Unknown
         }
     }
 }

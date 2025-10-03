@@ -1,6 +1,6 @@
 class Analyzer:
     def __init__(self):
-        print("Loaded python Analyzer")
+        print("Loaded python PythonReadyValid")
     def get_signals(self):
         return ["ready", "valid"]
     def interpret_cycle(self, signals):

@@ -3,13 +3,12 @@ use std::{error::Error, iter::Peekable};
 use wellen::{Signal, SignalValue, TimeTable, TimeTableIdx};
 
 use crate::{
-    BusUsage,
-    analyzer::AnalyzerInternal,
+    analyzer::private::AnalyzerInternal,
     bus::{
         BusCommon, BusDescription, CyclesNum, SignalPath, ValueType, axi::AXIBus, get_value,
         is_value_of_type,
     },
-    bus_usage::MultiChannelBusUsage,
+    bus_usage::{BusUsage, MultiChannelBusUsage},
 };
 
 use super::Analyzer;
@@ -29,6 +28,7 @@ pub struct AXIWrAnalyzer {
     common: BusCommon,
     aw: AXIBus,
     w: AXIBus,
+    /// w_last is optional, if it's None we assume all transactions have len = 1
     w_last: Option<SignalPath>,
     b: AXIBus,
     b_resp: SignalPath,
@@ -38,6 +38,7 @@ pub struct AXIWrAnalyzer {
     y_rate: f32,
 }
 
+// Count how many clock cycles was reset active
 fn count_reset(rst: &Signal, active_value: ValueType) -> u32 {
     let mut last = 0;
     let mut reset = 0;
@@ -187,7 +188,7 @@ impl AnalyzerInternal for AXIRdAnalyzer {
 }
 
 impl Analyzer for AXIRdAnalyzer {
-    fn get_results(&self) -> Option<&crate::BusUsage> {
+    fn get_results(&self) -> Option<&BusUsage> {
         self.result.as_ref()
     }
 }
@@ -449,6 +450,7 @@ impl<'a> Iterator for ReadyValidTransactionIterator<'a> {
     type Item = TimeTableIdx;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // Find next clock rising edge
         self.current_time = loop {
             if let Some(time) = self.clk.next() {
                 if time > self.current_time {
@@ -461,6 +463,8 @@ impl<'a> Iterator for ReadyValidTransactionIterator<'a> {
         if self.current_time > self.time_end {
             return None;
         }
+        // Check if either of ready or valid changed to value 0
+        // if so set current_time to that time and perform the check again
         while let Some(smaller) = match (self.ready.peek(), self.valid.peek()) {
             (None, None) => None,
             (None, Some(_)) => Some(&mut self.valid),

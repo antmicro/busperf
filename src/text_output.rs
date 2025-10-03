@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use crate::{BusUsage, analyzer::Analyzer};
+use crate::{analyzer::Analyzer, bus_usage::BusUsage};
 
 fn generate_tabled<O>(header: &Vec<String>, data: &Vec<Vec<String>>, style: O) -> tabled::Table
 where

@@ -2,13 +2,8 @@ use std::cell::Cell;
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use crate::{
-    CycleType,
-    bus::{SignalPath, ValueType, get_value},
-    bus_from_yaml,
-};
-
-use super::BusDescription;
+use super::{BusDescription, SignalPath, ValueType, bus_from_yaml, get_value};
+use crate::CycleType;
 
 #[derive(Debug)]
 pub struct CreditValidBus {
@@ -63,7 +58,7 @@ impl BusDescription for CreditValidBus {
                         "signal has invalid value credit: {} valid: {}",
                         credit, valid
                     );
-                    CycleType::NoTransaction
+                    CycleType::Unknown
                 }
             }
         } else {
@@ -71,7 +66,7 @@ impl BusDescription for CreditValidBus {
                 "bus in unknown state outside reset credit: {}, valid: {}",
                 credit, valid
             );
-            CycleType::NoTransaction
+            CycleType::Unknown
         }
     }
 }
