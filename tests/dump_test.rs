@@ -194,6 +194,42 @@ fn ahb() {
     );
 }
 
+// test apb bus
+#[test]
+fn apb() {
+    let correct = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
+        "test",
+        11,
+        5,
+        0,
+        0,
+        4,
+        2,
+        vec![
+            Period::literal(0, 2, 2),
+            Period::literal(12, 14, 2),
+            Period::literal(18, 18, 1),
+            Period::literal(30, 32, 2),
+            Period::literal(36, 42, 4),
+        ],
+        vec![
+            Period::literal(4, 10, 4),
+            Period::literal(16, 16, 1),
+            Period::literal(20, 28, 5),
+            Period::literal(34, 34, 1),
+        ],
+        0,
+        bus_usage::CurrentlyCalculating::Delay,
+        2,
+    ));
+    test(
+        "tests/test_dumps/apb.vcd",
+        "tests/test_dumps/apb.yaml",
+        0,
+        &[correct],
+    );
+}
+
 // test python ready/valid plugin on test.vcd
 #[test]
 fn python() {

@@ -120,11 +120,12 @@ fn load_signals(
 
 /// State in which a bus was in during a clock cycle.
 ///
-/// | busperf        | busy              | free               | no transaction     | backpressure    |  no data        | unknown        |
-/// |----------------|-------------------|--------------------|--------------------|-----------------|-----------------|----------------|
-/// | axi            | ready && valid    | !ready && !valid   | not used           | !ready && valid | ready && !valid | no used        |
-/// | ahb            | seq / no seq      | idle               | not used           | hready          | trans=BUSY      | other          |
-/// | credit valid   | credit>0 && valid | credit>0 && !valid | credit=0 && !valid | not used        | not used        | other          |
+/// | busperf        | busy                  | free               | no transaction     | backpressure      |  no data        | unknown        |
+/// |----------------|-----------------------|--------------------|--------------------|-------------------|-----------------|----------------|
+/// | axi            | ready && valid        | !ready && !valid   | not used           | !ready && valid   | ready && !valid | no used        |
+/// | ahb            | seq / no seq          | idle               | not used           | hready            | trans=BUSY      | other          |
+/// | credit valid   | credit>0 && valid     | credit>0 && !valid | credit=0 && !valid | not used          | not used        | other          |
+/// | apb            | setup or access phase | !psel              | not used           | access && !pready | not used        | other          |
 pub enum CycleType {
     Busy,
     Free,

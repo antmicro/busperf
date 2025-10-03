@@ -53,7 +53,7 @@ interfaces:
 
 - "a_", "b_": names of buses
 - reset_type: "low" or "high"
-- handshake: possible values: "ReadyValid", "CreditValid", "AHB", "Custom"
+- handshake: possible values: "ReadyValid", "CreditValid", "AHB", "APB", Custom"
 - custom_handshake: if handshake is set to "Custom" a name of python plugin should be provided
 
 ### Multi channel bus
@@ -117,11 +117,12 @@ For each described bus busperf will calculate and display:
 
 Table matching state of the bus with busperf statistic name:
 
-| busperf        | busy              | free               | no transaction     | backpressure    | no data         | unknown        |
-|----------------|-------------------|--------------------|--------------------|-----------------|-----------------|----------------|
-| axi            | ready && valid    | !ready && !valid   | not used           | !ready && valid | ready && !valid | no used        |
-| ahb            | seq / no seq      | idle               | not used           | hready          | trans=BUSY      | other          |
-| credit valid   | credit>0 && valid | credit>0 && !valid | credit=0 && !valid | not used        | not used        | other          |
+| busperf        | busy                  | free               | no transaction     | backpressure      | no data         | unknown        |
+|----------------|-----------------------|--------------------|--------------------|-------------------|-----------------|----------------|
+| axi            | ready && valid        | !ready && !valid   | not used           | !ready && valid   | ready && !valid | no used        |
+| ahb            | seq / no seq          | idle               | not used           | hready            | trans=BUSY      | other          |
+| credit valid   | credit>0 && valid     | credit>0 && !valid | credit=0 && !valid | not used          | not used        | other          |
+| apb            | setup or access phase | !psel              | not used           | access && !pready | not used        | other          |
 
 ### Multi channel
 - `Cmd to completion`: Number of clock cycles from issuing a command to receving a reponse.

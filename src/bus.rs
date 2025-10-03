@@ -1,11 +1,13 @@
 pub type CyclesNum = i32;
 
 pub mod ahb;
+pub mod apb;
 pub mod axi;
 pub mod credit_valid;
 pub mod custom_python;
 
 use ahb::AHBBus;
+use apb::APBBus;
 use axi::AXIBus;
 use credit_valid::CreditValidBus;
 use custom_python::PythonCustomBus;
@@ -201,6 +203,7 @@ impl BusDescriptionBuilder {
             }
             "CreditValid" => Ok(Box::new(CreditValidBus::from_yaml(i, scope)?)),
             "AHB" => Ok(Box::new(AHBBus::from_yaml(i, scope)?)),
+            "APB" => Ok(Box::new(APBBus::from_yaml(i, scope)?)),
             "Custom" => {
                 let handshake = i["custom_handshake"]
                     .as_str()

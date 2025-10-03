@@ -1,0 +1,16 @@
+interfaces:
+  ####################################################
+  ###############  TEST INTERFACE  ###################
+  ####################################################
+  "test":
+    scope: ["logic"]
+    clock: "clk"
+    reset: "reset"
+    reset_type: "low"
+
+    handshake: "APB"
+    psel: "psel"
+    penable: "penable"
+    pready: "pready"
+ 
+
