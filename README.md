@@ -136,37 +136,54 @@ Table matching state of the bus with busperf statistic name:
 
 ### Docs
 
-`$ cargo doc --no-deps --open`
+```sh
+$ cargo doc --no-deps --open
+```
 
-### Build
+### Install and run
 
-`$ cargo build`
+```sh
+$ cargo install --path .
+$ busperf --help
+```
 
-### Run
+Shell completion can be generated as described [here](https://github.com/pacak/bpaf?tab=readme-ov-file#dynamic-shell-completion).
 
-`$ cargo run -- [OPTIONS] [-t | --trace] <SIMULATION_TRACE> [-b | --bus-config] <BUS_DESCRIPTION>`  
-or  
-`$ busperf [OPTIONS] [-t | --trace] <SIMULATION_TRACE> [-b | --bus-config] <BUS_DESCRIPTION>`
+### Run without install
+
+Release mode:
+```sh
+$ cargo run -r -- --help
+```
+Debug mode:
+```sh
+$ cargo run -- --help
+```
+
+### Usage help
 
 ```
-Arguments:
-  <SIMULATION_TRACE>                       vcd/fst file with simulation trace
-  <BUS_DESCRIPTION>                        yaml with description of buses
+Usage: busperf (--gui | --csv | --md | --text) [-o=OUT] [-m=BURST] [-w=WINDOW] [-x=X_RATE] [-y=Y_RATE]
+[-v] (-t=TRACE -b=BUS_CONFIG | TRACE BUS)
 
-Options:
-  -o, --output <OUTPUT_FILENAME>
-      --csv                                Format output as csv
-      --md                                 Format output as md table
-      --gui                                Run GUI
-      --text                               Format output as table
-  -m, --max-burst-delay <MAX_BURST_DELAY>  [default: 0]
-  -w, --window <WINDOW_SIZE>               Set size of the rolling window [default: 10000]
-  -x, --x-rate <VALUE>                     Set x_rate for bandwidth above x_rate [default: 0.0001]
-  -y, --y-rate <VALUE>                     Set y_rate for bandwidth below y_rate [default: 0.00001]
-  -t, --trace <SIMULATION_TRACE>           Path to the trace file. Can be specified as option or a positional argument
-  -b, --bus-config <BUS_DESCRIPTION>       Path to the bus description yaml. Can be specified as option or a positional argument
-  -v, --verbose                            
-  -h, --help                               Print help
+Available positional items:
+    TRACE                vcd/fst file with simulation trace
+    BUS                  yaml with description of buses
+
+Available options:
+        --gui            Run GUI
+        --csv            Format output as csv
+        --md             Format output as md table
+        --text           Format output as table
+    -o=OUT               Output filename
+    -m, --max_burst_delay=BURST  Max delay during a burst [default: 0]
+    -w, --window=WINDOW  Set size of the rolling window [default: 10000]
+    -x, --x_rate=X_RATE  Set x_rate for bandwidth above x_rate [default: 0.0001]
+    -y, --y_rate=Y_RATE  Set y_rate for bandwidth below y_rate [default: 0.00001]
+    -v, --verbose
+    -t, --trace=TRACE    vcd/fst file with simulation trace
+    -b, --bus-config=BUS_CONFIG  yaml with description of buses
+    -h, --help           Prints help information
 ```
 
 ### GUI
@@ -188,36 +205,36 @@ type of statistics you want to view in it.
 
 - Prints statistics about bus described in test.yaml trace in test.vcd
 <!-- name="example-test" -->
-```
+```sh
 cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml --text
 ```
 
 - Prints all statistics sets max burst delay to 1
 <!-- name="example-test-verbose" -->
-```
+```sh
 cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml --verbose -m 1 --text
 ```
 
 - Writes statistics to `stat.csv` formated as csv
 <!-- name="example-csv" -->
-```
+```sh
 cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o stat.csv --csv
 ```
 
 - Prints statistics to stdout as md
 <!-- name="example-md" -->
-```
+```sh
 cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml --md
 ```
 
 - Writes pretty printed statistics to `out`
 <!-- name="example-pretty" -->
-```
+```sh
 cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o out --text
 ```
 
 - Clean files generated from examples
 <!-- name="example-clean" -->
-```
+```sh
 rm out stat.csv
 ```

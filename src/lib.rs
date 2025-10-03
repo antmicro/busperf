@@ -137,6 +137,7 @@ pub enum CycleType {
 }
 
 /// Type of visualization of data.
+#[derive(Clone)]
 pub enum OutputType {
     /// Pretty printed text
     Pretty,
