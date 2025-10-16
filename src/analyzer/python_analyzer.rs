@@ -1,5 +1,5 @@
 use crate::{
-    analyzer::private::AnalyzerInternal,
+    analyzer::{axi_analyzer::ReadyValidTransactionIterator, private::AnalyzerInternal},
     bus::{BusCommon, SignalPath, is_value_of_type},
     bus_usage::{BusUsage, MultiChannelBusUsage},
     plugins::load_python_plugin,
@@ -14,11 +14,17 @@ pub struct PythonAnalyzer {
     common: BusCommon,
     obj: Py<PyAny>,
     result: Option<BusUsage>,
-    signals: Vec<SignalPath>,
+    signals: Vec<SignalInfo>,
     window_length: u32,
     x_rate: f32,
     y_rate: f32,
 }
+
+// u32 is an enum
+// 1 - Signal
+// 2 - RisingSignal
+// 3 - ReadyValid
+type SignalInfo = (u32, Vec<SignalPath>);
 
 impl PythonAnalyzer {
     pub fn new(
@@ -31,21 +37,57 @@ impl PythonAnalyzer {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let obj = load_python_plugin(class_name)?;
 
-        let Ok(signals) = Python::with_gil(|py| -> PyResult<Vec<String>> {
+        let Ok(signals) = Python::with_gil(|py| -> PyResult<Vec<(u32, Vec<String>)>> {
             obj.getattr(py, "get_yaml_signals")?
                 .call0(py)?
-                .extract::<Vec<String>>(py)
+                .extract::<Vec<(u32, Vec<String>)>>(py)
         }) else {
             return Err("Python plugin returned bad signal names")?;
         };
         let signals = signals
             .iter()
-            .map(|s| match i[s.as_str()].as_str() {
-                Some(string) => Ok(SignalPath {
-                    scope: common.module_scope().clone(),
-                    name: string.to_owned(),
-                }),
-                None => Err(format!("Yaml should define {} signal", s)),
+            .map(|(type_, path)| {
+                let mut i = i;
+                for s in path {
+                    i = &i[s.as_str()];
+                }
+                match type_ {
+                    1 | 2 => match i.as_str() {
+                        Some(string) => Ok((
+                            *type_,
+                            vec![SignalPath {
+                                scope: common.module_scope().clone(),
+                                name: string.to_owned(),
+                            }],
+                        )),
+                        None => Err(format!("Yaml should define {:?} signal", path)),
+                    },
+                    3 => {
+                        if let Some(r) = i["ready"].as_str()
+                            && let Some(v) = i["valid"].as_str()
+                        {
+                            Ok((
+                                *type_,
+                                vec![
+                                    SignalPath {
+                                        scope: common.module_scope().clone(),
+                                        name: r.to_owned(),
+                                    },
+                                    SignalPath {
+                                        scope: common.module_scope().clone(),
+                                        name: v.to_owned(),
+                                    },
+                                ],
+                            ))
+                        } else {
+                            Err(format!(
+                                "Yaml is missing ready and/or valid signal for {}",
+                                path.last().expect("Invalid yaml")
+                            ))
+                        }
+                    }
+                    _ => Err("Invalid type returned from python analyzer")?,
+                }
             })
             .collect::<Result<_, _>>()?;
 
@@ -68,7 +110,7 @@ impl AnalyzerInternal for PythonAnalyzer {
 
     fn get_signals(&self) -> Vec<&SignalPath> {
         let mut signals = vec![self.common.clk_path(), self.common.rst_path()];
-        signals.append(&mut self.signals.iter().collect());
+        signals.append(&mut self.signals.iter().flat_map(|(_, path)| path).collect());
 
         signals
     }
@@ -78,6 +120,7 @@ impl AnalyzerInternal for PythonAnalyzer {
         loaded: Vec<(wellen::SignalRef, wellen::Signal)>,
         time_table: &TimeTable,
     ) {
+        let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let mut last = 0;
         let mut reset = 0;
@@ -89,16 +132,41 @@ impl AnalyzerInternal for PythonAnalyzer {
             }
         }
         reset /= 2;
+        let (time_end, _) = clk.iter_changes().last().expect("Clock should have cycles");
 
-        let loaded: Vec<_> = loaded
+        let mut i = 0;
+        let loaded: Vec<_> = [(1, vec![]), (2, vec![])]
             .iter()
-            .map(|(_, signal)| {
-                signal
-                    .iter_changes()
-                    .map(|(t, v)| (t, v.to_bit_string().expect("Function never returns None")))
-                    .collect::<Vec<(u32, String)>>()
+            .chain(self.signals.iter())
+            .map(|(type_, _)| match type_ {
+                1 | 2 => {
+                    let (_, signal) = &loaded[i];
+                    i += 1;
+                    signal
+                        .iter_changes()
+                        .map(|(t, v)| (t, v.to_bit_string().expect("Function never returns None")))
+                        .collect::<Vec<(u32, String)>>()
+                }
+                3 => {
+                    let (_, ready) = &loaded[i];
+                    let (_, valid) = &loaded[i + 1];
+                    i += 2;
+                    let a = ReadyValidTransactionIterator::new(clk, &ready, &valid, time_end);
+                    a.map(|time| (time, String::new())).collect()
+                }
+                _ => unreachable!("Would fail during loading of signals"),
             })
             .collect();
+
+        // let loaded: Vec<_> = loaded
+        //     .iter()
+        //     .map(|(_, signal)| {
+        //         signal
+        //             .iter_changes()
+        //             .map(|(t, v)| (t, v.to_bit_string().expect("Function never returns None")))
+        //             .collect::<Vec<(u32, String)>>()
+        //     })
+        //     .collect();
 
         #[allow(clippy::type_complexity)]
         let results = Python::with_gil(|py| -> PyResult<Vec<(u32, u32, u32, u32, String, u32)>> {
@@ -108,9 +176,9 @@ impl AnalyzerInternal for PythonAnalyzer {
                 .call1(py, PyTuple::new(py, loaded)?)?;
             res.extract(py)
         })
-        .unwrap_or_else(|_| {
+        .unwrap_or_else(|e| {
             panic!(
-                "Python plugin returned bad result {} ",
+                "Python plugin returned bad result for bus {} {e}",
                 self.common.bus_name()
             )
         });

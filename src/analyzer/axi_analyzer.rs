@@ -765,7 +765,7 @@ impl<'a> Iterator for RisingSignalIterator<'a> {
     }
 }
 
-struct ReadyValidTransactionIterator<'a> {
+pub struct ReadyValidTransactionIterator<'a> {
     current_time: TimeTableIdx,
     clk: RisingSignalIterator<'a>,
     ready: Peekable<Box<dyn Iterator<Item = (u32, SignalValue<'a>)> + 'a>>,
@@ -774,7 +774,12 @@ struct ReadyValidTransactionIterator<'a> {
 }
 
 impl<'a> ReadyValidTransactionIterator<'a> {
-    fn new(clk: &'a Signal, ready: &'a Signal, valid: &'a Signal, time_end: TimeTableIdx) -> Self {
+    pub fn new(
+        clk: &'a Signal,
+        ready: &'a Signal,
+        valid: &'a Signal,
+        time_end: TimeTableIdx,
+    ) -> Self {
         let mut current_time;
         let clk = RisingSignalIterator::new(clk);
         let ready: Box<dyn Iterator<Item = (u32, SignalValue)>> = Box::new(ready.iter_changes());
