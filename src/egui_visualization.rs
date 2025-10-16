@@ -1,11 +1,16 @@
-use std::{collections::HashMap, f32};
+use std::{cell::RefCell, collections::HashMap, f32};
 
 use eframe::{
-    egui::{self, Color32, Id, Label, Layout, PopupAnchor, Rgba, Shape, Stroke, Ui, vec2},
+    egui::{
+        self, Color32, FontId, Id, Label, Layout, Rgba, RichText, Stroke, Ui,
+        text::{LayoutJob, TextWrapping},
+        vec2,
+    },
     epaint::Hsva,
 };
 use egui_plot::{
-    Bar, BarChart, ClosestElem, Legend, Line, Plot, PlotItem, PlotPoint, PlotPoints, Polygon,
+    Bar, BarChart, ClosestElem, Legend, Line, Plot, PlotItem, PlotPoint, PlotPoints, Polygon, Text,
+    uniform_grid_spacer,
 };
 use wellen::TimescaleUnit;
 
@@ -78,7 +83,7 @@ impl std::fmt::Display for PlotType {
         match self {
             PlotType::Pie => write!(f, "Pie"),
             PlotType::Buckets(_) => write!(f, "Buckets"),
-            PlotType::Timeline(_) => write!(f, "Timescale"),
+            PlotType::Timeline(_) => write!(f, "Timeline"),
         }
     }
 }
@@ -94,13 +99,23 @@ struct BusperfApp {
 
 impl BusperfApp {
     fn new(analyzers: Vec<Box<dyn Analyzer>>, trace_path: &str, time_unit: TimescaleUnit) -> Self {
+        let right = if matches!(
+            analyzers[0]
+                .get_results()
+                .expect("Should be already calculated"),
+            BusUsage::SingleChannel(_)
+        ) {
+            PlotType::Pie
+        } else {
+            PlotType::Timeline(TimelinePlot::new(time_unit, None))
+        };
         Self {
             analyzers,
             selected: 0,
             trace_path: trace_path.to_owned(),
             waveform_time_unit: time_unit,
             left: PlotType::Buckets(BucketsPlot::new(PlotScale::Log)),
-            right: PlotType::Timeline(TimelinePlot::new(time_unit, None)),
+            right,
         }
     }
 }
@@ -112,13 +127,21 @@ impl eframe::App for BusperfApp {
             ui.separator();
             for (i, a) in self.analyzers.iter().enumerate() {
                 ui.with_layout(egui::Layout::default().with_cross_justify(true), |ui| {
-                    let b = ui.button(a.get_results().expect("Already calculated").get_name());
-                    if b.clicked() {
-                        self.selected = i;
-                    }
-                    if i == self.selected {
-                        b.highlight();
-                    }
+                    let name = a.get_results().expect("Already calculated").get_name();
+                    let mut job = LayoutJob::simple_singleline(
+                        name.to_string(),
+                        FontId::proportional(12.0),
+                        Color32::LIGHT_GRAY,
+                    );
+                    job.wrap = TextWrapping {
+                        max_width: ui.available_width(),
+                        max_rows: 1,
+                        break_anywhere: true,
+                        ..Default::default()
+                    };
+                    let text = ui.fonts(|f| f.layout_job(job));
+                    ui.selectable_value(&mut self.selected, i, text)
+                        .on_hover_text(name);
                 });
             }
             if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
@@ -136,7 +159,8 @@ impl eframe::App for BusperfApp {
             let result = self.analyzers[self.selected]
                 .get_results()
                 .expect("Already calculated");
-            ui.heading(result.get_name());
+            ui.heading(RichText::new(result.get_name()).color(Color32::WHITE));
+            ui.separator();
             draw_statistics(
                 ui,
                 result,
@@ -201,41 +225,149 @@ fn draw_statistics(
     });
 }
 
+thread_local! {
+    static COLORS: RefCell<HashMap<usize, Color32>> = RefCell::new(HashMap::new());
+}
+
+fn set_color(i: usize, color: Color32) {
+    COLORS.with_borrow_mut(|colors| {
+        colors.insert(i, color);
+    })
+}
+
+fn get_color(i: usize) -> Color32 {
+    COLORS.with_borrow(|colors| {
+        if let Some(color) = colors.get(&i) {
+            *color
+        } else {
+            let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0;
+            let h = i as f32 * golden_ratio;
+            let color = Hsva::new(h, 0.85, 0.5, 1.0);
+            color.into()
+        }
+    })
+}
+
+/// Estimates size that displayed statistic will take up in the UI
+fn estimate_size(statistic: &Statistic) -> f32 {
+    match statistic {
+        Statistic::Percentage(percentage_statistic) => {
+            percentage_statistic
+                .data_labels
+                .iter()
+                .map(|&(_, l)| l.len())
+                .sum::<usize>() as f32
+                * 20.0
+        }
+        Statistic::Bucket(buckets_statistic) => buckets_statistic.display().len() as f32 * 8.0,
+        Statistic::Timeline(timeline_statistic) => timeline_statistic.display.len() as f32 * 10.0,
+    }
+}
+
 fn draw_values(ui: &mut Ui, statistics: &[Statistic]) {
     ui.allocate_ui(vec2(ui.available_size_before_wrap().x, 20.0), |ui| {
         ui.with_layout(
             Layout::left_to_right(egui::Align::Min).with_main_wrap(true),
             |ui| {
-                for statistic in statistics.iter() {
-                    ui.allocate_ui(vec2(300.0, 40.0), |ui| {
-                        egui::Frame::default()
-                            .inner_margin(12)
-                            .stroke(egui::Stroke::new(2.0, Color32::GRAY))
-                            .show(ui, |ui| {
-                                let (display, description) = match statistic {
-                                    Statistic::Percentage(percentage_statistic) => (
-                                        percentage_statistic.display(),
-                                        percentage_statistic.description,
-                                    ),
-                                    Statistic::Bucket(buckets_statistic) => {
-                                        (buckets_statistic.display(), buckets_statistic.description)
+                for (stat_id, statistic) in statistics.iter().enumerate() {
+                    let size = estimate_size(statistic);
+                    ui.allocate_ui(vec2(size, 40.0), |ui| {
+                        let frame =
+                            egui::Frame::default()
+                                .inner_margin(12)
+                                .stroke(egui::Stroke::new(2.0, Color32::GRAY))
+                                .show(ui, |ui| {
+                                    match statistic {
+                                        Statistic::Percentage(percentage_statistic) => {
+                                            ui.add_sized(
+                                                vec2(10.0, 30.0),
+                                                Label::new(
+                                                    egui::RichText::new(format!(
+                                                        "{}:",
+                                                        percentage_statistic.name
+                                                    ))
+                                                    .font(FontId::proportional(16.0)),
+                                                ),
+                                            );
+                                            for (i, (d, l)) in
+                                                percentage_statistic.data_labels.iter().enumerate()
+                                            {
+                                                // Because percentage statistics require more than one color we offset by some big number
+                                                let color_id = (stat_id + 1) * 10000 + i;
+                                                let mut color = get_color(color_id);
+                                                egui::Frame::default()
+                                                    .inner_margin(5)
+                                                    .stroke(egui::Stroke::new(1.0, color))
+                                                    .show(ui, |ui| {
+                                                        ui.label(
+                                                            RichText::new(format!("{l}: {d}"))
+                                                                .font(FontId::proportional(14.0))
+                                                                .color(color),
+                                                        )
+                                                        .context_menu(
+                                                            |ui| {
+                                                                println!("FOO");
+                                                                egui::widgets::color_picker::color_picker_color32(
+                                                                    ui,
+                                                                    &mut color,
+                                                                    egui::color_picker::Alpha::Opaque,
+                                                                );
+                                                                set_color(color_id, color);
+                                                            },
+                                                        );
+                                                    });
+                                            }
+                                            percentage_statistic.description
+                                        }
+                                        Statistic::Bucket(buckets_statistic) => {
+                                            ui.add_sized(
+                                                vec2(10.0, 30.0),
+                                                Label::new(
+                                                    egui::RichText::new(
+                                                        buckets_statistic.display(),
+                                                    )
+                                                    .font(egui::FontId::proportional(16.0))
+                                                    .color(get_color(stat_id)),
+                                                ),
+                                            )
+                                            .context_menu(|ui| {
+                                                let mut color = get_color(stat_id);
+                                                egui::widgets::color_picker::color_picker_color32(
+                                                    ui,
+                                                    &mut color,
+                                                    egui::color_picker::Alpha::Opaque,
+                                                );
+                                                set_color(stat_id, color);
+                                            });
+                                            buckets_statistic.description
+                                        }
+                                        Statistic::Timeline(timeline_statistic) => {
+                                            ui.add_sized(
+                                                vec2(10.0, 30.0),
+                                                Label::new(
+                                                    egui::RichText::new(
+                                                        timeline_statistic.display.to_string(),
+                                                    )
+                                                    .font(egui::FontId::proportional(16.0))
+                                                    .color(get_color(stat_id)),
+                                                ),
+                                            )
+                                            .context_menu(|ui| {
+                                                let mut color = get_color(stat_id);
+                                                egui::widgets::color_picker::color_picker_color32(
+                                                    ui,
+                                                    &mut color,
+                                                    egui::color_picker::Alpha::Opaque,
+                                                );
+                                                set_color(stat_id, color);
+                                            });
+                                            timeline_statistic.description
+                                        }
                                     }
-                                    Statistic::Timeline(timeline_statistic) => (
-                                        timeline_statistic.display.to_string(),
-                                        timeline_statistic.description,
-                                    ),
-                                };
-                                ui.add_sized(
-                                    vec2(10.0, 30.0),
-                                    Label::new(
-                                        egui::RichText::new(display)
-                                            .font(egui::FontId::proportional(16.0)),
-                                    ),
-                                )
-                                .on_hover_ui(|ui| {
-                                    ui.label(description);
                                 });
-                            });
+                        frame.response.on_hover_ui_at_pointer(|ui| {
+                            ui.label(frame.inner);
+                        });
                     });
                 }
             },
@@ -257,17 +389,57 @@ fn draw_plot(
         egui::ComboBox::new(salt, "Plot type")
             .selected_text(type_.to_string())
             .show_ui(ui, |ui| {
-                ui.selectable_value(type_, PlotType::Pie, "Pie");
-                ui.selectable_value(
-                    type_,
-                    PlotType::Buckets(BucketsPlot::new(PlotScale::Log)),
-                    "Buckets",
-                );
-                ui.selectable_value(
-                    type_,
-                    PlotType::Timeline(TimelinePlot::new(*waveform_time_unit, None)),
-                    "Timeline",
-                );
+                let is_pie: Box<dyn Fn(&Statistic) -> bool> =
+                    Box::new(|s| matches!(&s, Statistic::Percentage(_)));
+                let is_bucket: Box<dyn Fn(&Statistic) -> bool> =
+                    Box::new(|s| matches!(&s, Statistic::Bucket(_)));
+                let is_timeline: Box<dyn Fn(&Statistic) -> bool> =
+                    Box::new(|s| matches!(&s, Statistic::Timeline(_)));
+
+                type ItemCreation = Box<dyn Fn(&mut Ui, bool, &mut PlotType)>;
+                let pie_button: ItemCreation = Box::new(|ui: &mut Ui, active, type_| {
+                    ui.selectable_value(
+                        type_,
+                        PlotType::Pie,
+                        if active { "Pie" } else { "Pie - no data" },
+                    );
+                });
+                let bucket_button: ItemCreation = Box::new(|ui: &mut Ui, active, type_| {
+                    ui.selectable_value(
+                        type_,
+                        PlotType::Buckets(BucketsPlot::new(PlotScale::Log)),
+                        if active {
+                            "Buckets"
+                        } else {
+                            "Buckets - no data"
+                        },
+                    );
+                });
+                let waveform_time_unit = *waveform_time_unit;
+                let timeline_buttom: ItemCreation = Box::new(move |ui: &mut Ui, active, type_| {
+                    ui.selectable_value(
+                        type_,
+                        PlotType::Timeline(TimelinePlot::new(waveform_time_unit, None)),
+                        if active {
+                            "Timeline"
+                        } else {
+                            "Timeline - no data"
+                        },
+                    );
+                });
+                for (item, cond) in [
+                    (pie_button, is_pie),
+                    (bucket_button, is_bucket),
+                    (timeline_buttom, is_timeline),
+                ] {
+                    if statistics.iter().any(cond) {
+                        item(ui, true, type_);
+                    } else {
+                        ui.add_enabled_ui(false, |ui| {
+                            item(ui, false, type_);
+                        });
+                    }
+                }
             });
         match type_ {
             PlotType::Pie => draw_percentage(ui, statistics, width, type_),
@@ -288,19 +460,35 @@ fn draw_plot(
 }
 
 fn format_bucket_label(i: f64) -> String {
-    if i < 2.0 {
-        format!("{}", i)
-    } else if i >= 41.0 {
-        format!("2^{}+", i)
-    } else if i >= 21.0 {
-        let i = i as u32 - 20;
-        format!("{}-{}M", 1 << (i - 1), 1 << i)
-    } else if i >= 11.0 {
-        let i = i as u32 - 10;
-        format!("{}-{}k", 1 << (i - 1), 1 << i)
-    } else {
-        let i = i as u32 - 1;
-        format!("{}-{}", 1u64 << i, (1 << (i + 1)) - 1)
+    match i {
+        ..-40.0 => format!("-2^{}+", -i),
+        -40.0..-20.0 => {
+            let i = -(i as i32) - 20;
+            format!("- {}-{}M", 1 << i, 1 << (i - 1))
+        }
+        -20.0..-10.0 => {
+            let i = -(i as i32) - 10;
+            format!("- {}-{}k", 1 << i, 1 << (i - 1))
+        }
+        -10.0..-1.0 => {
+            let i = -(i as i32) - 1;
+            format!("- {}-{}", (1 << (i + 1)) - 1, 1 << i)
+        }
+        -1.0..2.0 => format!("{i}"),
+        2.0..11.0 => {
+            let i = i as u32 - 1;
+            format!("{}-{}", 1 << i, (1 << (i + 1)) - 1)
+        }
+        11.0..21.0 => {
+            let i = i as u32 - 10;
+            format!("{}-{}k", 1 << (i - 1), 1 << i)
+        }
+        21.0..41.0 => {
+            let i = i as u32 - 20;
+            format!("{}-{}M", 1 << (i - 1), 1 << i)
+        }
+        41.0.. => format!("2^{}+", i),
+        _ => panic!("how did we get here {i}"),
     }
 }
 
@@ -313,18 +501,30 @@ fn draw_buckets(
     width: f32,
 ) {
     let BucketsPlot { scale, selected } = buckets;
-    let salt = scale as *mut PlotScale as usize;
-    let mut statistics = statistics
-        .iter()
-        .filter_map(|s| match s {
-            Statistic::Percentage(_) => None,
-            Statistic::Bucket(buckets_statistic) => Some(buckets_statistic),
-            Statistic::Timeline(_) => None,
-        })
-        .peekable();
-    if statistics.peek().is_none() {
-        return;
+    let statistics = statistics.iter().enumerate().filter_map(|(i, s)| match s {
+        Statistic::Percentage(_) => None,
+        Statistic::Bucket(buckets_statistic) => Some((i, buckets_statistic)),
+        Statistic::Timeline(_) => None,
+    });
+    let statistics_num = statistics.clone().count();
+    if statistics_num == 0 {
+        ui.label(
+            egui::RichText::new("There are no statistics to display on a barchart for this bus.")
+                .color(Color32::RED),
+        );
     }
+    let grid_spacer = |input| {
+        uniform_grid_spacer(|input| {
+            let (min, max) = input.bounds;
+            let view = (max - min).max(100.0) as usize;
+            let multiplier = view.ilog10() as i32;
+            [
+                10.0f64.powi(multiplier),
+                10.0f64.powi(multiplier - 1),
+                10.0f64.powi(multiplier - 2),
+            ]
+        })(input)
+    };
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
             ui.label("Scale: ");
@@ -337,36 +537,55 @@ fn draw_buckets(
                 format_bucket_label(i)
             })
         } else {
-            Plot::new(("buckets", salt))
+            Plot::new(("buckets", id))
         }
         .legend(Legend::default())
+        .show_x(false)
+        .x_axis_label("Value")
+        .y_axis_label("Number of occurences")
+        .cursor_color(Color32::TRANSPARENT)
+        .x_grid_spacer(grid_spacer)
+        .y_grid_spacer(grid_spacer)
         .width(width)
         .show(ui, |plot_ui| {
             let mut barcharts = HashMap::new();
-            for buckets_statistic in statistics {
+            for (i, (stat_id, buckets_statistic)) in statistics.into_iter().enumerate() {
                 barcharts.insert(Id::new(buckets_statistic.name), buckets_statistic);
-                plot_ui.bar_chart(if *scale == PlotScale::Log {
-                    BarChart::new(
-                        buckets_statistic.name,
-                        buckets_statistic
-                            .get_buckets()
-                            .into_iter()
-                            .map(|(i, bucket)| Bar::new(i as f64, bucket as f64))
-                            .collect::<Vec<_>>(),
-                    )
-                    .element_formatter(Box::new(|bar, _| {
-                        format!("{}: {}", format_bucket_label(bar.argument), bar.value)
-                    }))
-                } else {
-                    BarChart::new(
-                        buckets_statistic.name,
-                        buckets_statistic
-                            .get_data()
-                            .into_iter()
-                            .map(|(k, v)| Bar::new(k as f64, v as f64))
-                            .collect::<Vec<_>>(),
-                    )
-                });
+                plot_ui.bar_chart(
+                    if *scale == PlotScale::Log {
+                        BarChart::new(
+                            buckets_statistic.name,
+                            buckets_statistic
+                                .get_buckets()
+                                .into_iter()
+                                .map(|(bucket, value)| {
+                                    let i = i as f64;
+                                    let bar_width = 0.5 / statistics_num as f64;
+                                    let start = bucket as f64 - 0.25 + 0.5 * bar_width;
+                                    let offset = i * bar_width;
+                                    Bar::new(start + offset, value as f64).width(bar_width)
+                                })
+                                .collect::<Vec<_>>(),
+                        )
+                        .element_formatter(Box::new(|bar, _| {
+                            format!(
+                                "{}: {}",
+                                format_bucket_label(bar.argument.round()),
+                                bar.value
+                            )
+                        }))
+                    } else {
+                        BarChart::new(
+                            buckets_statistic.name,
+                            buckets_statistic
+                                .get_data()
+                                .into_iter()
+                                .map(|(k, v)| Bar::new(k as f64, v as f64))
+                                .collect::<Vec<_>>(),
+                        )
+                    }
+                    .color(get_color(stat_id)),
+                );
             }
             (plot_ui.pointer_coordinate(), barcharts)
         });
@@ -462,11 +681,21 @@ fn draw_timeline(
         timescale_unit: plot_time_unit,
         pointer: coords,
     } = timeline;
-    let statistics = statistics.iter().filter_map(|s| match s {
-        Statistic::Percentage(_) => None,
-        Statistic::Bucket(_) => None,
-        Statistic::Timeline(timeline_statistic) => Some(timeline_statistic),
-    });
+    let mut statistics = statistics
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| match s {
+            Statistic::Percentage(_) => None,
+            Statistic::Bucket(_) => None,
+            Statistic::Timeline(timeline_statistic) => Some((i, timeline_statistic)),
+        })
+        .peekable();
+    if statistics.peek().is_none() {
+        ui.label(
+            egui::RichText::new("There are no statistics to display on a timeline for this bus.")
+                .color(Color32::RED),
+        );
+    }
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
             ui.label("Time unit: ");
@@ -478,28 +707,33 @@ fn draw_timeline(
         });
         Plot::new(("timeline", id))
             .legend(Legend::default())
+            .x_axis_label("Time")
+            .y_axis_label("Value")
             .width(width)
             .show(ui, |plot_ui| {
-                for statistic in statistics {
-                    plot_ui.line(Line::new(
-                        statistic.name,
-                        PlotPoints::from(
-                            statistic
-                                .values
-                                .iter()
-                                .map(|&[x, y]| {
-                                    [
-                                        waveform_to_plot_time(
-                                            x,
-                                            waveform_time_unit,
-                                            plot_time_unit,
-                                        ),
-                                        y,
-                                    ]
-                                })
-                                .collect::<Vec<_>>(),
-                        ),
-                    ));
+                for (stat_id, statistic) in statistics {
+                    plot_ui.line(
+                        Line::new(
+                            statistic.name,
+                            PlotPoints::from(
+                                statistic
+                                    .values
+                                    .iter()
+                                    .map(|&[x, y]| {
+                                        [
+                                            waveform_to_plot_time(
+                                                x,
+                                                waveform_time_unit,
+                                                plot_time_unit,
+                                            ),
+                                            y,
+                                        ]
+                                    })
+                                    .collect::<Vec<_>>(),
+                            ),
+                        )
+                        .color(get_color(stat_id)),
+                    );
                 }
                 if plot_ui.response().secondary_clicked() {
                     *coords = plot_ui.pointer_coordinate();
@@ -522,28 +756,59 @@ fn draw_timeline(
 }
 
 struct PieSlice<'a> {
-    name: &'static str,
-    value: f32,
     points: Vec<[f64; 2]>,
-    color: Color32,
     polygon: Polygon<'a>,
+    text: Text,
 }
 
 impl<'a> PieSlice<'a> {
     fn new(
-        polygon: Polygon<'a>,
-        points: Vec<[f64; 2]>,
-        color: Color32,
+        i: usize,
+        stat_id: usize,
+        last_angle: &mut f64,
+        value: f64,
+        sum: f64,
         name: &'static str,
-        value: f32,
     ) -> Self {
+        let points_for_circle = 100;
+        let max_angle_for_triangle = std::f64::consts::PI * 2.0 / points_for_circle as f64;
+
+        let mut points = vec![[0.0, 0.0]];
+        points.push([last_angle.sin(), last_angle.cos()]);
+
+        let part_for_stat = value / sum * std::f64::consts::PI * 2.0;
+        let mut tmp = part_for_stat;
+        let mut angle_counter = *last_angle;
+        while tmp > max_angle_for_triangle {
+            angle_counter += max_angle_for_triangle;
+            points.push([angle_counter.sin(), angle_counter.cos()]);
+            tmp -= max_angle_for_triangle;
+        }
+        *last_angle += part_for_stat;
+        points.push([last_angle.sin(), last_angle.cos()]);
+
+        // Because percentage statistics require more than one color we offset by some big number
+        let color = get_color((stat_id + 1) * 10000 + i);
+
+        let x = points.iter().map(|[x, _]| x).sum::<f64>()
+            / (points.len() as f64 * 1.2 + 0.1 * (i % 3) as f64);
+        let y = points.iter().map(|[_, y]| y).sum::<f64>()
+            / (points.len() as f64 * 1.2 + 0.1 * (i % 3) as f64);
+        let text = Text::new(
+            format!("{} name", name),
+            PlotPoint { x, y },
+            egui::RichText::new(format!("{}: {} clock cycles", name, value))
+                .font(egui::FontId::proportional(16.0)),
+        )
+        .color(Color32::from_gray(220));
+        let polygon = Polygon::new(name, points.clone()).stroke(Stroke::new(1.0, color));
+
         let color = Rgba::from(color).to_opaque().multiply(0.4);
+        let polygon = polygon.fill_color(color.to_opaque().multiply(0.5));
         Self {
             points,
-            color: color.into(),
             polygon,
-            name,
-            value,
+            text,
         }
     }
 }
@@ -555,6 +820,7 @@ fn dot(a: [f64; 2], b: [f64; 2]) -> f64 {
 impl<'a> PlotItem for PieSlice<'a> {
     fn shapes(&self, ui: &Ui, transform: &egui_plot::PlotTransform, shapes: &mut Vec<egui::Shape>) {
         self.polygon.shapes(ui, transform, shapes);
+        self.text.shapes(ui, transform, shapes);
     }
 
     fn initialize(&mut self, x_range: std::ops::RangeInclusive<f64>) {
@@ -570,7 +836,9 @@ impl<'a> PlotItem for PieSlice<'a> {
     }
 
     fn bounds(&self) -> egui_plot::PlotBounds {
-        self.polygon.bounds()
+        let mut bounds = self.polygon.bounds();
+        bounds.merge(&self.text.bounds());
+        bounds
     }
 
     fn base(&self) -> &egui_plot::PlotItemBase {
@@ -592,7 +860,11 @@ impl<'a> PlotItem for PieSlice<'a> {
         }
         let point = [point.x, point.y];
         let start = self.points[1];
-        let end = self.points.last().copied().unwrap();
+        let end = self
+            .points
+            .last()
+            .copied()
+            .expect("There should be always some points");
 
         let start_to_point = dot(start, point);
         let end_to_point = dot(end, point);
@@ -615,81 +887,52 @@ impl<'a> PlotItem for PieSlice<'a> {
             None
         }
     }
-
-    fn on_hover(
-        &self,
-        plot_area_response: &egui::Response,
-        _elem: egui_plot::ClosestElem,
-        shapes: &mut Vec<egui::Shape>,
-        _cursors: &mut Vec<egui_plot::Cursor>,
-        plot: &egui_plot::PlotConfig<'_>,
-        _label_formatter: &egui_plot::LabelFormatter<'_>,
-    ) {
-        shapes.push(Shape::convex_polygon(
-            self.points
-                .iter()
-                .map(|&[x, y]| plot.transform.position_from_point(&PlotPoint { x, y }))
-                .collect(),
-            self.color,
-            Stroke::new(2.0, self.color),
-        ));
-        let mut tooltip = egui::Tooltip::always_open(
-            plot_area_response.ctx.clone(),
-            plot_area_response.layer_id,
-            plot_area_response.id,
-            PopupAnchor::Pointer,
-        );
-
-        let tooltip_width = plot_area_response.ctx.style().spacing.tooltip_width;
-
-        tooltip.popup = tooltip.popup.width(tooltip_width);
-
-        tooltip.gap(12.0).show(|ui| {
-            ui.set_max_width(tooltip_width);
-            ui.label(format!("{}: {} clock cycles", self.name, self.value));
-        });
-    }
 }
 
 fn draw_percentage(ui: &mut Ui, statistics: &[Statistic], width: f32, type_: &PlotType) {
     let salt = type_ as *const PlotType as usize;
-    let statistics = statistics.iter().filter_map(|s| match s {
-        Statistic::Percentage(percentage) => Some(percentage),
-        Statistic::Bucket(_) => None,
-        Statistic::Timeline(_) => None,
-    });
+    let mut statistics = statistics
+        .iter()
+        .enumerate()
+        .filter_map(|(i, s)| match s {
+            Statistic::Percentage(percentage) => Some((i, percentage)),
+            Statistic::Bucket(_) => None,
+            Statistic::Timeline(_) => None,
+        })
+        .peekable();
+    if statistics.peek().is_none() {
+        ui.label(
+            egui::RichText::new("There are no statistics to display on a piechart for this bus.")
+                .color(Color32::RED),
+        );
+    }
     Plot::new(("percentage", salt))
         .legend(Legend::default())
         .show_axes(false)
+        .show_grid(false)
         .allow_scroll(false)
+        .allow_zoom(false)
+        .allow_boxed_zoom(false)
+        .allow_drag(false)
+        .cursor_color(Color32::TRANSPARENT)
+        .show_x(false)
+        .show_y(false)
         .width(width)
         .show(ui, |plot_ui| {
-            for statistic in statistics {
+            for (stat_id, statistic) in statistics {
                 let sum: f64 = statistic.data_labels.iter().map(|(d, _)| *d as f64).sum();
-                let points_for_circle = 100;
-                let max_angle_for_triangle = std::f64::consts::PI * 2.0 / points_for_circle as f64;
                 let mut last_angle: f64 = 0.0;
                 for (i, (d, l)) in statistic.data_labels.iter().enumerate() {
-                    let d = *d as f64;
-                    let mut points = vec![[0.0, 0.0]];
-                    points.push([last_angle.sin(), last_angle.cos()]);
-
-                    let part_for_stat = d / sum * std::f64::consts::PI * 2.0;
-                    let mut tmp = part_for_stat;
-                    let mut angle_counter = last_angle;
-                    while tmp > max_angle_for_triangle {
-                        angle_counter += max_angle_for_triangle;
-                        points.push([angle_counter.sin(), angle_counter.cos()]);
-                        tmp -= max_angle_for_triangle;
+                    if *d > 0.0 {
+                        plot_ui.add(PieSlice::new(
+                            i,
+                            stat_id,
+                            &mut last_angle,
+                            *d as f64,
+                            sum,
+                            l,
+                        ));
                     }
-                    last_angle += part_for_stat;
-                    points.push([last_angle.sin(), last_angle.cos()]);
-
-                    let golden_ratio = (5.0_f32.sqrt() - 1.0) / 2.0;
-                    let h = i as f32 * golden_ratio;
-                    let color = Hsva::new(h, 0.85, 0.5, 1.0);
-                    let polygon = Polygon::new(*l, points.clone()).stroke(Stroke::new(1.0, color));
-                    plot_ui.add(PieSlice::new(polygon, points, color.into(), l, d as f32));
                 }
             }
         });

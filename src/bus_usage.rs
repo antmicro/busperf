@@ -653,8 +653,15 @@ impl MultiChannelBusUsage {
         let (start, end) = (period.start(), period.end());
         let win_start = (window_num * self.window_length + offset) as u64 * self.clock_period;
         let win_end = ((window_num + 1) * self.window_length + offset) as u64 * self.clock_period;
-
-        (win_end.min(end).saturating_sub(win_start.max(start))) as f32 / (end - start) as f32
+        if start == end {
+            if win_start < start && start < win_end {
+                1.0
+            } else {
+                0.0
+            }
+        } else {
+            (win_end.min(end).saturating_sub(win_start.max(start))) as f32 / (end - start) as f32
+        }
     }
 
     /// Finishes calculation of statistics and makes sure that all temporary values are already taken into account
