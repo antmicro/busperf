@@ -1,0 +1,18 @@
+interfaces:
+  "ram_rd":
+    scope: ["test_taxi_axi_ram", "uut"]
+    clock: "clk"
+    reset: "rst"
+    reset_type: "high"
+
+    custom_analyzer: "AXIFullRdAnalyzerPython"
+    ar:
+      id: ["s_axi_rd", arid]
+      ready: ["s_axi_rd", "arready"]
+      valid: ["s_axi_rd", "arvalid"]
+    r:
+      id: ["s_axi_rd", "rid"]
+      ready: ["s_axi_rd", "rready"]
+      valid: ["s_axi_rd", "rvalid"]
+      rresp: ["s_axi_rd", "rresp"]
+      rlast: ["s_axi_rd", "rlast"]

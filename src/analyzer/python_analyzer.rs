@@ -52,33 +52,21 @@ impl PythonAnalyzer {
                     i = &i[s.as_str()];
                 }
                 match type_ {
-                    1 | 2 => match i.as_str() {
-                        Some(string) => Ok((
-                            *type_,
-                            vec![SignalPath {
-                                scope: common.module_scope().clone(),
-                                name: string.to_owned(),
-                            }],
-                        )),
-                        None => Err(format!("Yaml should define {:?} signal", path)),
-                    },
+                    1 | 2 => {
+                        match SignalPath::from_yaml_ref_with_prefix(common.module_scope(), i) {
+                            Ok(path) => Ok((*type_, vec![path])),
+                            Err(_) => Err(format!("Yaml should define {:?} signal", path)),
+                        }
+                    }
                     3 => {
-                        if let Some(r) = i["ready"].as_str()
-                            && let Some(v) = i["valid"].as_str()
-                        {
-                            Ok((
-                                *type_,
-                                vec![
-                                    SignalPath {
-                                        scope: common.module_scope().clone(),
-                                        name: r.to_owned(),
-                                    },
-                                    SignalPath {
-                                        scope: common.module_scope().clone(),
-                                        name: v.to_owned(),
-                                    },
-                                ],
-                            ))
+                        if let Ok(r) = SignalPath::from_yaml_ref_with_prefix(
+                            common.module_scope(),
+                            &i["ready"],
+                        ) && let Ok(v) = SignalPath::from_yaml_ref_with_prefix(
+                            common.module_scope(),
+                            &i["valid"],
+                        ) {
+                            Ok((*type_, vec![r, v]))
                         } else {
                             Err(format!(
                                 "Yaml is missing ready and/or valid signal for {}",
