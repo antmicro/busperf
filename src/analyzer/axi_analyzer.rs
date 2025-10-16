@@ -1,4 +1,8 @@
-use std::{error::Error, iter::Peekable};
+use std::{
+    collections::{HashMap, VecDeque},
+    error::Error,
+    iter::Peekable,
+};
 
 use wellen::{Signal, SignalValue, TimeTable, TimeTableIdx};
 
@@ -13,25 +17,39 @@ use crate::{
 
 use super::Analyzer;
 
+struct AXIFullRd {
+    ar_id: SignalPath,
+    r_id: SignalPath,
+    r_last: SignalPath,
+}
+
 pub struct AXIRdAnalyzer {
     common: BusCommon,
     ar: AXIBus,
     r: AXIBus,
     r_resp: SignalPath,
+    /// full is optional, if it's None we assume AXI-Lite
+    full: Option<AXIFullRd>,
     result: Option<BusUsage>,
     window_length: u32,
     x_rate: f32,
     y_rate: f32,
 }
 
+struct AXIFullWr {
+    aw_id: SignalPath,
+    w_last: SignalPath,
+    b_id: SignalPath,
+}
+
 pub struct AXIWrAnalyzer {
     common: BusCommon,
     aw: AXIBus,
     w: AXIBus,
-    /// w_last is optional, if it's None we assume all transactions have len = 1
-    w_last: Option<SignalPath>,
     b: AXIBus,
     b_resp: SignalPath,
+    /// full is optional, if it's None we assume AXI-Lite
+    full: Option<AXIFullWr>,
     result: Option<BusUsage>,
     window_length: u32,
     x_rate: f32,
@@ -52,47 +70,250 @@ fn count_reset(rst: &Signal, active_value: ValueType) -> u32 {
     reset / 2
 }
 
-macro_rules! build_from_yaml {
-    ( $( $bus_name:tt $bus_type:ident ),* ; $([$signal_name:ident $($signal_init:tt)*]),* ) => {
-        pub fn build_from_yaml(
-            yaml: (yaml_rust2::Yaml, yaml_rust2::Yaml),
-            default_max_burst_delay: CyclesNum,
-            window_length: u32,
-            x_rate: f32,
-            y_rate: f32,
-        ) -> Result<Self, Box<dyn Error>> {
-            let (name, dict) = yaml;
-            let name = name
-                .into_string()
-                .ok_or("Name of bus should be a valid string")?;
-            let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
-            $(
-                let $signal_name = SignalPath::from_yaml_ref_with_prefix(
-                    common.module_scope(),
-                    &dict$($signal_init)*)?;
-            )*
-            let mut dict =  dict.into_hash().ok_or("Channels description should not be empty")?;
-            $(
-                let $bus_name = $bus_type::from_yaml(
-                    dict.remove(&yaml_rust2::Yaml::from_str(stringify!($bus_name))).ok_or("AXI analyzer should have all channels defined")?,
-                    common.module_scope(),
-                )?;
-            )*
-            Ok(Self {
-                common,
-                $($bus_name,)*
-                $($signal_name,)*
-                result: None,
-                window_length,
-                x_rate,
-                y_rate,
-            })
+#[inline]
+fn get_id_value(signal: &Signal, time: TimeTableIdx) -> String {
+    get_value_at_time(signal, time)
+        .to_bit_string()
+        .expect("Should be valid")
+}
+
+#[inline]
+fn get_logic_value(signal: &Signal, time: TimeTableIdx) -> ValueType {
+    get_value(get_value_at_time(signal, time)).expect("Value should be valid")
+}
+
+#[inline]
+fn get_value_at_time(signal: &Signal, time: TimeTableIdx) -> SignalValue<'_> {
+    signal.get_value_at(
+        &signal
+            .get_offset(time)
+            .expect("Value should be valid at that time"),
+        0,
+    )
+}
+
+struct Transaction {
+    start: TimeTableIdx,
+    first_data: Option<TimeTableIdx>,
+    last_data: Option<TimeTableIdx>,
+    next: TimeTableIdx,
+}
+
+impl Transaction {
+    fn new(start: TimeTableIdx, next: TimeTableIdx) -> Self {
+        Self {
+            start,
+            first_data: None,
+            last_data: None,
+            next,
         }
-    };
+    }
 }
 
 impl AXIRdAnalyzer {
-    build_from_yaml!(ar AXIBus, r AXIBus; [ r_resp ["r"]["rresp"] ]);
+    pub fn build_from_yaml(
+        yaml: (yaml_rust2::Yaml, yaml_rust2::Yaml),
+        default_max_burst_delay: CyclesNum,
+        window_length: u32,
+        x_rate: f32,
+        y_rate: f32,
+    ) -> Result<Self, Box<dyn Error>> {
+        let (name, dict) = yaml;
+        let name = name
+            .into_string()
+            .ok_or("Name of bus should be a valid string")?;
+        let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
+        let r_resp =
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["rresp"])?;
+        let full = match (
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["rid"]),
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["ar"]["arid"]),
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["rlast"]),
+        ) {
+            (Ok(r_id), Ok(ar_id), Ok(r_last)) => Some(AXIFullRd {
+                r_id,
+                ar_id,
+                r_last,
+            }),
+            (Err(_), Err(_), Err(_)) => None,
+            _ => Err("For AXI full all ar_id, r_id and r_last must be defined")?,
+        };
+        let mut dict = dict
+            .into_hash()
+            .ok_or("Channels description should not be empty")?;
+        let ar = AXIBus::from_yaml(
+            dict.remove(&yaml_rust2::Yaml::from_str(stringify!(ar)))
+                .ok_or("AXI analyzer should have all channels defined")?,
+            common.module_scope(),
+        )?;
+        let r = AXIBus::from_yaml(
+            dict.remove(&yaml_rust2::Yaml::from_str(stringify!(r)))
+                .ok_or("AXI analyzer should have all channels defined")?,
+            common.module_scope(),
+        )?;
+        Ok(Self {
+            common,
+            ar,
+            r,
+            r_resp,
+            full,
+            result: None,
+            window_length,
+            x_rate,
+            y_rate,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[inline]
+    fn calculate_lite(
+        &mut self,
+        usage: &mut MultiChannelBusUsage,
+        mut ar: Peekable<ReadyValidTransactionIterator>,
+        mut r: Peekable<ReadyValidTransactionIterator>,
+        mut rst: RisingSignalIterator,
+        r_resp: &Signal,
+        last_time: &u32,
+        time_table: &TimeTable,
+    ) {
+        let mut next_rst = rst.next().unwrap_or(*last_time + 1);
+        while let Some(time) = ar.next() {
+            while next_rst < time {
+                next_rst = rst.next().unwrap_or(*last_time + 1);
+            }
+            if let Some(&read_time) = r.peek()
+                && next_rst > read_time
+            {
+                let next_transaction = ar.peek().unwrap_or(last_time);
+                r.next();
+                while let Some(&n) = r.peek()
+                    && n < *next_transaction
+                {
+                    eprintln!("[WARN] Read without AR at {}", time_table[n as usize]);
+                    r.next();
+                }
+                let resp = r_resp
+                    .get_value_at(
+                        &r_resp
+                            .get_offset(read_time)
+                            .expect("There should be a response available at response time"),
+                        0,
+                    )
+                    .to_bit_string()
+                    .expect("Function never returns None");
+                let [time, read_time, next_transaction] =
+                    [time, read_time, *next_transaction].map(|i| time_table[i as usize]);
+                usage.add_transaction(
+                    time,
+                    read_time,
+                    read_time,
+                    read_time,
+                    &resp,
+                    next_transaction,
+                );
+            } else {
+                eprintln!(
+                    "[WARN] unfinished transaction on {} at {}",
+                    self.bus_name(),
+                    time_table[time as usize]
+                )
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[inline]
+    fn calculate_full(
+        &mut self,
+        usage: &mut MultiChannelBusUsage,
+        mut ar: Peekable<ReadyValidTransactionIterator>,
+        mut r: Peekable<ReadyValidTransactionIterator>,
+        mut rst: RisingSignalIterator,
+        r_resp: &Signal,
+        ar_id: &Signal,
+        r_id: &Signal,
+        r_last: &Signal,
+        last_time: &u32,
+        time_table: &TimeTable,
+    ) {
+        let mut next_rst = rst.next().unwrap_or(*last_time + 1);
+        let mut counting: HashMap<String, VecDeque<Transaction>> = HashMap::new();
+        let mut unfinished = String::new();
+        'transaction_loop: while let Some(time) = ar.next() {
+            while next_rst < time {
+                next_rst = rst.next().unwrap_or(*last_time + 1);
+            }
+            let ar_id = get_id_value(ar_id, time);
+            let next_transaction = *ar.peek().unwrap_or(last_time);
+            if let Some(transactions) = counting.get_mut(&ar_id) {
+                transactions.push_back(Transaction::new(time, next_transaction));
+            } else {
+                counting.insert(
+                    ar_id,
+                    VecDeque::from([Transaction::new(time, next_transaction)]),
+                );
+            }
+            while let Some(&read) = r.peek()
+                && read < next_transaction
+            {
+                if read > next_rst {
+                    unfinished.push_str(
+                        &counting
+                            .values()
+                            .flat_map(|vec| {
+                                vec.iter()
+                                    .map(|t| time_table[t.start as usize].to_string())
+                                    .collect::<Vec<_>>()
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    );
+                    counting.clear();
+                    continue 'transaction_loop;
+                }
+                r.next();
+                let id = get_id_value(r_id, read);
+
+                let t = &mut counting.get_mut(&id).expect("Id should be valid")[0];
+                if t.first_data.is_none() {
+                    t.first_data = Some(read)
+                }
+                let resp = get_id_value(r_resp, read);
+                if get_logic_value(r_last, read) == ValueType::V1 {
+                    let t = counting
+                        .get_mut(&id)
+                        .expect("Id should be valid")
+                        .pop_front()
+                        .expect("Transaction should exist");
+                    let [time, last_data, first_data, next_transaction] =
+                        [t.start, read, t.first_data.expect("Should be set"), t.next]
+                            .map(|i| time_table[i as usize]);
+                    usage.add_transaction(
+                        time,
+                        last_data,
+                        last_data,
+                        first_data,
+                        &resp,
+                        next_transaction,
+                    );
+                }
+            }
+        }
+        unfinished.push_str(
+            &counting
+                .values()
+                .flat_map(|vec| {
+                    vec.iter()
+                        .map(|t| time_table[t.start as usize].to_string())
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+        if !unfinished.is_empty() {
+            eprintln!("[WARN] Unfinished transactions at times: {}", unfinished);
+        }
+    }
 }
 
 impl AnalyzerInternal for AXIRdAnalyzer {
@@ -101,6 +322,11 @@ impl AnalyzerInternal for AXIRdAnalyzer {
         signals.append(&mut self.ar.signals());
         signals.append(&mut self.r.signals());
         signals.push(&self.r_resp);
+        if let Some(full) = &self.full {
+            signals.push(&full.ar_id);
+            signals.push(&full.r_id);
+            signals.push(&full.r_last);
+        }
 
         signals
     }
@@ -128,56 +354,22 @@ impl AnalyzerInternal for AXIRdAnalyzer {
             time_table[*last_time as usize],
         );
 
-        let mut ar =
-            ReadyValidTransactionIterator::new(clk, _arready, arvalid, *last_time).peekable();
-        let mut r = ReadyValidTransactionIterator::new(clk, _rready, rvalid, *last_time).peekable();
-        let mut rst = RisingSignalIterator::new(rst);
-        let mut next_rst = rst.next().unwrap_or(*last_time + 1);
+        let ar = ReadyValidTransactionIterator::new(clk, _arready, arvalid, *last_time).peekable();
+        let r = ReadyValidTransactionIterator::new(clk, _rready, rvalid, *last_time).peekable();
+        let rst = RisingSignalIterator::new(rst);
+        match self.full {
+            Some(_) => {
+                let (_, ar_id) = &loaded[7];
+                let (_, r_id) = &loaded[8];
+                let (_, r_last) = &loaded[9];
 
-        while let Some(time) = ar.next() {
-            while next_rst < time {
-                next_rst = rst.next().unwrap_or(*last_time + 1);
-            }
-            if let Some(&first_data) = r.peek()
-                && next_rst > first_data
-            {
-                let next_transaction = ar.peek().unwrap_or(last_time);
-                let mut last_data = r.next().expect("Already checked");
-                while let Some(&n) = r.peek()
-                    && n < *next_transaction
-                {
-                    last_data = n;
-                    r.next();
-                }
-                let resp_time = last_data;
-                let resp = r_resp
-                    .get_value_at(
-                        &r_resp
-                            .get_offset(resp_time)
-                            .expect("There should be a response available at response time"),
-                        0,
-                    )
-                    .to_bit_string()
-                    .expect("Function never returns None");
-                let [time, resp_time, last_data, first_data, next_transaction] =
-                    [time, resp_time, last_data, first_data, *next_transaction]
-                        .map(|i| time_table[i as usize]);
-                usage.add_transaction(
-                    time,
-                    resp_time,
-                    last_data,
-                    first_data,
-                    &resp,
-                    next_transaction,
-                );
-            } else {
-                eprintln!(
-                    "[WARN] unfinished transaction on {} at {}",
-                    self.bus_name(),
-                    time_table[time as usize]
+                self.calculate_full(
+                    &mut usage, ar, r, rst, r_resp, ar_id, r_id, r_last, last_time, time_table,
                 )
             }
+            None => self.calculate_lite(&mut usage, ar, r, rst, r_resp, last_time, time_table),
         }
+
         usage.end(reset);
         self.result = Some(BusUsage::MultiChannel(usage));
     }
@@ -209,7 +401,19 @@ impl AXIWrAnalyzer {
         let b_resp =
             SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["b"]["bresp"])?;
         let w_last =
-            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["w"]["wlast"]).ok();
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["w"]["wlast"]);
+        let aw_id =
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["aw"]["awid"]);
+        let b_id = SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["b"]["bid"]);
+        let full = match (aw_id, w_last, b_id) {
+            (Ok(aw_id), Ok(w_last), Ok(b_id)) => Some(AXIFullWr {
+                aw_id,
+                w_last,
+                b_id,
+            }),
+            (Err(_), Err(_), Err(_)) => None,
+            (_, _, _) => Err("For AXI full all aw_id, w_last and b_id must be defined")?,
+        };
         let mut dict = dict
             .into_hash()
             .ok_or("Channels description should not be empty")?;
@@ -234,12 +438,202 @@ impl AXIWrAnalyzer {
             w,
             b,
             b_resp,
-            w_last,
+            full,
             result: None,
             window_length,
             x_rate,
             y_rate,
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[inline]
+    fn calculate_lite(
+        &mut self,
+        usage: &mut MultiChannelBusUsage,
+        mut aw: Peekable<ReadyValidTransactionIterator>,
+        mut w: Peekable<ReadyValidTransactionIterator>,
+        mut b: Peekable<ReadyValidTransactionIterator>,
+        b_resp: &Signal,
+        mut rst: RisingSignalIterator,
+        last_time: &u32,
+        time_table: &TimeTable,
+    ) {
+        let mut next_rst = rst.next().unwrap_or(*last_time + 1);
+        while let Some(time) = aw.next() {
+            while next_rst < time {
+                next_rst = rst.next().unwrap_or(*last_time + 1);
+            }
+            if let Some(&data_time) = w.peek()
+                && next_rst > data_time
+                && let Some(&resp_time) = b.peek()
+                && next_rst > resp_time
+            {
+                b.next();
+                w.next().expect("Already checked");
+                let next_transaction = aw.peek().unwrap_or(last_time);
+
+                let resp = b_resp
+                    .get_value_at(
+                        &b_resp
+                            .get_offset(resp_time)
+                            .expect("There should be a response available at response time"),
+                        0,
+                    )
+                    .to_bit_string()
+                    .expect("Function never returns None");
+                let [time, resp_time, data_time, next_transaction] =
+                    [time, resp_time, data_time, *next_transaction].map(|i| time_table[i as usize]);
+                usage.add_transaction(
+                    time,
+                    resp_time,
+                    data_time,
+                    data_time,
+                    &resp,
+                    next_transaction,
+                );
+            } else {
+                eprintln!(
+                    "[WARN] unfinished transaction on {} at {}",
+                    self.bus_name(),
+                    time_table[time as usize]
+                )
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    #[inline]
+    fn calculate_full(
+        &mut self,
+        usage: &mut MultiChannelBusUsage,
+        mut aw: Peekable<ReadyValidTransactionIterator>,
+        mut w: Peekable<ReadyValidTransactionIterator>,
+        mut b: Peekable<ReadyValidTransactionIterator>,
+        aw_id: &Signal,
+        w_last: &Signal,
+        b_id: &Signal,
+        b_resp: &Signal,
+        mut rst: RisingSignalIterator,
+        last_time: &u32,
+        time_table: &TimeTable,
+    ) {
+        let mut next_rst = rst.next().unwrap_or(*last_time + 1);
+        let mut counting: HashMap<String, VecDeque<Transaction>> = HashMap::new();
+        let mut unfinished = String::new();
+        'transactions_loop: while let Some(time) = aw.next() {
+            while next_rst < time {
+                next_rst = rst.next().unwrap_or(*last_time + 1);
+            }
+            let aw_id = get_id_value(aw_id, time);
+            let next_transaction = *aw.peek().unwrap_or(last_time);
+            if let Some(transactions) = counting.get_mut(&aw_id) {
+                transactions.push_back(Transaction::new(time, next_transaction));
+            } else {
+                counting.insert(
+                    aw_id.clone(),
+                    VecDeque::from([Transaction::new(time, next_transaction)]),
+                );
+            }
+
+            while let Some(&write) = w.peek() {
+                if write > next_rst {
+                    unfinished.push_str(
+                        &counting
+                            .values()
+                            .flat_map(|vec| {
+                                vec.iter()
+                                    .map(|t| time_table[t.start as usize].to_string())
+                                    .collect::<Vec<_>>()
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    );
+                    counting.clear();
+                    continue 'transactions_loop;
+                }
+                w.next();
+                let t = counting
+                    .get_mut(&aw_id)
+                    .expect("Id should be valid")
+                    .back_mut()
+                    .expect("Transaction should exist");
+                if t.first_data.is_none() {
+                    t.first_data = Some(write);
+                }
+                if get_logic_value(w_last, write) == ValueType::V1 {
+                    t.last_data = Some(write);
+                    break;
+                }
+            }
+
+            while let Some(&resp_time) = b.peek()
+                && resp_time < next_transaction
+            {
+                if resp_time > next_rst {
+                    unfinished.push_str(
+                        &counting
+                            .values()
+                            .flat_map(|vec| {
+                                vec.iter()
+                                    .map(|t| time_table[t.start as usize].to_string())
+                                    .collect::<Vec<_>>()
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                    );
+                    counting.clear();
+                    continue 'transactions_loop;
+                }
+                b.next();
+                let b_id = get_id_value(b_id, resp_time);
+                let t = counting
+                    .get_mut(&b_id)
+                    .expect("ID should be valid")
+                    .pop_front()
+                    .expect("Transaction should exist");
+
+                let resp = b_resp
+                    .get_value_at(
+                        &b_resp
+                            .get_offset(resp_time)
+                            .expect("There should be a response available at response time"),
+                        0,
+                    )
+                    .to_bit_string()
+                    .expect("Function never returns None");
+                let [time, resp_time, last_data, first_data, next_transaction] = [
+                    t.start,
+                    resp_time,
+                    t.last_data.expect("Last write should be valid"),
+                    t.first_data.expect("First write should be valid"),
+                    t.next,
+                ]
+                .map(|i| time_table[i as usize]);
+                usage.add_transaction(
+                    time,
+                    resp_time,
+                    last_data,
+                    first_data,
+                    &resp,
+                    next_transaction,
+                );
+            }
+        }
+        unfinished.push_str(
+            &counting
+                .values()
+                .flat_map(|vec| {
+                    vec.iter()
+                        .map(|t| time_table[t.start as usize].to_string())
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+        if !unfinished.is_empty() {
+            eprintln!("[WARN] Unfinished transactions at times: {}", unfinished);
+        }
     }
 }
 
@@ -250,8 +644,10 @@ impl AnalyzerInternal for AXIWrAnalyzer {
         signals.append(&mut self.w.signals());
         signals.append(&mut self.b.signals());
         signals.push(&self.b_resp);
-        if let Some(w_last) = &self.w_last {
-            signals.push(w_last);
+        if let Some(full) = &self.full {
+            signals.push(&full.aw_id);
+            signals.push(&full.w_last);
+            signals.push(&full.b_id);
         }
 
         signals
@@ -285,76 +681,21 @@ impl AnalyzerInternal for AXIWrAnalyzer {
             time_table[*last_time as usize],
         );
 
-        let mut aw =
-            ReadyValidTransactionIterator::new(clk, awready, awvalid, *last_time).peekable();
-        let mut w = ReadyValidTransactionIterator::new(clk, wready, wvalid, *last_time).peekable();
-        let mut b = ReadyValidTransactionIterator::new(clk, bready, bvalid, *last_time).peekable();
-        let mut rst = RisingSignalIterator::new(rst);
-        let mut next_rst = rst.next().unwrap_or(*last_time + 1);
+        let aw = ReadyValidTransactionIterator::new(clk, awready, awvalid, *last_time).peekable();
+        let w = ReadyValidTransactionIterator::new(clk, wready, wvalid, *last_time).peekable();
+        let b = ReadyValidTransactionIterator::new(clk, bready, bvalid, *last_time).peekable();
+        let rst = RisingSignalIterator::new(rst);
 
-        'transactions_loop: while let Some(time) = aw.next() {
-            while next_rst < time {
-                next_rst = rst.next().unwrap_or(*last_time + 1);
-            }
-            if let Some(&first_data) = w.peek()
-                && next_rst > first_data
-                && let Some(&resp_time) = b.peek()
-                && next_rst > resp_time
-            {
-                b.next();
-                let next_transaction = aw.peek().unwrap_or(last_time);
-                let last_data = if self.w_last.is_some() {
-                    let (_, w_last) = &loaded[9];
-                    loop {
-                        let Some(last_data) = w.next() else {
-                            eprintln!(
-                                "[WARN] Transaction without w_last assertion on {} at {}",
-                                self.bus_name(),
-                                time_table[time as usize]
-                            );
-                            continue 'transactions_loop;
-                        };
-                        if get_value(w_last.get_value_at(
-                            &w_last.get_offset(last_data).expect("Should be valid"),
-                            0,
-                        ))
-                        .expect("Should be valid")
-                            == ValueType::V1
-                        {
-                            break last_data;
-                        }
-                    }
-                } else {
-                    w.next().expect("Already checked")
-                };
-
-                let resp = b_resp
-                    .get_value_at(
-                        &b_resp
-                            .get_offset(resp_time)
-                            .expect("There should be a response available at response time"),
-                        0,
-                    )
-                    .to_bit_string()
-                    .expect("Function never returns None");
-                let [time, resp_time, last_data, first_data, next_transaction] =
-                    [time, resp_time, last_data, first_data, *next_transaction]
-                        .map(|i| time_table[i as usize]);
-                usage.add_transaction(
-                    time,
-                    resp_time,
-                    last_data,
-                    first_data,
-                    &resp,
-                    next_transaction,
-                );
-            } else {
-                eprintln!(
-                    "[WARN] unfinished transaction on {} at {}",
-                    self.bus_name(),
-                    time_table[time as usize]
+        match self.full {
+            Some(_) => {
+                let (_, aw_id) = &loaded[9];
+                let (_, w_last) = &loaded[10];
+                let (_, b_id) = &loaded[11];
+                self.calculate_full(
+                    &mut usage, aw, w, b, aw_id, w_last, b_id, b_resp, rst, last_time, time_table,
                 )
             }
+            None => self.calculate_lite(&mut usage, aw, w, b, b_resp, rst, last_time, time_table),
         }
 
         usage.end(reset);

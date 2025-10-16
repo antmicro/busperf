@@ -70,12 +70,15 @@ interfaces:
 
     custom_analyzer: "AXIRdAnalyzer"
     ar:
+      id:    ["s_axi_rd", "arid"]
       ready: ["s_axi_rd", "arready"]
       valid: ["s_axi_rd", "arvalid"]
     r:
+      id:    ["s_axi_rd", "rid"]
       ready: ["s_axi_rd", "rready"]
       valid: ["s_axi_rd", "rvalid"]
       rresp: ["s_axi_rd", "rresp"]
+      rlast: ["s_axi_rd", "rlast"]
 
   "ram_wr":
     scope: ["test_taxi_axi_ram", "uut"]
@@ -85,6 +88,7 @@ interfaces:
 
     custom_analyzer: "AXIWrAnalyzer"
     aw:
+      id:    ["s_axi_rd", "awid"]
       ready: ["s_axi_wr", "awready"]
       valid: ["s_axi_wr", "awvalid"]
     w:
@@ -95,6 +99,7 @@ interfaces:
       ready: ["s_axi_wr", "bready"]
       valid: ["s_axi_wr", "bvalid"]
       bresp: ["s_axi_wr", "bresp"]
+      id:    ["s_axi_rd", "bid"]
 ```
 
 For a multi channel bus an analyzer has to be specified alongside with signals required by that analyzer.
