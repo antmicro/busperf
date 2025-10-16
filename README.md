@@ -30,7 +30,7 @@ Example `.yaml` for `tests/test_dumps/dump.vcd`:
 ```
 interfaces:
   "a_":
-    scope: ["some_module"]
+    scope: "some_module"
     clock: "clk_i"
     reset: "rst_ni"
     reset_type: "low"
@@ -40,7 +40,7 @@ interfaces:
     valid: "a_valid"
  
   "b_":
-    scope: ["some_module"]
+    scope: "some_module"
     clock: "clk_i"
     reset: "rst_ni"
     reset_type: "low"
@@ -55,6 +55,35 @@ interfaces:
 - reset_type: "low" or "high"
 - handshake: possible values: "ReadyValid", "CreditValid", "AHB", "APB", Custom"
 - custom_handshake: if handshake is set to "Custom" a name of python plugin should be provided
+
+Scopes can also be nested. Example `.yaml` for `tests/test_dumps/nested_scopes.vcd`:
+
+```
+base: &base_scope
+  - top
+  - tb
+  
+interfaces:
+  "a_":
+    scope: [*base_scope, "$rootio"]
+    clock: "clk_i"
+    reset: "rst_ni"
+    reset_type: "low"
+
+    handshake: "ReadyValid"
+    ready: "a_ready"
+    valid: "a_valid"
+ 
+  "b_":
+    scope: [*base_scope, "some_module"]
+    clock: "clk_i"
+    reset: "rst_ni"
+    reset_type: "low"
+
+    handshake: "ReadyValid"
+    ready: "b_ready"
+    valid: "b_valid"
+```
 
 ### Multi channel bus
 

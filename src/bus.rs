@@ -97,6 +97,22 @@ pub struct BusCommon {
     max_burst_delay: CyclesNum,
 }
 
+fn parse_scope(yaml: &Yaml) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    if let Some(vec) = yaml.as_vec() {
+        Ok(vec
+            .iter()
+            .map(|scope| parse_scope(scope))
+            .collect::<Result<Vec<Vec<_>>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect())
+    } else if let Some(s) = yaml.as_str() {
+        Ok(vec![s.to_owned()])
+    } else {
+        Err("Invalid scope.")?
+    }
+}
+
 impl BusCommon {
     pub fn from_yaml(
         name: String,
@@ -104,16 +120,7 @@ impl BusCommon {
         default_max_burst: CyclesNum,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let i = yaml;
-        let scope = i["scope"]
-            .as_vec()
-            .ok_or("Scope should be array of strings")?;
-        let scope = scope
-            .iter()
-            .map(|module| match module.as_str() {
-                Some(s) => Ok(s.to_owned()),
-                None => Err("Each module should be a valid string"),
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let scope = parse_scope(&i["scope"])?;
         let clk = SignalPath::from_yaml_ref_with_prefix(&scope, &i["clock"])
             .map_err(|e| format!("Bus should have clock signal: {e}"))?;
         let rst = SignalPath::from_yaml_ref_with_prefix(&scope, &i["reset"])

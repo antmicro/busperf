@@ -1,9 +1,10 @@
+base: &base_scope
+  - top
+  - tb
+  
 interfaces:
-  ####################################################
-  ###############  TEST INTERFACE  ###################
-  ####################################################
   "a_":
-    scope: "some_module"
+    scope: [*base_scope, "$rootio"]
     clock: "clk_i"
     reset: "rst_ni"
     reset_type: "low"
@@ -13,7 +14,7 @@ interfaces:
     valid: "a_valid"
  
   "b_":
-    scope: "some_module"
+    scope: [*base_scope, "some_module"]
     clock: "clk_i"
     reset: "rst_ni"
     reset_type: "low"

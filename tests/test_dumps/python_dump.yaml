@@ -3,7 +3,7 @@ interfaces:
   ###############  TEST INTERFACE  ###################
   ####################################################
   "a_":
-    scope: ["some_module"]
+    scope: "some_module"
     clock: "clk_i"
     reset: "rst_ni"
     reset_type: "low"
@@ -14,7 +14,7 @@ interfaces:
     valid: "a_valid"
  
   "b_":
-    scope: ["some_module"]
+    scope: "some_module"
     clock: "clk_i"
     reset: "rst_ni"
     reset_type: "low"

@@ -3,7 +3,7 @@ interfaces:
   ###############  TEST INTERFACE  ###################
   ####################################################
   "test":
-    scope: ["logic"]
+    scope: "logic"
     clock: "clk"
     reset: "reset"
     reset_type: "low"

@@ -97,6 +97,15 @@ fn basic_scopes() {
     );
 }
 
+#[test]
+fn nested_scopes() {
+    test_basic(
+        "tests/test_dumps/nested_scopes.vcd",
+        "tests/test_dumps/nested_scopes.yaml",
+        2,
+    );
+}
+
 // test whether max_burst_delay functions correctly
 #[test]
 fn basic_max_burst_delay() {
