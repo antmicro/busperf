@@ -109,7 +109,6 @@ impl Args {
 
 fn main() {
     let args = Args::parse();
-    let mut data = load_simulation_trace(&args.files.simulation_trace, args.verbose);
     let mut analyzers = load_bus_analyzers(
         &args.files.bus_description,
         args.max_burst_delay as i32,
@@ -118,6 +117,7 @@ fn main() {
         args.y_rate,
     )
     .unwrap();
+    let mut data = load_simulation_trace(&args.files.simulation_trace, args.verbose);
     for a in analyzers.iter_mut() {
         a.analyze(&mut data, args.verbose);
     }

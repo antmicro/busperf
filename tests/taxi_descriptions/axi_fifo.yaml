@@ -7,11 +7,11 @@ interfaces:
 
     custom_analyzer: "AXIRdAnalyzer"
     ar:
-      arid: ["s_axi_rd", arid]
+      id: ["s_axi_rd", arid]
       ready: ["s_axi_rd", "arready"]
       valid: ["s_axi_rd", "arvalid"]
     r:
-      rid: ["s_axi_rd", "rid"]
+      id: ["s_axi_rd", "rid"]
       ready: ["s_axi_rd", "rready"]
       valid: ["s_axi_rd", "rvalid"]
       rresp: ["s_axi_rd", "rresp"]
@@ -25,7 +25,7 @@ interfaces:
 
     custom_analyzer: "AXIWrAnalyzer"
     aw:
-      awid: ["s_axi_rd", "awid"]
+      id: ["s_axi_rd", "awid"]
       ready: ["s_axi_wr", "awready"]
       valid: ["s_axi_wr", "awvalid"]
     w:
@@ -36,4 +36,4 @@ interfaces:
       ready: ["s_axi_wr", "bready"]
       valid: ["s_axi_wr", "bvalid"]
       bresp: ["s_axi_wr", "bresp"]
-      bid: ["s_axi_rd", "bid"]
+      id: ["s_axi_rd", "bid"]

@@ -126,8 +126,8 @@ impl AXIRdAnalyzer {
         let r_resp =
             SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["rresp"])?;
         let full = match (
-            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["rid"]),
-            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["ar"]["arid"]),
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["id"]),
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["ar"]["id"]),
             SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["rlast"]),
         ) {
             (Ok(r_id), Ok(ar_id), Ok(r_last)) => Some(AXIFullRd {
@@ -402,9 +402,8 @@ impl AXIWrAnalyzer {
             SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["b"]["bresp"])?;
         let w_last =
             SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["w"]["wlast"]);
-        let aw_id =
-            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["aw"]["awid"]);
-        let b_id = SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["b"]["bid"]);
+        let aw_id = SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["aw"]["id"]);
+        let b_id = SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["b"]["id"]);
         let full = match (aw_id, w_last, b_id) {
             (Ok(aw_id), Ok(w_last), Ok(b_id)) => Some(AXIFullWr {
                 aw_id,
