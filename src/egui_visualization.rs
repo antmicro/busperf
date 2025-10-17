@@ -3,6 +3,7 @@ use std::{cell::RefCell, collections::HashMap, f32};
 use eframe::{
     egui::{
         self, Color32, FontId, Id, Label, Layout, Rgba, RichText, Stroke, Ui,
+        containers::menu::MenuConfig,
         text::{LayoutJob, TextWrapping},
         vec2,
     },
@@ -67,6 +68,8 @@ impl BucketsPlot {
 struct TimelinePlot {
     timescale_unit: TimescaleUnit,
     pointer: Option<PlotPoint>,
+    period_start: f64,
+    period_end: f64,
 }
 
 impl TimelinePlot {
@@ -74,6 +77,8 @@ impl TimelinePlot {
         Self {
             timescale_unit,
             pointer,
+            period_start: 0.0,
+            period_end: 0.0,
         }
     }
 }
@@ -680,6 +685,8 @@ fn draw_timeline(
     let TimelinePlot {
         timescale_unit: plot_time_unit,
         pointer: coords,
+        period_start,
+        period_end,
     } = timeline;
     let all_statistics = statistics;
     let mut statistics = statistics
@@ -795,6 +802,46 @@ fn draw_timeline(
                                                 s.color,
                                             );
                                         }
+                                        let menu = egui::containers::menu::SubMenuButton::new(
+                                            "custom period",
+                                        )
+                                        .config(MenuConfig::new().close_behavior(
+                                            egui::PopupCloseBehavior::CloseOnClickOutside,
+                                        ));
+                                        menu.ui(ui, |ui| {
+                                            ui.add(egui::DragValue::new(period_start).speed(0.1));
+                                            ui.add(egui::DragValue::new(period_end).speed(0.1));
+                                            if ui.button("open").clicked() {
+                                                let period_start = plot_to_waveform_time(
+                                                    *period_start,
+                                                    waveform_time_unit,
+                                                    plot_time_unit,
+                                                );
+                                                let period_end = plot_to_waveform_time(
+                                                    *period_end,
+                                                    waveform_time_unit,
+                                                    plot_time_unit,
+                                                );
+                                                surfer_integration::open_and_mark_periods(
+                                                    surfer_info.trace_path,
+                                                    surfer_info.signals.clone(),
+                                                    &s.data
+                                                        .iter()
+                                                        .filter(|period| {
+                                                            period.start() as f64 > period_start
+                                                                && (period.end() as f64)
+                                                                    < period_end
+                                                        })
+                                                        .map(|period| {
+                                                            (period.start(), period.end())
+                                                        })
+                                                        .collect::<Vec<_>>(),
+                                                    &format!("{} {}", s.name, surfer_info.bus_name),
+                                                    s.color,
+                                                );
+                                                ui.close();
+                                            }
+                                        });
                                     });
                                 }
                             }
