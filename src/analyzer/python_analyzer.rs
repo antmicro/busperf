@@ -139,7 +139,7 @@ impl AnalyzerInternal for PythonAnalyzer {
                     let (_, ready) = &loaded[i];
                     let (_, valid) = &loaded[i + 1];
                     i += 2;
-                    let a = ReadyValidTransactionIterator::new(clk, &ready, &valid, time_end);
+                    let a = ReadyValidTransactionIterator::new(clk, ready, valid, time_end);
                     a.map(|time| (time, String::new())).collect()
                 }
                 _ => unreachable!("Would fail during loading of signals"),
