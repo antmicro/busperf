@@ -72,14 +72,14 @@ fn count_reset(rst: &Signal, active_value: ValueType) -> u32 {
 
 #[inline]
 fn get_id_value(signal: &Signal, time: TimeTableIdx) -> String {
-    get_value_at_time(signal, time)
+    get_value_at_time(signal, time.saturating_sub(1))
         .to_bit_string()
         .expect("Should be valid")
 }
 
 #[inline]
 fn get_logic_value(signal: &Signal, time: TimeTableIdx) -> ValueType {
-    get_value(get_value_at_time(signal, time)).expect("Value should be valid")
+    get_value(get_value_at_time(signal, time.saturating_sub(1))).expect("Value should be valid")
 }
 
 #[inline]
@@ -709,13 +709,34 @@ impl Analyzer for AXIWrAnalyzer {
 }
 
 struct RisingSignalIterator<'a> {
-    signal: Box<dyn Iterator<Item = (u32, SignalValue<'a>)> + 'a>,
+    signal: Peekable<Box<dyn Iterator<Item = (u32, SignalValue<'a>)> + 'a>>,
+    peeked: Option<TimeTableIdx>,
 }
 
 impl<'a> RisingSignalIterator<'a> {
     fn new(signal: &'a Signal) -> Self {
-        let signal = Box::new(signal.iter_changes());
-        Self { signal }
+        let signal: Box<dyn Iterator<Item = _>> = Box::new(signal.iter_changes());
+        let signal = signal.peekable();
+        Self {
+            signal,
+            peeked: None,
+        }
+    }
+
+    fn find_non_consuming<P>(&mut self, mut predicate: P) -> Option<TimeTableIdx>
+    where
+        P: FnMut(&TimeTableIdx) -> bool,
+    {
+        loop {
+            if let Some(t) = self.next() {
+                if predicate(&t) {
+                    self.peeked = Some(t);
+                    break Some(t);
+                }
+            } else {
+                break None;
+            }
+        }
     }
 }
 
@@ -723,25 +744,30 @@ impl<'a> Iterator for RisingSignalIterator<'a> {
     type Item = TimeTableIdx;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.signal.next() {
-            Some((time, value)) => {
-                if matches!(
-                    get_value(value).expect("Value should be valid"),
-                    ValueType::V1
-                ) {
-                    Some(time)
-                } else {
-                    self.signal.next().map(|(time, _)| time)
+        if let Some(t) = self.peeked {
+            self.peeked = None;
+            Some(t)
+        } else {
+            match self.signal.next() {
+                Some((time, value)) => {
+                    if matches!(
+                        get_value(value).expect("Value should be valid"),
+                        ValueType::V1
+                    ) {
+                        Some(time)
+                    } else {
+                        self.signal.next().map(|(time, _)| time)
+                    }
                 }
+                None => None,
             }
-            None => None,
         }
     }
 }
 
 struct ReadyValidTransactionIterator<'a> {
     current_time: TimeTableIdx,
-    clk: Peekable<RisingSignalIterator<'a>>,
+    clk: RisingSignalIterator<'a>,
     ready: Peekable<Box<dyn Iterator<Item = (u32, SignalValue<'a>)> + 'a>>,
     valid: Peekable<Box<dyn Iterator<Item = (u32, SignalValue<'a>)> + 'a>>,
     time_end: TimeTableIdx,
@@ -750,7 +776,7 @@ struct ReadyValidTransactionIterator<'a> {
 impl<'a> ReadyValidTransactionIterator<'a> {
     fn new(clk: &'a Signal, ready: &'a Signal, valid: &'a Signal, time_end: TimeTableIdx) -> Self {
         let mut current_time;
-        let clk = RisingSignalIterator::new(clk).peekable();
+        let clk = RisingSignalIterator::new(clk);
         let ready: Box<dyn Iterator<Item = (u32, SignalValue)>> = Box::new(ready.iter_changes());
         let valid: Box<dyn Iterator<Item = (u32, SignalValue)>> = Box::new(valid.iter_changes());
         let mut ready = ready.peekable();
@@ -762,7 +788,7 @@ impl<'a> ReadyValidTransactionIterator<'a> {
             )
         });
         match first_ready {
-            Some((time, _)) => current_time = time.saturating_sub(2),
+            Some((time, _)) => current_time = time,
             None => current_time = time_end,
         };
         let first_valid = valid.find(|(_, value)| {
@@ -772,7 +798,7 @@ impl<'a> ReadyValidTransactionIterator<'a> {
             )
         });
         match first_valid {
-            Some((time, _)) => current_time = current_time.max(time.saturating_sub(2)),
+            Some((time, _)) => current_time = current_time.max(time),
             None => current_time = time_end,
         }
 
@@ -816,7 +842,7 @@ impl<'a> Iterator for ReadyValidTransactionIterator<'a> {
             }),
         } {
             let &(smaller_next, _) = smaller.peek().expect("Already checked");
-            if self.current_time >= smaller_next {
+            if self.current_time > smaller_next {
                 let (_time, v) = smaller.next().expect("Already checked in first if");
                 debug_assert!(
                     matches!(get_value(v).unwrap(), ValueType::V0),
@@ -828,7 +854,12 @@ impl<'a> Iterator for ReadyValidTransactionIterator<'a> {
                             matches!(get_value(v).unwrap(), ValueType::V1),
                             "Next change should be to value 1"
                         );
-                        self.current_time = time.max(self.current_time);
+                        if time >= self.current_time {
+                            self.current_time = self
+                                .clk
+                                .find_non_consuming(|&t| t > time)
+                                .unwrap_or(self.time_end);
+                        }
                     }
                     None => return None,
                 }
