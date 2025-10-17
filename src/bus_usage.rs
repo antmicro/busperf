@@ -34,6 +34,16 @@ pub enum Statistic<'a> {
     Timeline(TimelineStatistic),
 }
 
+impl<'a> Statistic<'a> {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Statistic::Percentage(percentage_statistic) => percentage_statistic.name,
+            Statistic::Bucket(buckets_statistic) => buckets_statistic.name,
+            Statistic::Timeline(timeline_statistic) => timeline_statistic.name,
+        }
+    }
+}
+
 /// Statistic that compares given values based on their proportions.
 pub struct PercentageStatistic {
     pub name: &'static str,

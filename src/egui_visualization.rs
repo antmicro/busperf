@@ -681,6 +681,7 @@ fn draw_timeline(
         timescale_unit: plot_time_unit,
         pointer: coords,
     } = timeline;
+    let all_statistics = statistics;
     let mut statistics = statistics
         .iter()
         .enumerate()
@@ -739,17 +740,66 @@ fn draw_timeline(
                     *coords = plot_ui.pointer_coordinate();
                 }
                 plot_ui.response().context_menu(|ui| {
-                    if ui.button("open in surfer").clicked() {
-                        crate::surfer_integration::open_at_time(
-                            surfer_info.trace_path,
-                            surfer_info.signals.clone(),
-                            plot_to_waveform_time(
-                                coords.expect("Should be set by right click").x,
-                                waveform_time_unit,
-                                plot_time_unit,
-                            ),
-                        );
-                    }
+                    ui.menu_button("open in surfer", |ui| {
+                        if ui.button("mark this time").clicked() {
+                            crate::surfer_integration::open_at_time(
+                                surfer_info.trace_path,
+                                surfer_info.signals.clone(),
+                                plot_to_waveform_time(
+                                    coords.expect("Should be set by right click").x,
+                                    waveform_time_unit,
+                                    plot_time_unit,
+                                ),
+                            );
+                        }
+                        ui.menu_button("mark statistic", |ui| {
+                            for s in all_statistics {
+                                if let Statistic::Bucket(s) = s {
+                                    ui.menu_button(s.name, |ui| {
+                                        if ui.button("before this point").clicked() {
+                                            surfer_integration::open_and_mark_periods(
+                                                surfer_info.trace_path,
+                                                surfer_info.signals.clone(),
+                                                &s.data
+                                                    .iter()
+                                                    .rev()
+                                                    .filter(|period| {
+                                                        (period.end() as f64)
+                                                            < coords
+                                                                .expect("Is set by right click")
+                                                                .x
+                                                    })
+                                                    .map(|period| (period.start(), period.end()))
+                                                    .take(10)
+                                                    .collect::<Vec<_>>(),
+                                                &format!("{} {}", s.name, surfer_info.bus_name),
+                                                s.color,
+                                            );
+                                        }
+                                        if ui.button("after this point").clicked() {
+                                            surfer_integration::open_and_mark_periods(
+                                                surfer_info.trace_path,
+                                                surfer_info.signals.clone(),
+                                                &s.data
+                                                    .iter()
+                                                    .filter(|period| {
+                                                        period.start() as f64
+                                                            > coords
+                                                                .expect("Is set by right click")
+                                                                .x
+                                                    })
+                                                    .map(|period| (period.start(), period.end()))
+                                                    .take(10)
+                                                    .collect::<Vec<_>>(),
+                                                &format!("{} {}", s.name, surfer_info.bus_name),
+                                                s.color,
+                                            );
+                                        }
+                                    });
+                                }
+                            }
+                        })
+                    });
                 });
             });
     });
