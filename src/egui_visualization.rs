@@ -839,6 +839,10 @@ fn draw_timeline(
                                                     &format!("{} {}", s.name, surfer_info.bus_name),
                                                     s.color,
                                                 );
+                                                surfer_integration::zoom_to_range(
+                                                    period_start as u64,
+                                                    period_end as u64,
+                                                );
                                                 ui.close();
                                             }
                                         });

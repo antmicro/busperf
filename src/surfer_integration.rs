@@ -288,3 +288,24 @@ pub fn open_and_mark_periods(
         eprintln!("[Info] Surfer version does not support adding markers. Skipping");
     }
 }
+
+pub fn zoom_to_range(start: u64, end: u64) {
+    if let Some(surfer) = CONNECTION.get() {
+        let mut surfer = surfer.lock().unwrap();
+        if surfer
+            .commands
+            .contains(&String::from("set_viewport_range_to"))
+        {
+            let start = BigInt::from_u64(start).expect("Should be valid");
+            let end = BigInt::from_u64(end).expect("Should be valid");
+            surfer.send_message(&WcpCSMessage::command(WcpCommand::set_viewport_range_to {
+                start,
+                end,
+            }));
+        } else {
+            eprintln!("[Info] Surfer version does not support adding markers. Skipping");
+        }
+    } else {
+        eprintln!("[ERROR] Failed to zoom to range: Connection to surfer invalid.");
+    }
+}
