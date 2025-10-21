@@ -16,7 +16,7 @@ use yaml_rust2::Yaml;
 
 use crate::{CycleType, bus_usage::RealTime};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
 pub struct SignalPath {
     pub scope: Vec<String>,
     pub name: String,

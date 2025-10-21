@@ -231,8 +231,20 @@ $ cargo run -- --help
 ### Usage help
 
 ```
-Usage: busperf (--gui | --csv | --md | --text) [-o=OUT] [-m=BURST] [-w=WINDOW] [-x=X_RATE] [-y=Y_RATE]
-[-v] (-t=TRACE -b=BUS_CONFIG | TRACE BUS)
+Usage: busperf COMMAND ...
+
+Available options:
+    -h, --help  Prints help information
+
+Available commands:
+    analyze     Analyze given trace
+    show        Show statistics from a file
+```
+
+**busperf analyze**
+```
+Usage: busperf analyze (--gui | --csv | --md | --text) [-o=OUT] [-s=FILENAME] [-m=BURST] [-w=WINDOW]
+[-x=X_RATE] [-y=Y_RATE] [-v] (-t=TRACE -b=BUS_CONFIG | TRACE BUS)
 
 Available positional items:
     TRACE                vcd/fst file with simulation trace
@@ -244,6 +256,7 @@ Available options:
         --md             Format output as md table
         --text           Format output as table
     -o=OUT               Output filename
+    -s, --save=FILENAME  Save analyzed statistics for later view
     -m, --max_burst_delay=BURST  Max delay during a burst [default: 0]
     -w, --window=WINDOW  Set size of the rolling window [default: 10000]
     -x, --x_rate=X_RATE  Set x_rate for bandwidth above x_rate [default: 0.0001]
@@ -252,6 +265,22 @@ Available options:
     -t, --trace=TRACE    vcd/fst file with simulation trace
     -b, --bus-config=BUS_CONFIG  yaml with description of buses
     -h, --help           Prints help information
+```
+
+**busperf show**
+```
+Usage: busperf show (--gui | --csv | --md | --text) [-v] FILENAME
+
+Available positional items:
+    FILENAME       File to load statistics from
+
+Available options:
+        --gui      Run GUI
+        --csv      Format output as csv
+        --md       Format output as md table
+        --text     Format output as table
+    -v, --verbose
+    -h, --help     Prints help information
 ```
 
 ### GUI
@@ -274,31 +303,31 @@ type of statistics you want to view in it.
 - Prints statistics about bus described in test.yaml trace in test.vcd
 <!-- name="example-test" -->
 ```sh
-cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml --text
+cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml --text
 ```
 
 - Prints all statistics sets max burst delay to 1
 <!-- name="example-test-verbose" -->
 ```sh
-cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml --verbose -m 1 --text
+cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml --verbose -m 1 --text
 ```
 
 - Writes statistics to `stat.csv` formated as csv
 <!-- name="example-csv" -->
 ```sh
-cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o stat.csv --csv
+cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o stat.csv --csv
 ```
 
 - Prints statistics to stdout as md
 <!-- name="example-md" -->
 ```sh
-cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml --md
+cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml --md
 ```
 
 - Writes pretty printed statistics to `out`
 <!-- name="example-pretty" -->
 ```sh
-cargo run -- tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o out --text
+cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o out --text
 ```
 
 - Clean files generated from examples

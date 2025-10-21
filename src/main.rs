@@ -1,13 +1,66 @@
-use bpaf::{Parser, construct, long, positional, short};
+use bpaf::{OptionParser, Parser, construct, long, positional, short};
 use busperf::*;
 
-struct Args {
+enum Args {
+    Analyze(AnalyzeArgs),
+    Show(ShowArgs),
+}
+
+impl Args {
+    fn parse() -> Args {
+        let analyze = AnalyzeArgs::parse()
+            .to_options()
+            .descr("Analyze given trace")
+            .command("analyze");
+        let show = ShowArgs::parse()
+            .to_options()
+            .descr("Show statistics from a file")
+            .command("show");
+
+        let parser: OptionParser<Args> = construct!([analyze, show]).to_options();
+        parser.run()
+    }
+}
+
+struct ShowArgs {
+    file: String,
+    output_type: OutputType,
+    verbose: bool,
+}
+
+impl ShowArgs {
+    pub fn parse() -> impl Parser<Args> {
+        let gui = long("gui").help("Run GUI").req_flag(OutputType::Rendered);
+        let csv = long("csv")
+            .help("Format output as csv")
+            .req_flag(OutputType::Csv);
+        let md = long("md")
+            .help("Format output as md table")
+            .req_flag(OutputType::Md);
+        let text = long("text")
+            .help("Format output as table")
+            .req_flag(OutputType::Pretty);
+        let output_type = construct!([gui, csv, md, text]);
+        let verbose = short('v').long("verbose").switch();
+        let file = positional("FILENAME").help("File to load statistics from");
+
+        let parser = construct!(ShowArgs {
+            output_type,
+            verbose,
+            file,
+        });
+        construct!(Args::Show(parser))
+    }
+}
+
+struct AnalyzeArgs {
     files: FileArgs,
     max_burst_delay: u32,
     verbose: bool,
     output: Option<String>,
     skipped_stats: Option<String>,
     output_type: OutputType,
+    save: Option<String>,
     window_length: u32,
     x_rate: f32,
     y_rate: f32,
@@ -18,8 +71,8 @@ struct FileArgs {
     bus_description: String,
 }
 
-impl Args {
-    pub fn parse() -> Args {
+impl AnalyzeArgs {
+    pub fn parse() -> impl Parser<Args> {
         // We accept simulation trace as either options or positional arguments
         let simulation_trace = short('t')
             .long("trace")
@@ -64,6 +117,11 @@ impl Args {
             .help("Output filename")
             .argument("OUT")
             .optional();
+        let save = short('s')
+            .long("save")
+            .help("Save analyzed statistics for later view")
+            .argument("FILENAME")
+            .optional();
 
         let skipped_stats = short('s')
             .long("skip")
@@ -100,10 +158,11 @@ impl Args {
             .fallback(0.00001);
         let verbose = short('v').long("verbose").switch();
 
-        let parser = construct!(Args {
+        let parser = construct!(AnalyzeArgs {
             output_type,
             output,
             skipped_stats,
+            save,
             max_burst_delay,
             window_length,
             x_rate,
@@ -111,42 +170,51 @@ impl Args {
             verbose,
             files,
         });
-        parser.run()
+        construct!(Args::Analyze(parser))
     }
 }
 
 fn main() {
     let args = Args::parse();
-    let mut analyzers = load_bus_analyzers(
-        &args.files.bus_description,
-        args.max_burst_delay as i32,
-        args.window_length,
-        args.x_rate,
-        args.y_rate,
-    )
-    .unwrap();
-    let mut data = load_simulation_trace(&args.files.simulation_trace, args.verbose);
-    for a in analyzers.iter_mut() {
-        a.analyze(&mut data, args.verbose);
+    match args {
+        Args::Analyze(args) => {
+            let skipped_stats_arg = args.skipped_stats.unwrap_or_default();
+            let skipped_stats: Vec<String> = skipped_stats_arg
+                .split(',')
+                .map(|s| s.to_string())
+                .collect();
+
+            let mut analyzers = load_bus_analyzers(
+                &args.files.bus_description,
+                args.max_burst_delay as i32,
+                args.window_length,
+                args.x_rate,
+                args.y_rate,
+            )
+            .unwrap();
+            let mut data = load_simulation_trace(&args.files.simulation_trace, args.verbose);
+            for a in analyzers.iter_mut() {
+                a.analyze(&mut data, args.verbose);
+            }
+            if let Some(name) = args.save {
+                save_data(&analyzers, &name, &args.files.simulation_trace);
+            }
+            let mut out: &mut dyn std::io::Write = match args.output {
+                None => &mut std::io::stdout(),
+                Some(filename) => &mut std::fs::File::create(filename).unwrap(),
+            };
+            run_visualization(
+                analyzers,
+                args.output_type,
+                Some(&mut out),
+                &mut data,
+                &args.files.simulation_trace,
+                args.verbose,
+                &skipped_stats,
+            );
+        }
+        Args::Show(args) => {
+            visualization_from_file(&args.file, args.output_type, args.verbose);
+        }
     }
-    let mut out: &mut dyn std::io::Write = match args.output {
-        None => &mut std::io::stdout(),
-        Some(filename) => &mut std::fs::File::create(filename).unwrap(),
-    };
-
-    let skipped_stats_arg = args.skipped_stats.unwrap_or_default();
-    let skipped_stats: Vec<String> = skipped_stats_arg
-        .split(',')
-        .map(|s| s.to_string())
-        .collect();
-
-    show_data(
-        analyzers,
-        args.output_type,
-        Some(&mut out),
-        &mut data,
-        &args.files.simulation_trace,
-        args.verbose,
-        &skipped_stats,
-    );
 }

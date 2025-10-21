@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, io::Write};
 
-use crate::{analyzer::Analyzer, bus_usage::BusUsage};
+use crate::bus_usage::BusUsage;
 
 fn generate_tabled<O>(header: &Vec<String>, data: &Vec<Vec<String>>, style: O) -> tabled::Table
 where
@@ -114,7 +114,7 @@ fn get_data(usages: &[&BusUsage], verbose: bool, skipped_stats: &[String]) -> Ve
 
 fn print_statistics_internal<O>(
     write: &mut impl Write,
-    analyzers: &[Box<dyn Analyzer>],
+    usages: &[&BusUsage],
     verbose: bool,
     style: O,
     skipped_stats: &[String],
@@ -127,10 +127,6 @@ fn print_statistics_internal<O>(
             tabled::grid::dimension::CompleteDimension,
         > + Clone,
 {
-    let usages = analyzers
-        .iter()
-        .map(|a| a.get_results().expect("Already calculated"))
-        .collect::<Vec<_>>();
     let single_usages = usages
         .iter()
         .filter_map(|&u| match u {
@@ -160,13 +156,13 @@ fn print_statistics_internal<O>(
 
 pub fn print_statistics(
     write: &mut impl Write,
-    analyzers: &[Box<dyn Analyzer>],
+    usages: &[&BusUsage],
     verbose: bool,
     skipped_stats: &[String],
 ) {
     print_statistics_internal(
         write,
-        analyzers,
+        usages,
         verbose,
         tabled::settings::Style::rounded(),
         skipped_stats,
@@ -175,13 +171,13 @@ pub fn print_statistics(
 
 pub fn generate_md_table(
     write: &mut impl Write,
-    analyzers: &[Box<dyn Analyzer>],
+    usages: &[&BusUsage],
     verbose: bool,
     skipped_stats: &[String],
 ) {
     print_statistics_internal(
         write,
-        analyzers,
+        usages,
         verbose,
         tabled::settings::Style::markdown(),
         skipped_stats,
@@ -190,14 +186,10 @@ pub fn generate_md_table(
 
 pub fn generate_csv(
     write: &mut impl Write,
-    analyzers: &[Box<dyn Analyzer>],
+    usages: &[&BusUsage],
     verbose: bool,
     skipped_stats: &[String],
 ) {
-    let usages = analyzers
-        .iter()
-        .map(|a| a.get_results().expect("Already calculated"))
-        .collect::<Vec<_>>();
     let mut wtr = csv::Writer::from_writer(write);
     let single_usages: Vec<_> = usages
         .iter()

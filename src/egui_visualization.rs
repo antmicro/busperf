@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, f32};
 
 use eframe::{
     egui::{
-        self, Color32, FontId, Id, Label, Layout, Rgba, RichText, Stroke, Ui,
+        self, Color32, FontId, Id, Label, Layout, Modal, Rgba, RichText, Stroke, Ui,
         containers::menu::MenuConfig,
         text::{LayoutJob, TextWrapping},
         vec2,
@@ -16,22 +16,22 @@ use egui_plot::{
 use wellen::TimescaleUnit;
 
 use crate::{
-    analyzer::Analyzer,
+    WaveformFile,
     bus::CyclesNum,
-    bus_usage::{BusUsage, Statistic},
-    surfer_integration,
+    bus_usage::{BusUsage, BusUsageFull, Statistic},
+    calculate_file_hash, surfer_integration,
 };
 
 pub fn run_visualization(
-    analyzers: Vec<Box<dyn Analyzer>>,
-    trace_path: &str,
+    usages: Vec<BusUsageFull>,
+    trace_path: WaveformFile,
     time_unit: TimescaleUnit,
 ) {
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "busperf",
         options,
-        Box::new(|_| Ok(Box::new(BusperfApp::new(analyzers, trace_path, time_unit)))),
+        Box::new(|_| Ok(Box::new(BusperfApp::new(usages, trace_path, time_unit)))),
     )
     .expect("Failed to init egui");
 }
@@ -93,34 +93,167 @@ impl std::fmt::Display for PlotType {
     }
 }
 
+type ModalAction = Option<Box<dyn FnOnce(&str)>>;
+
+struct SurferConnectionUi {
+    wrong_checksum_modal: bool,
+    file_not_found_modal: bool,
+    modal_action: ModalAction,
+    warning: String,
+}
+
 struct BusperfApp {
-    analyzers: Vec<Box<dyn Analyzer>>,
+    usages: Vec<BusUsageFull>,
     selected: usize,
-    trace_path: String,
+    trace_path: WaveformFile,
     waveform_time_unit: wellen::TimescaleUnit,
     left: PlotType,
     right: PlotType,
+    surfer: SurferConnectionUi,
 }
 
 impl BusperfApp {
-    fn new(analyzers: Vec<Box<dyn Analyzer>>, trace_path: &str, time_unit: TimescaleUnit) -> Self {
-        let right = if matches!(
-            analyzers[0]
-                .get_results()
-                .expect("Should be already calculated"),
-            BusUsage::SingleChannel(_)
-        ) {
+    fn new(usages: Vec<BusUsageFull>, trace_path: WaveformFile, time_unit: TimescaleUnit) -> Self {
+        let right = if matches!(usages[0].usage, BusUsage::SingleChannel(_)) {
             PlotType::Pie
         } else {
             PlotType::Timeline(TimelinePlot::new(time_unit, None))
         };
         Self {
-            analyzers,
+            usages,
             selected: 0,
-            trace_path: trace_path.to_owned(),
+            trace_path,
             waveform_time_unit: time_unit,
             left: PlotType::Buckets(BucketsPlot::new(PlotScale::Log)),
             right,
+            surfer: SurferConnectionUi {
+                wrong_checksum_modal: false,
+                file_not_found_modal: false,
+                modal_action: None,
+                warning: String::new(),
+            },
+        }
+    }
+
+    fn draw_statistics(&mut self, ui: &mut Ui, skipped_stats: &[String]) {
+        let BusUsageFull { usage, signals } = &self.usages[self.selected];
+        let signals = signals.iter().map(|s| format!("{s}")).collect();
+        let statistics = usage.get_statistics(skipped_stats);
+        let surfer_info = SurferInfo {
+            trace_path: &self.trace_path,
+            signals: &signals,
+            bus_name: usage.get_name(),
+            ui: RefCell::new(&mut self.surfer),
+        };
+        draw_values(ui, &statistics);
+        let size = ui.available_size();
+        let id = self.selected;
+        ui.horizontal(|ui| {
+            ui.set_min_size(size);
+            let width = ui.available_width() / 2.0;
+            draw_plot(
+                ui,
+                &statistics,
+                id * 2,
+                &surfer_info,
+                &self.waveform_time_unit,
+                &mut self.left,
+                width,
+            );
+            draw_plot(
+                ui,
+                &statistics,
+                id * 2 + 1,
+                &surfer_info,
+                &self.waveform_time_unit,
+                &mut self.right,
+                width,
+            );
+        });
+        if self.surfer.wrong_checksum_modal {
+            let modal = Modal::new(Id::new("WrongChecksum")).show(ui.ctx(), |ui| {
+                ui.heading("Mismatched file");
+                ui.label("This file's checksum is different from the original waveform's. This means that data was calculated for a different simulation.");
+
+                egui::Sides::new().show(ui, |_ui| {}, |ui| {
+                    if ui.button("Select different file").clicked() {
+                        if let Some(path) = rfd::FileDialog::new().pick_file() {
+                            self.trace_path.path = path
+                                .into_os_string()
+                                .into_string()
+                                .expect("Invalid file name");
+                            if ensure_trace_matches(&self.trace_path, &mut self.surfer) {
+                                ui.close();
+                                if let Some(action) = self.surfer.modal_action.take() {
+                                    println!("opening {}", self.trace_path.path);
+                                    action(&self.trace_path.path);
+                                }
+                            } else {
+                                self.surfer.warning = String::from("Invalid file");
+                            }
+                        }else {
+                        ui.close();
+                        }
+                    }
+                    if ui.button("Cancel").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("Open anyways").clicked() {
+                        ui.close();
+                        self.trace_path.checked.set(true);
+                        if let Some(action) = self.surfer.modal_action.take() {
+                            action(&self.trace_path.path);
+                        }
+                    }
+                })
+            });
+            if modal.should_close() {
+                self.surfer.wrong_checksum_modal = false;
+            }
+        }
+
+        if self.surfer.file_not_found_modal {
+            let modal = Modal::new(Id::new("FileNotFound")).show(ui.ctx(), |ui| {
+                ui.heading("File not found");
+                ui.label("Saved path is not valid.");
+                ui.add_space(10.0);
+                ui.label("Select waveform file to load in surfer.");
+                ui.horizontal(|ui| {
+                    ui.text_edit_singleline(&mut self.trace_path.path);
+                    if ui.button("Select").clicked()
+                        && let Some(path) = rfd::FileDialog::new().pick_file()
+                    {
+                        self.trace_path.path = path
+                            .into_os_string()
+                            .into_string()
+                            .expect("Invalid file name");
+                        self.surfer.warning = String::new();
+                    }
+                });
+                if !self.surfer.warning.is_empty() {
+                    ui.colored_label(Color32::RED, &self.surfer.warning);
+                }
+
+                egui::Sides::new().show(
+                    ui,
+                    |_ui| {},
+                    |ui| {
+                        if ui.button("Ok").clicked() {
+                            if ensure_trace_matches(&self.trace_path, &mut self.surfer) {
+                                ui.close();
+                                if let Some(action) = self.surfer.modal_action.take() {
+                                    action(&self.trace_path.path);
+                                }
+                            } else {
+                                self.surfer.warning = String::from("Invalid file");
+                            }
+                        }
+                    },
+                );
+            });
+            if modal.should_close() {
+                self.surfer.file_not_found_modal = false;
+            }
         }
     }
 }
@@ -130,9 +263,9 @@ impl eframe::App for BusperfApp {
         egui::SidePanel::new(egui::panel::Side::Left, "bus_selector").show(ctx, |ui| {
             ui.heading("Bus");
             ui.separator();
-            for (i, a) in self.analyzers.iter().enumerate() {
+            for (i, u) in self.usages.iter().enumerate() {
                 ui.with_layout(egui::Layout::default().with_cross_justify(true), |ui| {
-                    let name = a.get_results().expect("Already calculated").get_name();
+                    let name = u.usage.get_name();
                     let mut job = LayoutJob::simple_singleline(
                         name.to_string(),
                         FontId::proportional(12.0),
@@ -150,87 +283,30 @@ impl eframe::App for BusperfApp {
                 });
             }
             if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-                self.selected = (self.selected + 1) % self.analyzers.len();
+                self.selected = (self.selected + 1) % self.usages.len();
             }
             if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
                 if self.selected > 0 {
                     self.selected -= 1;
                 } else {
-                    self.selected = self.analyzers.len() - 1;
+                    self.selected = self.usages.len() - 1;
                 }
             }
         });
         egui::CentralPanel::default().show(ctx, |ui| {
-            let result = self.analyzers[self.selected]
-                .get_results()
-                .expect("Already calculated");
-            ui.heading(RichText::new(result.get_name()).color(Color32::WHITE));
+            let result = &self.usages[self.selected];
+            ui.heading(RichText::new(result.usage.get_name()).color(Color32::WHITE));
             ui.separator();
-            draw_statistics(
-                ui,
-                result,
-                self.selected,
-                &self.trace_path,
-                self.analyzers[self.selected]
-                    .get_signals()
-                    .iter()
-                    .map(|s| format!("{s}"))
-                    .collect(),
-                &self.waveform_time_unit,
-                (&mut self.left, &mut self.right),
-                &Vec::<String>::new(),
-            );
+            self.draw_statistics(ui, &[]);
         });
     }
 }
 
-struct SurferInfo<'a, 'b, 'c> {
-    trace_path: &'a str,
+struct SurferInfo<'a, 'b, 'c, 'd> {
+    trace_path: &'a WaveformFile,
     signals: &'b Vec<String>,
     bus_name: &'c str,
-}
-
-#[allow(clippy::too_many_arguments)]
-fn draw_statistics(
-    ui: &mut Ui,
-    result: &BusUsage,
-    id: usize,
-    trace_path: &str,
-    signals: Vec<String>,
-    waveform_time_unit: &TimescaleUnit,
-    (left, right): (&mut PlotType, &mut PlotType),
-    skipped_stats: &[String],
-) {
-    let statistics = result.get_statistics(skipped_stats);
-    let surfer_info = SurferInfo {
-        trace_path,
-        signals: &signals,
-        bus_name: result.get_name(),
-    };
-    draw_values(ui, &statistics);
-    let size = ui.available_size();
-    ui.horizontal(|ui| {
-        ui.set_min_size(size);
-        let width = ui.available_width() / 2.0;
-        draw_plot(
-            ui,
-            &statistics,
-            id * 2,
-            &surfer_info,
-            waveform_time_unit,
-            left,
-            width,
-        );
-        draw_plot(
-            ui,
-            &statistics,
-            id * 2 + 1,
-            &surfer_info,
-            waveform_time_unit,
-            right,
-            width,
-        );
-    });
+    ui: RefCell<&'d mut SurferConnectionUi>,
 }
 
 thread_local! {
@@ -617,16 +693,27 @@ fn draw_buckets(
                             PlotScale::Log => buckets_statistic.get_data_for_bucket(*selected),
                             PlotScale::Lin => buckets_statistic.get_data_of_value(*selected),
                         };
-                        surfer_integration::open_and_mark_periods(
+                        let signals = surfer_info.signals.clone();
+                        let periods = data
+                            .iter()
+                            .map(|period| (period.start(), period.end()))
+                            .collect::<Vec<_>>();
+                        let suffix = format!("{} {}", buckets_statistic.name, surfer_info.bus_name);
+                        let color = buckets_statistic.color;
+                        let action = move |trace_path: &str| {
+                            let periods = periods;
+                            surfer_integration::open_and_mark_periods(
+                                trace_path, signals, &periods, &suffix, color,
+                            );
+                        };
+                        if ensure_trace_matches(
                             surfer_info.trace_path,
-                            surfer_info.signals.clone(),
-                            &data
-                                .iter()
-                                .map(|period| (period.start(), period.end()))
-                                .collect::<Vec<_>>(),
-                            &format!("{} {}", buckets_statistic.name, surfer_info.bus_name),
-                            buckets_statistic.color,
-                        );
+                            &mut surfer_info.ui.borrow_mut(),
+                        ) {
+                            action(&surfer_info.trace_path.path);
+                        } else {
+                            surfer_info.ui.borrow_mut().modal_action = Some(Box::new(action));
+                        }
                     }
                 }
                 None => {
@@ -638,6 +725,25 @@ fn draw_buckets(
             }
         });
     });
+}
+
+fn ensure_trace_matches(trace: &WaveformFile, ui: &mut SurferConnectionUi) -> bool {
+    if trace.checked.get() {
+        return true;
+    }
+    let hash1 = trace.hash;
+    if let Ok(hash2) = calculate_file_hash(&trace.path) {
+        if hash1 == hash2 {
+            trace.checked.set(true);
+            true
+        } else {
+            ui.wrong_checksum_modal = true;
+            false
+        }
+    } else {
+        ui.file_not_found_modal = true;
+        false
+    }
 }
 
 fn waveform_to_plot_time(
@@ -756,9 +862,14 @@ fn draw_timeline(
                 }
                 plot_ui.response().context_menu(|ui| {
                     ui.menu_button("open in surfer", |ui| {
-                        if ui.button("mark this time").clicked() {
-                            crate::surfer_integration::open_at_time(
+                        if ui.button("mark this time").clicked()
+                            && ensure_trace_matches(
                                 surfer_info.trace_path,
+                                &mut surfer_info.ui.borrow_mut(),
+                            )
+                        {
+                            crate::surfer_integration::open_at_time(
+                                &surfer_info.trace_path.path,
                                 surfer_info.signals.clone(),
                                 plot_to_waveform_time(
                                     coords.expect("Should be set by right click").x,
@@ -782,7 +893,7 @@ fn draw_timeline(
                                                 .take(10)
                                                 .collect::<Vec<_>>();
                                             surfer_integration::open_and_mark_periods(
-                                                surfer_info.trace_path,
+                                                &surfer_info.trace_path.path,
                                                 surfer_info.signals.clone(),
                                                 &periods,
                                                 &format!("{} {}", s.name, surfer_info.bus_name),
@@ -805,7 +916,7 @@ fn draw_timeline(
                                                 .take(10)
                                                 .collect::<Vec<_>>();
                                             surfer_integration::open_and_mark_periods(
-                                                surfer_info.trace_path,
+                                                &surfer_info.trace_path.path,
                                                 surfer_info.signals.clone(),
                                                 &periods,
                                                 &format!("{} {}", s.name, surfer_info.bus_name),
@@ -836,7 +947,7 @@ fn draw_timeline(
                                                     plot_time_unit,
                                                 );
                                                 surfer_integration::open_and_mark_periods(
-                                                    surfer_info.trace_path,
+                                                    &surfer_info.trace_path.path,
                                                     surfer_info.signals.clone(),
                                                     &s.data
                                                         .iter()
@@ -862,7 +973,7 @@ fn draw_timeline(
                                     });
                                 }
                             }
-                        })
+                        });
                     });
                 });
             });

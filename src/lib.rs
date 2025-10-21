@@ -1,10 +1,14 @@
 use std::{
+    cell::Cell,
     fs::File,
     io::{Read, Write},
+    str::FromStr,
     sync::{Arc, atomic::AtomicU64},
 };
 
 use analyzer::{Analyzer, AnalyzerBuilder};
+use blake3::Hash;
+use flate2::Compression;
 use wellen::{
     Hierarchy, LoadOptions,
     viewers::{self, BodyResult},
@@ -22,7 +26,7 @@ mod text_output;
 
 use bus::CyclesNum;
 
-use crate::bus::SignalPath;
+use crate::{bus::SignalPath, bus_usage::BusUsageFull};
 
 /// Loads descriptions of the buses from yaml file with given name.
 pub fn load_bus_analyzers(
@@ -167,7 +171,7 @@ impl TryFrom<&str> for OutputType {
 /// Run visualization.
 ///
 /// If any analyzer has not yet been run it will be run. Then visualization of type `type_` will be run.
-pub fn show_data(
+pub fn run_visualization(
     mut analyzers: Vec<Box<dyn Analyzer>>,
     type_: OutputType,
     out: Option<&mut impl Write>,
@@ -176,33 +180,114 @@ pub fn show_data(
     verbose: bool,
     skipped_stats: &[String],
 ) {
-    for a in analyzers.iter_mut() {
-        if !a.finished_analysis() {
-            a.analyze(simulation_data, verbose);
-        }
-    }
+    let usages = analyzers
+        .iter_mut()
+        .map(|a| {
+            if !a.finished_analysis() {
+                a.analyze(simulation_data, verbose);
+            }
+            BusUsageFull::new(
+                a.get_results().cloned().expect("Was just calculated"),
+                a.get_signals().into_iter().cloned().collect(),
+            )
+        })
+        .collect();
 
+    let trace = WaveformFile {
+        path: trace_path.to_owned(),
+        hash: [0; 32].into(),
+        checked: true.into(),
+    };
+    show_data(usages, trace, type_, out, verbose, skipped_stats);
+}
+
+struct WaveformFile {
+    path: String,
+    hash: Hash,
+    checked: Cell<bool>,
+}
+
+fn show_data(
+    usages: Vec<BusUsageFull>,
+    trace: WaveformFile,
+    type_: OutputType,
+    out: Option<&mut impl Write>,
+    verbose: bool,
+    skipped_stats: &[String],
+) {
     match type_ {
         OutputType::Pretty => {
-            text_output::print_statistics(out.unwrap(), &analyzers, verbose, skipped_stats);
+            let usages = usages.iter().map(|u| &u.usage).collect::<Vec<_>>();
+            text_output::print_statistics(out.unwrap(), &usages, verbose, skipped_stats);
         }
         OutputType::Csv => {
-            text_output::generate_csv(out.unwrap(), &analyzers, verbose, skipped_stats)
+            let usages = usages.iter().map(|u| &u.usage).collect::<Vec<_>>();
+            text_output::generate_csv(out.unwrap(), &usages, verbose, skipped_stats)
         }
         OutputType::Md => {
-            text_output::generate_md_table(out.unwrap(), &analyzers, verbose, skipped_stats)
+            let usages = usages.iter().map(|u| &u.usage).collect::<Vec<_>>();
+            text_output::generate_md_table(out.unwrap(), &usages, verbose, skipped_stats)
         }
-        OutputType::Rendered => egui_visualization::run_visualization(
-            analyzers,
-            trace_path,
-            simulation_data
-                .hierarchy
-                .timescale()
-                .unwrap_or(wellen::Timescale {
-                    factor: 1,
-                    unit: wellen::TimescaleUnit::Seconds,
-                })
-                .unit,
-        ),
+        OutputType::Rendered => {
+            egui_visualization::run_visualization(usages, trace, wellen::TimescaleUnit::PicoSeconds)
+        }
     }
+}
+
+fn calculate_file_hash(filename: &str) -> Result<Hash, Box<dyn std::error::Error>> {
+    let file = File::open(filename)?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update_reader(file)?;
+    Ok(hasher.finalize())
+}
+
+pub fn save_data(analyzers: &[Box<dyn Analyzer>], filename: &str, trace_path: &str) {
+    let mut file = File::create(filename).expect("Failed to create output file");
+    let hash = calculate_file_hash(trace_path)
+        .expect("File already checked")
+        .to_string();
+
+    let data = (
+        trace_path,
+        hash,
+        analyzers
+            .iter()
+            .filter_map(|a| {
+                a.get_results().map(|r| {
+                    BusUsageFull::new(r.clone(), a.get_signals().into_iter().cloned().collect())
+                })
+            })
+            .collect::<Vec<_>>(),
+    );
+
+    let config = bincode::config::standard();
+    let data = bincode::encode_to_vec(data, config).expect("Serialization failed");
+    let mut encoder = flate2::write::GzEncoder::new(&mut file, Compression::default());
+    encoder.write_all(&data).expect("Write to file failed");
+}
+
+pub fn visualization_from_file(filename: &str, output_type: OutputType, verbose: bool) {
+    let data = std::fs::read(filename).expect("Failed to load file");
+    let mut decoder = flate2::read::GzDecoder::new(&*data);
+    let mut buf = Vec::new();
+    decoder.read_to_end(&mut buf).expect("Failed decompression");
+    let config = bincode::config::standard();
+    let data: (String, String, Vec<BusUsageFull>) = bincode::decode_from_slice(&buf, config)
+        .expect("Invalid file data")
+        .0;
+    let (waveform_path, hash, usages) = data;
+    let hash = Hash::from_str(&hash).expect("Invalid hash value");
+    let trace = WaveformFile {
+        path: waveform_path,
+        hash,
+        checked: false.into(),
+    };
+    show_data(
+        usages,
+        trace,
+        output_type,
+        Some(&mut std::io::stdout()),
+        verbose,
+        &[],
+    );
 }

@@ -20,6 +20,10 @@ serde = { version = "1.0.225", features = ["derive"] }
 serde_json = "1.0.145"
 num = "0.4.3"
 bpaf = { version = "0.9.20", features = ["autocomplete"] }
+bincode = "2.0.1"
+flate2 = { version = "1.1.4", default-features = false, features = ["zlib-rs"] }
+blake3 = "1.8.2"
+rfd = "0.15.4"
 
 [features]
 default = ["help-colors"]

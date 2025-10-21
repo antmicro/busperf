@@ -24,6 +24,8 @@ exceptions = [
     { allow = ["ISC"], crate = "libloading" },
     { allow = ["ISC"], crate = "is_ci" },
     { allow = ["Zlib"], crate = "slotmap" },
+    { allow = ["Zlib"], crate = "zlib-rs" },
+    { allow = ["Zlib"], crate = "libz-rs-sys" },
     { allow = ["BSD-3-Clause"], crate = "tiny-skia-path" },
     { allow = ["BSD-3-Clause"], crate = "tiny-skia" },
 ]
