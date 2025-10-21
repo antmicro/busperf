@@ -124,11 +124,11 @@ impl AXIRdAnalyzer {
             .ok_or("Name of bus should be a valid string")?;
         let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
         let r_resp =
-            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["rresp"])?;
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["resp"])?;
         let full = match (
             SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["id"]),
             SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["ar"]["id"]),
-            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["rlast"]),
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["last"]),
         ) {
             (Ok(r_id), Ok(ar_id), Ok(r_last)) => Some(AXIFullRd {
                 r_id,
@@ -399,9 +399,9 @@ impl AXIWrAnalyzer {
             .ok_or("Name of bus should be a valid string")?;
         let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
         let b_resp =
-            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["b"]["bresp"])?;
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["b"]["resp"])?;
         let w_last =
-            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["w"]["wlast"]);
+            SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["w"]["last"]);
         let aw_id = SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["aw"]["id"]);
         let b_id = SignalPath::from_yaml_ref_with_prefix(common.module_scope(), &dict["b"]["id"]);
         let full = match (aw_id, w_last, b_id) {
