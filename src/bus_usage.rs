@@ -576,7 +576,11 @@ impl MultiChannelBusUsage {
             Statistic::Timeline(TimelineStatistic {
                 name: "Error rate",
                 values: vec![],
-                display: format!("Error rate: {:.2}%", self.error_rate * 100.0),
+                display: if self.error_rate.is_nan() {
+                    "Invalid".to_string()
+                } else {
+                    format!("Error rate: {:.2}%", self.error_rate * 100.0)
+                },
                 description: "Percentage of transactions that resulted in error.",
             }),
             Statistic::Timeline(TimelineStatistic {

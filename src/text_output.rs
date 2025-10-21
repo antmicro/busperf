@@ -65,37 +65,40 @@ fn get_data(usages: &[&BusUsage], verbose: bool) -> Vec<Vec<String>> {
                         if verbose {
                             v.push(format!("{:?}", buckets_statistic.data));
                         } else {
-                            v.push(
-                                buckets_statistic
-                                    .get_buckets()
-                                    .iter()
-                                    .filter_map(|(&i, v)| {
-                                        if *v > 0 {
-                                            Some(if i < 2 {
-                                                format!("{} x{}", i, *v)
-                                            } else if i >= 41 {
-                                                format!("2^{}+ x{}", i, *v)
-                                            } else if i >= 21 {
-                                                let i = i as u32 - 20;
-                                                format!("{}-{}M x{}", 1 << (i - 1), 1 << i, *v)
-                                            } else if i >= 11 {
-                                                let i = i as u32 - 10;
-                                                format!("{}-{}k x{}", 1 << (i - 1), 1 << i, *v)
-                                            } else {
-                                                format!(
-                                                    "{}-{} x{}",
-                                                    1 << (i as u64 - 1),
-                                                    (1 << i as u64) - 1,
-                                                    *v
-                                                )
-                                            })
+                            let d = buckets_statistic
+                                .get_buckets()
+                                .iter()
+                                .filter_map(|(&i, v)| {
+                                    if *v > 0 {
+                                        Some(if i < 2 {
+                                            format!("{} x{}", i, *v)
+                                        } else if i >= 41 {
+                                            format!("2^{}+ x{}", i, *v)
+                                        } else if i >= 21 {
+                                            let i = i as u32 - 20;
+                                            format!("{}-{}M x{}", 1 << (i - 1), 1 << i, *v)
+                                        } else if i >= 11 {
+                                            let i = i as u32 - 10;
+                                            format!("{}-{}k x{}", 1 << (i - 1), 1 << i, *v)
                                         } else {
-                                            None
-                                        }
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join("; "),
-                            );
+                                            format!(
+                                                "{}-{} x{}",
+                                                1 << (i as u64 - 1),
+                                                (1 << i as u64) - 1,
+                                                *v
+                                            )
+                                        })
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                                .join("; ");
+                            if d.is_empty() {
+                                v.push("No transaction on this bus".into())
+                            } else {
+                                v.push(d);
+                            }
                         }
                     }
                     crate::bus_usage::Statistic::Timeline(timeline_statistic) => {
