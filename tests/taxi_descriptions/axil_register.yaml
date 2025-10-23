@@ -12,7 +12,7 @@ interfaces:
     r:
       ready: ["s_axil_rd", "rready"]
       valid: ["s_axil_rd", "rvalid"]
-      rresp: ["s_axil_rd", "rresp"]
+      resp: ["s_axil_rd", "rresp"]
 
   "ram_wr":
     scope: ["test_taxi_axil_register", "uut"]
@@ -30,4 +30,4 @@ interfaces:
     b:
       ready: ["s_axil_wr", "bready"]
       valid: ["s_axil_wr", "bvalid"]
-      bresp: ["s_axil_wr", "bresp"]
+      resp: ["s_axil_wr", "bresp"]

@@ -14,8 +14,8 @@ interfaces:
       id: ["s_axi_rd", "rid"]
       ready: ["s_axi_rd", "rready"]
       valid: ["s_axi_rd", "rvalid"]
-      rresp: ["s_axi_rd", "rresp"]
-      rlast: ["s_axi_rd", "rlast"]
+      resp: ["s_axi_rd", "rresp"]
+      last: ["s_axi_rd", "rlast"]
 
   "ram_wr":
     scope: ["test_taxi_axi_ram", "uut"]
@@ -31,9 +31,9 @@ interfaces:
     w:
       ready: ["s_axi_wr", "wready"]
       valid: ["s_axi_wr", "wvalid"]
-      wlast: ["s_axi_wr", "wlast"]
+      last: ["s_axi_wr", "wlast"]
     b:
       ready: ["s_axi_wr", "bready"]
       valid: ["s_axi_wr", "bvalid"]
-      bresp: ["s_axi_wr", "bresp"]
+      resp: ["s_axi_wr", "bresp"]
       id: ["s_axi_rd", "bid"]
