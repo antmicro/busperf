@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{collections::BTreeMap, io::Write};
 
 use crate::{analyzer::Analyzer, bus_usage::BusUsage};
 
@@ -65,8 +65,9 @@ fn get_data(usages: &[&BusUsage], verbose: bool) -> Vec<Vec<String>> {
                         if verbose {
                             v.push(format!("{:?}", buckets_statistic.data));
                         } else {
-                            let d = buckets_statistic
-                                .get_buckets()
+                            let buckets: BTreeMap<_, _> =
+                                buckets_statistic.get_buckets().into_iter().collect();
+                            let d = buckets
                                 .iter()
                                 .filter_map(|(&i, v)| {
                                     if *v > 0 {
