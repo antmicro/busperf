@@ -263,25 +263,28 @@ pub fn open_and_mark_periods(
         let markers_len = markers.len();
         if let Some(response) =
             surfer.send_message(&WcpCSMessage::command(WcpCommand::add_markers { markers }))
-            && let WcpSCMessage::response(proto::WcpResponse::add_markers { ids }) = response
         {
-            let ids_len = ids.len();
-            if markers_len != ids_len {
-                eprintln!("[WARN] Cannot add more markers in surfer");
-            }
-            for id in ids {
-                surfer.loaded_signals.push(format!("marker {}", id.0));
-                surfer
-                    .send_message_without_response(&WcpCSMessage::command(
-                        WcpCommand::set_item_color {
-                            id,
-                            color: String::from(color),
-                        },
-                    ))
-                    .unwrap()
-            }
-            if ids_len > 0 {
-                surfer.await_reponse().unwrap();
+            if let WcpSCMessage::response(proto::WcpResponse::add_markers { ids }) = response {
+                let ids_len = ids.len();
+                if markers_len != ids_len {
+                    eprintln!("[WARN] Cannot add more markers in surfer");
+                }
+                for id in ids {
+                    surfer.loaded_signals.push(format!("marker {}", id.0));
+                    surfer
+                        .send_message_without_response(&WcpCSMessage::command(
+                            WcpCommand::set_item_color {
+                                id,
+                                color: String::from(color),
+                            },
+                        ))
+                        .unwrap()
+                }
+                if ids_len > 0 {
+                    surfer.await_reponse().unwrap();
+                }
+            } else if let WcpSCMessage::error { message, .. } = response {
+                eprintln!("[WARN] Received error from surfer {message}");
             }
         }
     } else {
@@ -294,16 +297,16 @@ pub fn zoom_to_range(start: u64, end: u64) {
         let mut surfer = surfer.lock().unwrap();
         if surfer
             .commands
-            .contains(&String::from("set_viewport_range_to"))
+            .contains(&String::from("set_viewport_range"))
         {
             let start = BigInt::from_u64(start).expect("Should be valid");
             let end = BigInt::from_u64(end).expect("Should be valid");
-            surfer.send_message(&WcpCSMessage::command(WcpCommand::set_viewport_range_to {
+            surfer.send_message(&WcpCSMessage::command(WcpCommand::set_viewport_range {
                 start,
                 end,
             }));
         } else {
-            eprintln!("[Info] Surfer version does not support adding markers. Skipping");
+            eprintln!("[Info] Surfer version does not support setting viewport range. Skipping");
         }
     } else {
         eprintln!("[ERROR] Failed to zoom to range: Connection to surfer invalid.");

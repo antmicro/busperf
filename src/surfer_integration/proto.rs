@@ -147,7 +147,7 @@ pub enum WcpCommand {
     /// Moves the viewport to center it on the specified timestamps range. Does affect the zoom
     /// level.
     /// Responds with [WcpResponse::ack]
-    set_viewport_range_to {
+    set_viewport_range {
         #[serde(
             deserialize_with = "deserialize_timestamp",
             serialize_with = "serialize_timestamp"
