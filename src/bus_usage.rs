@@ -586,29 +586,29 @@ impl MultiChannelBusUsage {
         ];
         if !skipped_stats.iter().any(|s| s == "error_rate") {
             statistics.push(Statistic::Timeline(TimelineStatistic {
-                name: "Error rate",
+                name: "Error rate [%]",
                 values: vec![],
                 display: if self.error_rate.is_nan() {
                     "Invalid".to_string()
                 } else {
-                    format!("Error rate: {:.2}%", self.error_rate * 100.0)
+                    format!("{:.2}", self.error_rate * 100.0)
                 },
                 description: "Percentage of transactions that resulted in error.",
             }));
         }
         statistics.push(Statistic::Timeline(TimelineStatistic {
-            name: "Bandwidth",
+            name: "Bandwidth [t/clk]",
             values: self
                 .bandwidth_windows
                 .iter()
                 .enumerate()
                 .map(|(i, v)| [i as f64 * window_to_time / 2.0, *v])
                 .collect::<Vec<_>>(),
-            display: format!("Bandwidth: {:.4} t/clk", self.averaged_bandwidth),
+            display: format!("{:.4}", self.averaged_bandwidth),
             description: "Averaged bandwidth in transactions per clock cycle.",
         }));
         statistics.push(Statistic::Timeline(TimelineStatistic {
-            name: "x rate",
+            name: "Bandwidth above x rate [%]",
             values: vec![
                 [0.0, self.x_rate],
                 [
@@ -616,14 +616,11 @@ impl MultiChannelBusUsage {
                     self.x_rate,
                 ],
             ],
-            display: format!(
-                "Bandwidth above x rate: {:.2}%",
-                self.bandwidth_above_x_rate * 100.0
-            ),
+            display: format!("{:.2}", self.bandwidth_above_x_rate * 100.0),
             description: "Percentage value of time during which bandwidth was higher than x rate.",
         }));
         statistics.push(Statistic::Timeline(TimelineStatistic {
-            name: "y rate",
+            name: "Bandwidth below y rate [%]",
             values: vec![
                 [0.0, self.y_rate],
                 [
@@ -631,10 +628,7 @@ impl MultiChannelBusUsage {
                     self.y_rate,
                 ],
             ],
-            display: format!(
-                "Bandwidth below y rate: {:.2}%",
-                self.bandwidth_below_y_rate * 100.0
-            ),
+            display: format!("{:.2}", self.bandwidth_below_y_rate * 100.0),
             description: "Percentage value of time during which bandwidth was smaller than y rate.",
         }));
         statistics
