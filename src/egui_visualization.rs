@@ -764,43 +764,48 @@ fn draw_timeline(
                                 if let Statistic::Bucket(s) = s {
                                     ui.menu_button(s.name, |ui| {
                                         if ui.button("before this point").clicked() {
+                                            let time = coords.expect("Is set by right click").x;
+                                            let periods = s
+                                                .data
+                                                .iter()
+                                                .rev()
+                                                .filter(|period| (period.end() as f64) < time)
+                                                .map(|period| (period.start(), period.end()))
+                                                .take(10)
+                                                .collect::<Vec<_>>();
                                             surfer_integration::open_and_mark_periods(
                                                 surfer_info.trace_path,
                                                 surfer_info.signals.clone(),
-                                                &s.data
-                                                    .iter()
-                                                    .rev()
-                                                    .filter(|period| {
-                                                        (period.end() as f64)
-                                                            < coords
-                                                                .expect("Is set by right click")
-                                                                .x
-                                                    })
-                                                    .map(|period| (period.start(), period.end()))
-                                                    .take(10)
-                                                    .collect::<Vec<_>>(),
+                                                &periods,
                                                 &format!("{} {}", s.name, surfer_info.bus_name),
                                                 s.color,
                                             );
+                                            if let Some(&(start, _)) = periods.last() {
+                                                surfer_integration::zoom_to_range(
+                                                    start,
+                                                    time as u64,
+                                                );
+                                            }
                                         }
                                         if ui.button("after this point").clicked() {
+                                            let time = coords.expect("Is set by right click").x;
+                                            let periods = s
+                                                .data
+                                                .iter()
+                                                .filter(|period| period.start() as f64 > time)
+                                                .map(|period| (period.start(), period.end()))
+                                                .take(10)
+                                                .collect::<Vec<_>>();
                                             surfer_integration::open_and_mark_periods(
                                                 surfer_info.trace_path,
                                                 surfer_info.signals.clone(),
-                                                &s.data
-                                                    .iter()
-                                                    .filter(|period| {
-                                                        period.start() as f64
-                                                            > coords
-                                                                .expect("Is set by right click")
-                                                                .x
-                                                    })
-                                                    .map(|period| (period.start(), period.end()))
-                                                    .take(10)
-                                                    .collect::<Vec<_>>(),
+                                                &periods,
                                                 &format!("{} {}", s.name, surfer_info.bus_name),
                                                 s.color,
                                             );
+                                            if let Some(&(_, end)) = periods.last() {
+                                                surfer_integration::zoom_to_range(time as u64, end);
+                                            }
                                         }
                                         let menu = egui::containers::menu::SubMenuButton::new(
                                             "custom period",
