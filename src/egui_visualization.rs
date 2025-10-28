@@ -178,6 +178,7 @@ impl eframe::App for BusperfApp {
                     .collect(),
                 &self.waveform_time_unit,
                 (&mut self.left, &mut self.right),
+                &Vec::<String>::new(),
             );
         });
     }
@@ -189,6 +190,7 @@ struct SurferInfo<'a, 'b, 'c> {
     bus_name: &'c str,
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_statistics(
     ui: &mut Ui,
     result: &BusUsage,
@@ -197,8 +199,9 @@ fn draw_statistics(
     signals: Vec<String>,
     waveform_time_unit: &TimescaleUnit,
     (left, right): (&mut PlotType, &mut PlotType),
+    skipped_stats: &[String],
 ) {
-    let statistics = result.get_statistics();
+    let statistics = result.get_statistics(skipped_stats);
     let surfer_info = SurferInfo {
         trace_path,
         signals: &signals,

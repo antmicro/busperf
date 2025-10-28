@@ -174,6 +174,7 @@ pub fn show_data(
     simulation_data: &mut SimulationData,
     trace_path: &str,
     verbose: bool,
+    skipped_stats: &[String],
 ) {
     for a in analyzers.iter_mut() {
         if !a.finished_analysis() {
@@ -183,10 +184,14 @@ pub fn show_data(
 
     match type_ {
         OutputType::Pretty => {
-            text_output::print_statistics(out.unwrap(), &analyzers, verbose);
+            text_output::print_statistics(out.unwrap(), &analyzers, verbose, skipped_stats);
         }
-        OutputType::Csv => text_output::generate_csv(out.unwrap(), &analyzers, verbose),
-        OutputType::Md => text_output::generate_md_table(out.unwrap(), &analyzers, verbose),
+        OutputType::Csv => {
+            text_output::generate_csv(out.unwrap(), &analyzers, verbose, skipped_stats)
+        }
+        OutputType::Md => {
+            text_output::generate_md_table(out.unwrap(), &analyzers, verbose, skipped_stats)
+        }
         OutputType::Rendered => egui_visualization::run_visualization(
             analyzers,
             trace_path,

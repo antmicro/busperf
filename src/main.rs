@@ -6,6 +6,7 @@ struct Args {
     max_burst_delay: u32,
     verbose: bool,
     output: Option<String>,
+    skipped_stats: Option<String>,
     output_type: OutputType,
     window_length: u32,
     x_rate: f32,
@@ -64,6 +65,12 @@ impl Args {
             .argument("OUT")
             .optional();
 
+        let skipped_stats = short('s')
+            .long("skip")
+            .help("Stats to skip separated by a comma.")
+            .argument::<String>("SKIPPED_STATS")
+            .optional();
+
         let gui = long("gui").help("Run GUI").req_flag(OutputType::Rendered);
         let csv = long("csv")
             .help("Format output as csv")
@@ -96,6 +103,7 @@ impl Args {
         let parser = construct!(Args {
             output_type,
             output,
+            skipped_stats,
             max_burst_delay,
             window_length,
             x_rate,
@@ -125,6 +133,13 @@ fn main() {
         None => &mut std::io::stdout(),
         Some(filename) => &mut std::fs::File::create(filename).unwrap(),
     };
+
+    let skipped_stats_arg = args.skipped_stats.unwrap_or_default();
+    let skipped_stats: Vec<String> = skipped_stats_arg
+        .split(',')
+        .map(|s| s.to_string())
+        .collect();
+
     show_data(
         analyzers,
         args.output_type,
@@ -132,5 +147,6 @@ fn main() {
         &mut data,
         &args.files.simulation_trace,
         args.verbose,
+        &skipped_stats,
     );
 }

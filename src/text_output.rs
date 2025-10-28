@@ -22,17 +22,17 @@ where
     t
 }
 
-fn get_header(usages: &[&BusUsage]) -> Vec<String> {
+fn get_header(usages: &[&BusUsage], skipped_stats: &[String]) -> Vec<String> {
     if usages.is_empty() {
         return vec![];
     }
     let mut header = vec![String::from("bus name")];
     let stats = usages
         .iter()
-        .map(|u| u.get_statistics())
+        .map(|u| u.get_statistics(skipped_stats))
         .collect::<Vec<_>>();
-    for stat in 0..stats[0].len() {
-        match &stats[0][stat] {
+    for stat in &stats[0] {
+        match stat {
             crate::bus_usage::Statistic::Percentage(percentage_statistic) => percentage_statistic
                 .data_labels
                 .iter()
@@ -49,12 +49,12 @@ fn get_header(usages: &[&BusUsage]) -> Vec<String> {
     header
 }
 
-fn get_data(usages: &[&BusUsage], verbose: bool) -> Vec<Vec<String>> {
+fn get_data(usages: &[&BusUsage], verbose: bool, skipped_stats: &[String]) -> Vec<Vec<String>> {
     usages
         .iter()
         .map(|u| {
             let mut v = vec![u.get_name().to_owned()];
-            for s in u.get_statistics().iter() {
+            for s in u.get_statistics(skipped_stats).iter() {
                 match s {
                     crate::bus_usage::Statistic::Percentage(percentage_statistic) => {
                         for (d, _) in percentage_statistic.data_labels.iter() {
@@ -117,6 +117,7 @@ fn print_statistics_internal<O>(
     analyzers: &[Box<dyn Analyzer>],
     verbose: bool,
     style: O,
+    skipped_stats: &[String],
 ) where
     O: tabled::settings::TableOption<
             tabled::grid::records::vec_records::VecRecords<
@@ -138,8 +139,8 @@ fn print_statistics_internal<O>(
         })
         .collect::<Vec<_>>();
     if !single_usages.is_empty() {
-        let header = get_header(&single_usages);
-        let data = get_data(&single_usages, verbose);
+        let header = get_header(&single_usages, skipped_stats);
+        let data = get_data(&single_usages, verbose, skipped_stats);
         writeln!(write, "{}", generate_tabled(&header, &data, style.clone())).unwrap();
     }
 
@@ -151,31 +152,48 @@ fn print_statistics_internal<O>(
         })
         .collect();
     if !multi_usage.is_empty() {
-        let header = get_header(&multi_usage);
-        let data = get_data(&multi_usage, verbose);
+        let header = get_header(&multi_usage, skipped_stats);
+        let data = get_data(&multi_usage, verbose, skipped_stats);
         writeln!(write, "{}", generate_tabled(&header, &data, style)).unwrap();
     }
 }
 
-pub fn print_statistics(write: &mut impl Write, analyzers: &[Box<dyn Analyzer>], verbose: bool) {
+pub fn print_statistics(
+    write: &mut impl Write,
+    analyzers: &[Box<dyn Analyzer>],
+    verbose: bool,
+    skipped_stats: &[String],
+) {
     print_statistics_internal(
         write,
         analyzers,
         verbose,
         tabled::settings::Style::rounded(),
+        skipped_stats,
     );
 }
 
-pub fn generate_md_table(write: &mut impl Write, analyzers: &[Box<dyn Analyzer>], verbose: bool) {
+pub fn generate_md_table(
+    write: &mut impl Write,
+    analyzers: &[Box<dyn Analyzer>],
+    verbose: bool,
+    skipped_stats: &[String],
+) {
     print_statistics_internal(
         write,
         analyzers,
         verbose,
         tabled::settings::Style::markdown(),
+        skipped_stats,
     );
 }
 
-pub fn generate_csv(write: &mut impl Write, analyzers: &[Box<dyn Analyzer>], verbose: bool) {
+pub fn generate_csv(
+    write: &mut impl Write,
+    analyzers: &[Box<dyn Analyzer>],
+    verbose: bool,
+    skipped_stats: &[String],
+) {
     let usages = analyzers
         .iter()
         .map(|a| a.get_results().expect("Already calculated"))
@@ -189,9 +207,9 @@ pub fn generate_csv(write: &mut impl Write, analyzers: &[Box<dyn Analyzer>], ver
         })
         .collect();
     if !single_usages.is_empty() {
-        let header = get_header(&single_usages);
+        let header = get_header(&single_usages, skipped_stats);
         wtr.write_record(header).unwrap();
-        let data = get_data(&single_usages, verbose);
+        let data = get_data(&single_usages, verbose, skipped_stats);
         for d in data {
             wtr.write_record(d).unwrap();
         }
@@ -204,9 +222,9 @@ pub fn generate_csv(write: &mut impl Write, analyzers: &[Box<dyn Analyzer>], ver
         })
         .collect();
     if !multi_usage.is_empty() {
-        let header = get_header(&multi_usage);
+        let header = get_header(&multi_usage, skipped_stats);
         wtr.write_record(header).unwrap();
-        let data = get_data(&multi_usage, verbose);
+        let data = get_data(&multi_usage, verbose, skipped_stats);
         for d in data {
             wtr.write_record(d).unwrap();
         }

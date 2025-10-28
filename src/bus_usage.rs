@@ -15,13 +15,13 @@ impl BusUsage {
             BusUsage::MultiChannel(multi_channel_bus_usage) => &multi_channel_bus_usage.bus_name,
         }
     }
-    pub fn get_statistics<'a>(&'a self) -> Vec<Statistic<'a>> {
+    pub fn get_statistics<'a>(&'a self, skipped_stats: &[String]) -> Vec<Statistic<'a>> {
         match self {
             BusUsage::SingleChannel(single_channel_bus_usage) => {
                 single_channel_bus_usage.get_statistics()
             }
             BusUsage::MultiChannel(multi_channel_bus_usage) => {
-                multi_channel_bus_usage.get_statistics()
+                multi_channel_bus_usage.get_statistics(skipped_stats)
             }
         }
     }
@@ -552,9 +552,9 @@ impl MultiChannelBusUsage {
         }
     }
 
-    pub fn get_statistics<'a>(&'a self) -> Vec<Statistic<'a>> {
+    pub fn get_statistics<'a>(&'a self, skipped_stats: &[String]) -> Vec<Statistic<'a>> {
         let window_to_time = (self.clock_period * self.window_length as u64) as f64;
-        Vec::from([
+        let mut statistics = vec![
             Statistic::Bucket(BucketsStatistic::new(
                 "Cmd to completion",
                 &self.cmd_to_completion,
@@ -583,7 +583,9 @@ impl MultiChannelBusUsage {
                 "Pink",
                 "Delays between transactions in clock cycles",
             )),
-            Statistic::Timeline(TimelineStatistic {
+        ];
+        if !skipped_stats.iter().any(|s| s == "error_rate") {
+            statistics.push(Statistic::Timeline(TimelineStatistic {
                 name: "Error rate",
                 values: vec![],
                 display: if self.error_rate.is_nan() {
@@ -592,49 +594,50 @@ impl MultiChannelBusUsage {
                     format!("Error rate: {:.2}%", self.error_rate * 100.0)
                 },
                 description: "Percentage of transactions that resulted in error.",
-            }),
-            Statistic::Timeline(TimelineStatistic {
-                name: "Bandwidth",
-                values: self
-                    .bandwidth_windows
-                    .iter()
-                    .enumerate()
-                    .map(|(i, v)| [i as f64 * window_to_time / 2.0, *v])
-                    .collect::<Vec<_>>(),
-                display: format!("Bandwidth: {:.4} t/clk", self.averaged_bandwidth),
-                description: "Averaged bandwidth in transactions per clock cycle.",
-            }),
-            Statistic::Timeline(TimelineStatistic {
-                name: "x rate",
-                values: vec![
-                    [0.0, self.x_rate],
-                    [
-                        self.bandwidth_windows.len() as f64 * window_to_time / 2.0,
-                        self.x_rate,
-                    ],
+            }));
+        }
+        statistics.push(Statistic::Timeline(TimelineStatistic {
+            name: "Bandwidth",
+            values: self
+                .bandwidth_windows
+                .iter()
+                .enumerate()
+                .map(|(i, v)| [i as f64 * window_to_time / 2.0, *v])
+                .collect::<Vec<_>>(),
+            display: format!("Bandwidth: {:.4} t/clk", self.averaged_bandwidth),
+            description: "Averaged bandwidth in transactions per clock cycle.",
+        }));
+        statistics.push(Statistic::Timeline(TimelineStatistic {
+            name: "x rate",
+            values: vec![
+                [0.0, self.x_rate],
+                [
+                    self.bandwidth_windows.len() as f64 * window_to_time / 2.0,
+                    self.x_rate,
                 ],
-                display: format!(
-                    "Bandwidth above x rate: {:.2}%",
-                    self.bandwidth_above_x_rate * 100.0
-                ),
-                description: "Percentage value of time during which bandwidth was higher than x rate.",
-            }),
-            Statistic::Timeline(TimelineStatistic {
-                name: "y rate",
-                values: vec![
-                    [0.0, self.y_rate],
-                    [
-                        self.bandwidth_windows.len() as f64 * window_to_time / 2.0,
-                        self.y_rate,
-                    ],
+            ],
+            display: format!(
+                "Bandwidth above x rate: {:.2}%",
+                self.bandwidth_above_x_rate * 100.0
+            ),
+            description: "Percentage value of time during which bandwidth was higher than x rate.",
+        }));
+        statistics.push(Statistic::Timeline(TimelineStatistic {
+            name: "y rate",
+            values: vec![
+                [0.0, self.y_rate],
+                [
+                    self.bandwidth_windows.len() as f64 * window_to_time / 2.0,
+                    self.y_rate,
                 ],
-                display: format!(
-                    "Bandwidth below y rate: {:.2}%",
-                    self.bandwidth_below_y_rate * 100.0
-                ),
-                description: "Percentage value of time during which bandwidth was smaller than y rate.",
-            }),
-        ])
+            ],
+            display: format!(
+                "Bandwidth below y rate: {:.2}%",
+                self.bandwidth_below_y_rate * 100.0
+            ),
+            description: "Percentage value of time during which bandwidth was smaller than y rate.",
+        }));
+        statistics
     }
 
     /// Updates statistics given new transaction. When all transactions are added you should call end() to finish calculation of statistics.
