@@ -7,13 +7,16 @@ use std::{
 use constcat::concat_slices;
 use wellen::{Signal, SignalValue, TimeTable, TimeTableIdx};
 
+use crate::bus_usage::{BusUsage, MultiChannelBusUsage};
 use crate::{
-    analyzer::private::AnalyzerInternal,
-    bus::{
-        BusCommon, BusDescription, CyclesNum, SignalPath, ValueType, axi::AXIBus, get_value,
-        is_value_of_type,
+    CyclesNum,
+    analyze::{
+        analyzer::private::AnalyzerInternal,
+        bus::{
+            BusCommon, BusDescription, SignalPath, ValueType, axi::AXIBus, get_value,
+            is_value_of_type,
+        },
     },
-    bus_usage::{BusUsage, MultiChannelBusUsage},
 };
 
 use super::Analyzer;

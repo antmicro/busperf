@@ -4,6 +4,26 @@ stages:
 
 image: debian
 
+web_test:
+  stage: build
+  only:
+   - branches
+  before_script: 
+    - apt update -qq &> /dev/null
+    - apt install --yes curl gcc wget &> /dev/null
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &> /dev/null
+    - source ~/.cargo/env
+    - wget -qO- https://github.com/trunk-rs/trunk/releases/download/v0.21.13/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xzf-
+    - rustup target add wasm32-unknown-unknown
+  script:
+    - source ~/.cargo/env
+    - cd busperf_web
+    - ../trunk build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+
 build:
   stage: build
   only:

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = [""]
+members = ["", "busperf_web"]
 
 [package]
 name = "busperf"
@@ -10,7 +10,7 @@ license = "Apache-2.0"
 
 [dependencies]
 csv = "1.3.1"
-pyo3 = { version = "0.25.1", default-features = false, features = ["auto-initialize"] }
+pyo3 = { version = "0.25.1", default-features = false, features = ["auto-initialize"], optional = true }
 tabled = "0.20.0"
 wellen = "0.17.1"
 yaml-rust2 = "0.10.3"
@@ -25,7 +25,16 @@ flate2 = { version = "1.1.4", default-features = false, features = ["zlib-rs"] }
 blake3 = "1.8.2"
 rfd = "0.15.4"
 constcat = "0.6.1"
+futures = "0.3.31"
 
 [features]
-default = ["help-colors"]
+default = ["help-colors", "analyze", "show", "python-plugins"]
 help-colors = ["bpaf/bright-color"]
+python-plugins = ["dep:pyo3"]
+analyze = []
+show = []
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4.50"
+web-sys = "0.3.70"  
+log = "0.4.27"

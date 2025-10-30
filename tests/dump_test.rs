@@ -1,4 +1,5 @@
 use busperf::{
+    analyze::*,
     bus_usage::{BusUsage, Period, SingleChannelBusUsage},
     *,
 };

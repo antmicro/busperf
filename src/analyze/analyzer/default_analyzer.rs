@@ -1,14 +1,16 @@
 use constcat::concat_slices;
 use wellen::{SignalValue, TimeTable};
 
+use crate::CycleType;
+use crate::bus_usage::{BusUsage, SingleChannelBusUsage};
 use crate::{
-    CycleType, SimulationData,
-    analyzer::private::AnalyzerInternal,
-    bus::{
-        BusCommon, BusDescription, BusDescriptionBuilder, CyclesNum, SignalPath, is_value_of_type,
+    CyclesNum,
+    analyze::{
+        SimulationData,
+        analyzer::private::AnalyzerInternal,
+        bus::{BusCommon, BusDescription, BusDescriptionBuilder, SignalPath, is_value_of_type},
+        load_signals,
     },
-    bus_usage::{BusUsage, SingleChannelBusUsage},
-    load_signals,
 };
 
 use super::Analyzer;
@@ -112,7 +114,7 @@ const DEFAULT_YAML: &[&str] =
     concat_slices!([&str]: &super::COMMON_YAML, &["ready", "valid", "handshake"]);
 
 impl Analyzer for DefaultAnalyzer {
-    fn analyze(&mut self, simulation_data: &mut crate::SimulationData, verbose: bool) {
+    fn analyze(&mut self, simulation_data: &mut SimulationData, verbose: bool) {
         let usage = analyze_single_bus(&self.common, &*self.bus_desc, simulation_data, verbose);
         self.result = Some(BusUsage::SingleChannel(usage));
     }

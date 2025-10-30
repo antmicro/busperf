@@ -1,16 +1,15 @@
-use crate::{
-    CycleType,
-    bus::{CyclesNum, SignalPath},
-};
+#[cfg(feature = "analyze")]
+use crate::CycleType;
+use crate::{CyclesNum, SignalPath};
 use std::collections::HashMap;
 
 #[derive(bincode::Encode, bincode::Decode)]
-pub struct BusUsageFull {
+pub struct BusData {
     pub usage: BusUsage,
     pub signals: Vec<SignalPath>,
 }
 
-impl BusUsageFull {
+impl BusData {
     pub fn new(usage: BusUsage, signals: Vec<SignalPath>) -> Self {
         Self { usage, signals }
     }
@@ -193,6 +192,7 @@ impl SingleChannelBusUsage {
     }
     /// Creates SingleChannelBusUsage with all statistics initialized to 0.
     /// To fill it with data use add_cycle() method for every cycle in the simulation. Later call end() to finish calculations.
+    #[cfg(feature = "analyze")]
     pub(crate) fn new(
         name: &str,
         max_burst_delay: CyclesNum,
@@ -215,6 +215,7 @@ impl SingleChannelBusUsage {
     }
 
     /// Updates statistics by adding a cycle of given type
+    #[cfg(feature = "analyze")]
     pub(crate) fn add_cycle(&mut self, t: CycleType) {
         if let CycleType::Busy = t {
             self.add_busy_cycle();
@@ -223,6 +224,7 @@ impl SingleChannelBusUsage {
         }
     }
 
+    #[cfg(feature = "analyze")]
     fn add_busy_cycle(&mut self) {
         match self.current {
             CurrentlyCalculating::None => {
@@ -259,6 +261,7 @@ impl SingleChannelBusUsage {
         self.busy += 1;
     }
 
+    #[cfg(feature = "analyze")]
     fn add_wasted_cycle(&mut self, t: CycleType) {
         match t {
             CycleType::Free => self.free += 1,
@@ -456,6 +459,7 @@ impl<'a> BucketsStatistic<'a> {
 
 /// Waveform time.
 pub type RealTime = u64;
+#[cfg(feature = "analyze")]
 type SignedRealTime = i64;
 
 /// Contains waveform times of start and end of some period and its duration in clock cycles.
@@ -467,6 +471,7 @@ pub struct Period {
 }
 
 impl Period {
+    #[cfg(feature = "analyze")]
     fn new(start: RealTime, end: RealTime, clk_period: RealTime) -> Self {
         let duration = ((end as SignedRealTime - start as SignedRealTime)
             / clk_period as SignedRealTime) as CyclesNum;
@@ -476,6 +481,7 @@ impl Period {
             duration,
         }
     }
+    #[cfg(feature = "analyze")]
     fn with_duration(start: RealTime, duration: CyclesNum, clk_period: RealTime) -> Self {
         let end = start + (duration - 1) as u64 * clk_period;
         Self {
@@ -540,6 +546,7 @@ pub struct MultiChannelBusUsage {
 
 impl MultiChannelBusUsage {
     /// Creates empty MultiChannelBusUsage with all statistics initialized to zero. Should be filled with add_transaction()
+    #[cfg(feature = "analyze")]
     pub(crate) fn new(
         bus_name: &str,
         window_length: u32,
@@ -654,6 +661,7 @@ impl MultiChannelBusUsage {
     }
 
     /// Updates statistics given new transaction. When all transactions are added you should call end() to finish calculation of statistics.
+    #[cfg(feature = "analyze")]
     pub(crate) fn add_transaction(
         &mut self,
         time: RealTime,
@@ -682,6 +690,7 @@ impl MultiChannelBusUsage {
         self.time += time;
     }
 
+    #[cfg(feature = "analyze")]
     fn transaction_coverage_in_window(&self, period: Period, window_start: u64) -> f32 {
         let (start, end) = (period.start(), period.end());
         let win_start = window_start;
@@ -699,6 +708,7 @@ impl MultiChannelBusUsage {
 
     /// Finishes calculation of statistics and makes sure that all temporary values are already taken into account
     // TODO: maybe we should split this struct in two as we should with SingleChannelBusUsage
+    #[cfg(feature = "analyze")]
     pub(crate) fn end(&mut self, time_in_reset: u32, intervals: Vec<[u64; 2]>) {
         let error_num = self.errors.len() as u32;
         self.error_rate = error_num as f32 / (self.correct_num + error_num) as f32;

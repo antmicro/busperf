@@ -1,8 +1,9 @@
+use super::private::AnalyzerInternal;
 use crate::{
-    analyzer::{axi_analyzer::ReadyValidTransactionIterator, private::AnalyzerInternal},
-    bus::{BusCommon, SignalPath, is_value_of_type},
+    analyze::analyzer::axi_analyzer::ReadyValidTransactionIterator,
+    analyze::bus::{BusCommon, SignalPath, is_value_of_type},
+    analyze::plugins::load_python_plugin,
     bus_usage::{BusUsage, MultiChannelBusUsage},
-    plugins::load_python_plugin,
 };
 
 use super::Analyzer;

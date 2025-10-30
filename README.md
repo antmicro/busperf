@@ -228,6 +228,21 @@ Debug mode:
 $ cargo run -- --help
 ```
 
+### Build for WASM
+
+Build and serve with trunk:
+```sh
+$ cd busperf_web
+$ trunk serve --release
+```
+
+Only build:
+```sh
+$ cd busperf_web
+$ trunk build --release
+```
+Output of the build will be in busperf_web/dist directory it can be served with any http server.
+
 ### Usage help
 
 ```

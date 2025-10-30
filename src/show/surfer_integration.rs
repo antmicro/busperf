@@ -1,3 +1,5 @@
+#![cfg(not(target_arch = "wasm32"))]
+
 use std::{
     error::Error,
     io::{BufRead, BufReader, Write},
@@ -9,7 +11,7 @@ use std::{
 
 use num::{BigInt, FromPrimitive};
 
-use crate::surfer_integration::proto::{MarkerInfo, WcpCSMessage, WcpCommand, WcpSCMessage};
+use proto::{MarkerInfo, WcpCSMessage, WcpCommand, WcpSCMessage};
 
 #[allow(dead_code)]
 mod proto;
@@ -154,6 +156,7 @@ impl Surfer {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn connect_or_start_surfer() -> Option<TcpStream> {
     // 54321 is the default port used by surfer wcp server
     match TcpStream::connect("127.0.0.1:54321") {

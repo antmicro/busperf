@@ -1,5 +1,5 @@
 use bpaf::{OptionParser, Parser, construct, long, positional, short};
-use busperf::*;
+use busperf::show::OutputType;
 
 enum Args {
     Analyze(AnalyzeArgs),
@@ -182,6 +182,10 @@ fn main() {
                 .split(',')
                 .map(|s| s.to_string())
                 .collect();
+            use busperf::{
+                analyze::{load_bus_analyzers, load_simulation_trace},
+                run_visualization,
+            };
 
             let mut analyzers = load_bus_analyzers(
                 &args.files.bus_description,
@@ -196,6 +200,8 @@ fn main() {
                 a.analyze(&mut data, args.verbose);
             }
             if let Some(name) = args.save {
+                use busperf::analyze::save_data;
+
                 save_data(&analyzers, &name, &args.files.simulation_trace);
             }
             let mut out: &mut dyn std::io::Write = match args.output {
@@ -213,6 +219,8 @@ fn main() {
             );
         }
         Args::Show(args) => {
+            use busperf::show::visualization_from_file;
+
             visualization_from_file(&args.file, args.output_type, args.verbose);
         }
     }

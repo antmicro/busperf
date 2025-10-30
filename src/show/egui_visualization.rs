@@ -1,5 +1,6 @@
-use std::{cell::RefCell, collections::HashMap, f32};
+use std::{cell::RefCell, collections::HashMap, f32, io::Read, str::FromStr};
 
+use blake3::Hash;
 use eframe::{
     egui::{
         self, Color32, FontId, Id, Label, Layout, Modal, Rgba, RichText, Stroke, Ui,
@@ -15,18 +16,18 @@ use egui_plot::{
 };
 use wellen::TimescaleUnit;
 
+use super::WaveformFile;
+#[cfg(not(target_arch = "wasm32"))]
+use super::surfer_integration;
+
 use crate::{
-    WaveformFile,
-    bus::CyclesNum,
-    bus_usage::{BusUsage, BusUsageFull, Statistic},
-    calculate_file_hash, surfer_integration,
+    CyclesNum,
+    bus_usage::{BusData, BusUsage, Statistic},
+    calculate_file_hash,
 };
 
-pub fn run_visualization(
-    usages: Vec<BusUsageFull>,
-    trace_path: WaveformFile,
-    time_unit: TimescaleUnit,
-) {
+#[cfg(not(target_arch = "wasm32"))]
+pub fn run_visualization(usages: Vec<BusData>, trace_path: WaveformFile, time_unit: TimescaleUnit) {
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "busperf",
@@ -34,6 +35,52 @@ pub fn run_visualization(
         Box::new(|_| Ok(Box::new(BusperfApp::new(usages, trace_path, time_unit)))),
     )
     .expect("Failed to init egui");
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn run_visualization(usages: Vec<BusData>, trace_path: WaveformFile, time_unit: TimescaleUnit) {
+    use eframe::wasm_bindgen::JsCast as _;
+
+    // Redirect `log` message to `console.log` and friends:
+    eframe::WebLogger::init(log::LevelFilter::Debug).ok();
+
+    let web_options = eframe::WebOptions::default();
+
+    wasm_bindgen_futures::spawn_local(async move {
+        let document = web_sys::window()
+            .expect("No window")
+            .document()
+            .expect("No document");
+
+        let canvas = document
+            .get_element_by_id("the_canvas_id")
+            .expect("Failed to find the_canvas_id")
+            .dyn_into::<web_sys::HtmlCanvasElement>()
+            .expect("the_canvas_id was not a HtmlCanvasElement");
+
+        let start_result = eframe::WebRunner::new()
+            .start(
+                canvas,
+                web_options,
+                Box::new(move |_| Ok(Box::new(BusperfApp::new(usages, trace_path, time_unit)))),
+            )
+            .await;
+
+        // Remove the loading text and spinner:
+        if let Some(loading_text) = document.get_element_by_id("loading_text") {
+            match start_result {
+                Ok(_) => {
+                    loading_text.remove();
+                }
+                Err(e) => {
+                    loading_text.set_inner_html(
+                        "<p> The app has crashed. See the developer console for details. </p>",
+                    );
+                    panic!("Failed to start eframe: {e:?}");
+                }
+            }
+        }
+    });
 }
 
 #[derive(PartialEq)]
@@ -102,8 +149,8 @@ struct SurferConnectionUi {
     warning: String,
 }
 
-struct BusperfApp {
-    usages: Vec<BusUsageFull>,
+pub struct BusperfApp {
+    usages: Vec<BusData>,
     selected: usize,
     trace_path: WaveformFile,
     waveform_time_unit: wellen::TimescaleUnit,
@@ -113,7 +160,25 @@ struct BusperfApp {
 }
 
 impl BusperfApp {
-    fn new(usages: Vec<BusUsageFull>, trace_path: WaveformFile, time_unit: TimescaleUnit) -> Self {
+    pub fn build_from_bytes(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut decoder = flate2::read::GzDecoder::new(data);
+        let mut buf = Vec::new();
+        decoder.read_to_end(&mut buf).expect("Failed decompression");
+        let config = bincode::config::standard();
+        let data: (String, String, Vec<BusData>) = bincode::decode_from_slice(&buf, config)
+            .expect("Invalid file data")
+            .0;
+        let (waveform_path, hash, usages) = data;
+        let hash = Hash::from_str(&hash).expect("Invalid hash value");
+        let trace = WaveformFile {
+            path: waveform_path,
+            hash,
+            checked: true.into(),
+        };
+        Ok(BusperfApp::new(usages, trace, TimescaleUnit::PicoSeconds))
+    }
+
+    pub fn new(usages: Vec<BusData>, trace_path: WaveformFile, time_unit: TimescaleUnit) -> Self {
         let right = if matches!(usages[0].usage, BusUsage::SingleChannel(_)) {
             PlotType::Pie
         } else {
@@ -136,9 +201,14 @@ impl BusperfApp {
     }
 
     fn draw_statistics(&mut self, ui: &mut Ui, skipped_stats: &[String]) {
-        let BusUsageFull { usage, signals } = &self.usages[self.selected];
-        let signals = signals.iter().map(|s| format!("{s}")).collect();
+        let BusData {
+            usage,
+            signals: _signals,
+        } = &self.usages[self.selected];
         let statistics = usage.get_statistics(skipped_stats);
+        #[cfg(not(target_arch = "wasm32"))]
+        let signals = _signals.iter().map(|s| format!("{s}")).collect();
+        #[cfg(not(target_arch = "wasm32"))]
         let surfer_info = SurferInfo {
             trace_path: &self.trace_path,
             signals: &signals,
@@ -155,6 +225,7 @@ impl BusperfApp {
                 ui,
                 &statistics,
                 id * 2,
+                #[cfg(not(target_arch = "wasm32"))]
                 &surfer_info,
                 &self.waveform_time_unit,
                 &mut self.left,
@@ -164,6 +235,7 @@ impl BusperfApp {
                 ui,
                 &statistics,
                 id * 2 + 1,
+                #[cfg(not(target_arch = "wasm32"))]
                 &surfer_info,
                 &self.waveform_time_unit,
                 &mut self.right,
@@ -177,6 +249,7 @@ impl BusperfApp {
 
                 egui::Sides::new().show(ui, |_ui| {}, |ui| {
                     if ui.button("Select different file").clicked() {
+                        #[cfg(not(target_arch = "wasm32"))]
                         if let Some(path) = rfd::FileDialog::new().pick_file() {
                             self.trace_path.path = path
                                 .into_os_string()
@@ -220,9 +293,20 @@ impl BusperfApp {
                 ui.label("Select waveform file to load in surfer.");
                 ui.horizontal(|ui| {
                     ui.text_edit_singleline(&mut self.trace_path.path);
+                    #[cfg(not(target_arch = "wasm32"))]
                     if ui.button("Select").clicked()
-                        && let Some(path) = rfd::FileDialog::new().pick_file()
+                    // && let Some(path) = rfd::FileDialog::new().pick_file()
                     {
+                        use std::sync::mpsc::channel;
+
+                        let (sender, receiver) = channel();
+                        let future = async {
+                            let file = rfd::AsyncFileDialog::new().pick_file().await;
+                            file.unwrap().path().to_path_buf()
+                        };
+                        let data = futures::executor::block_on(future);
+                        sender.send(data).unwrap();
+                        let path = receiver.recv().unwrap();
                         self.trace_path.path = path
                             .into_os_string()
                             .into_string()
@@ -302,6 +386,7 @@ impl eframe::App for BusperfApp {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 struct SurferInfo<'a, 'b, 'c, 'd> {
     trace_path: &'a WaveformFile,
     signals: &'b Vec<String>,
@@ -463,7 +548,7 @@ fn draw_plot(
     ui: &mut Ui,
     statistics: &[Statistic],
     id: usize,
-    surfer_info: &SurferInfo,
+    #[cfg(not(target_arch = "wasm32"))] surfer_info: &SurferInfo,
     waveform_time_unit: &TimescaleUnit,
     type_: &mut PlotType,
     width: f32,
@@ -527,13 +612,20 @@ fn draw_plot(
             });
         match type_ {
             PlotType::Pie => draw_percentage(ui, statistics, width, type_),
-            PlotType::Buckets(buckets) => {
-                draw_buckets(ui, statistics, id, surfer_info, buckets, width)
-            }
+            PlotType::Buckets(buckets) => draw_buckets(
+                ui,
+                statistics,
+                id,
+                #[cfg(not(target_arch = "wasm32"))]
+                surfer_info,
+                buckets,
+                width,
+            ),
             PlotType::Timeline(timeline) => draw_timeline(
                 ui,
                 statistics,
                 id,
+                #[cfg(not(target_arch = "wasm32"))]
                 surfer_info,
                 waveform_time_unit,
                 timeline,
@@ -580,7 +672,7 @@ fn draw_buckets(
     ui: &mut Ui,
     statistics: &[Statistic],
     id: usize,
-    surfer_info: &SurferInfo,
+    #[cfg(not(target_arch = "wasm32"))] surfer_info: &SurferInfo,
     buckets: &mut BucketsPlot,
     width: f32,
 ) {
@@ -673,7 +765,7 @@ fn draw_buckets(
             }
             (plot_ui.pointer_coordinate(), barcharts)
         });
-        let (coords, barcharts) = response.inner;
+        let (coords, _barcharts) = response.inner;
         if response.response.secondary_clicked() {
             if let Some(id) = response.hovered_plot_item
                 && let Some(coords) = coords
@@ -684,11 +776,12 @@ fn draw_buckets(
             }
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
         response.response.context_menu(|ui| {
             match selected {
                 Some((selected, id)) => {
                     if ui.button("open in surfer").clicked() {
-                        let buckets_statistic = barcharts[id];
+                        let buckets_statistic = _barcharts[id];
                         let data = match scale {
                             PlotScale::Log => buckets_statistic.get_data_for_bucket(*selected),
                             PlotScale::Lin => buckets_statistic.get_data_of_value(*selected),
@@ -764,6 +857,7 @@ fn waveform_to_plot_time(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn plot_to_waveform_time(
     value: f64,
     waveform_time_unit: &TimescaleUnit,
@@ -786,7 +880,7 @@ fn draw_timeline(
     ui: &mut Ui,
     statistics: &[Statistic],
     id: usize,
-    surfer_info: &SurferInfo,
+    #[cfg(not(target_arch = "wasm32"))] surfer_info: &SurferInfo,
     waveform_time_unit: &TimescaleUnit,
     timeline: &mut TimelinePlot,
     width: f32,
@@ -860,6 +954,7 @@ fn draw_timeline(
                 if plot_ui.response().secondary_clicked() {
                     *coords = plot_ui.pointer_coordinate();
                 }
+                #[cfg(not(target_arch = "wasm32"))]
                 plot_ui.response().context_menu(|ui| {
                     ui.menu_button("open in surfer", |ui| {
                         if ui.button("mark this time").clicked()
@@ -868,7 +963,7 @@ fn draw_timeline(
                                 &mut surfer_info.ui.borrow_mut(),
                             )
                         {
-                            crate::surfer_integration::open_at_time(
+                            surfer_integration::open_at_time(
                                 &surfer_info.trace_path.path,
                                 surfer_info.signals.clone(),
                                 plot_to_waveform_time(

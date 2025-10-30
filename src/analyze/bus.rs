@@ -1,36 +1,22 @@
-pub type CyclesNum = i32;
-
 pub mod ahb;
 pub mod apb;
 pub mod axi;
 pub mod credit_valid;
+#[cfg(feature = "python-plugins")]
 pub mod custom_python;
 
 use ahb::AHBBus;
 use apb::APBBus;
 use axi::AXIBus;
 use credit_valid::CreditValidBus;
+#[cfg(feature = "python-plugins")]
 use custom_python::PythonCustomBus;
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use crate::{CycleType, bus_usage::RealTime};
+use crate::{CycleType, CyclesNum, bus_usage::RealTime};
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
-pub struct SignalPath {
-    pub scope: Vec<String>,
-    pub name: String,
-}
-
-impl std::fmt::Display for SignalPath {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for s in self.scope.iter() {
-            write!(f, "{}.", s)?;
-        }
-        write!(f, "{}", self.name)?;
-        Ok(())
-    }
-}
+pub use crate::SignalPath;
 
 impl SignalPath {
     pub fn from_yaml_with_prefix(
@@ -260,10 +246,17 @@ impl BusDescriptionBuilder {
             "AHB" => Ok(Box::new(AHBBus::from_yaml(i, scope)?)),
             "APB" => Ok(Box::new(APBBus::from_yaml(i, scope)?)),
             "Custom" => {
-                let handshake = i["custom_handshake"]
-                    .as_str()
-                    .ok_or("Custom bus has to specify handshake interpreter")?;
-                Ok(Box::new(PythonCustomBus::from_yaml(handshake, &i, scope)?))
+                #[cfg(feature = "python-plugins")]
+                {
+                    let handshake = i["custom_handshake"]
+                        .as_str()
+                        .ok_or("Custom bus has to specify handshake interpreter")?;
+                    Ok(Box::new(PythonCustomBus::from_yaml(handshake, &i, scope)?))
+                }
+                #[cfg(not(feature = "python-plugins"))]
+                {
+                    Err("Python plugins are disabled")?
+                }
             }
 
             _ => Err(format!("Invalid handshake {}", handshake))?,

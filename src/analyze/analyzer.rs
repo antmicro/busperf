@@ -1,17 +1,23 @@
 use default_analyzer::DefaultAnalyzer;
+#[cfg(feature = "python-plugins")]
 use python_analyzer::PythonAnalyzer;
 use yaml_rust2::Yaml;
 
+#[cfg(feature = "python-plugins")]
+use crate::analyze::bus::BusCommon;
+use crate::bus_usage::BusUsage;
 use crate::{
-    SimulationData,
-    analyzer::axi_analyzer::{AXIRdAnalyzer, AXIWrAnalyzer},
-    bus::{BusCommon, CyclesNum},
-    bus_usage::BusUsage,
-    load_signals,
+    CyclesNum,
+    analyze::{
+        SimulationData,
+        analyzer::axi_analyzer::{AXIRdAnalyzer, AXIWrAnalyzer},
+        load_signals,
+    },
 };
 
 mod axi_analyzer;
 mod default_analyzer;
+#[cfg(feature = "python-plugins")]
 mod python_analyzer;
 
 const COMMON_YAML: &[&str] = &[
@@ -55,15 +61,32 @@ impl AnalyzerBuilder {
                     y_rate,
                 )?),
                 _ => {
-                    let common = BusCommon::from_yaml(
-                        name.into_string().ok_or("Bus should have a valid name")?,
-                        &dict,
-                        default_max_burst_delay,
-                    )?;
-                    Box::new(
-                        PythonAnalyzer::new(custom, common, &dict, window_length, x_rate, y_rate)
+                    #[cfg(feature = "python-plugins")]
+                    {
+                        let common = BusCommon::from_yaml(
+                            name.into_string().ok_or("Bus should have a valid name")?,
+                            &dict,
+                            default_max_burst_delay,
+                        )?;
+                        Box::new(
+                            PythonAnalyzer::new(
+                                custom,
+                                common,
+                                &dict,
+                                window_length,
+                                x_rate,
+                                y_rate,
+                            )
                             .map_err(|e| format!("plugin {custom}: {e}"))?,
-                    )
+                        )
+                    }
+                    #[cfg(not(feature = "python-plugins"))]
+                    {
+                        Err(format!(
+                            "Analyzer {} does not exist or Python plugins are disabled",
+                            custom
+                        ))?
+                    }
                 }
             }
         } else {
@@ -82,7 +105,7 @@ impl AnalyzerBuilder {
 }
 
 mod private {
-    use crate::bus::SignalPath;
+    use crate::analyze::bus::SignalPath;
     use wellen::{Signal, SignalRef, TimeTable};
 
     pub trait AnalyzerInternal {

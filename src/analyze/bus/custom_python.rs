@@ -1,4 +1,5 @@
-use crate::{bus::SignalPath, plugins::load_python_plugin};
+use crate::analyze::bus::SignalPath;
+use crate::analyze::plugins::load_python_plugin;
 
 use super::BusDescription;
 use pyo3::{
