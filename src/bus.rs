@@ -14,7 +14,7 @@ use custom_python::PythonCustomBus;
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use crate::CycleType;
+use crate::{CycleType, bus_usage::RealTime};
 
 #[derive(Debug)]
 pub struct SignalPath {
@@ -95,6 +95,7 @@ pub struct BusCommon {
     rst_path: SignalPath,
     rst_active_value: u8,
     max_burst_delay: CyclesNum,
+    intervals: Vec<(RealTime, RealTime)>,
 }
 
 fn parse_scope(yaml: &Yaml) -> Result<Vec<String>, Box<dyn std::error::Error>> {
@@ -110,6 +111,30 @@ fn parse_scope(yaml: &Yaml) -> Result<Vec<String>, Box<dyn std::error::Error>> {
         Ok(vec![s.to_owned()])
     } else {
         Err("Invalid scope.")?
+    }
+}
+
+fn parse_intervals(yaml: &Yaml) -> Result<Vec<(RealTime, RealTime)>, Box<dyn std::error::Error>> {
+    if let Some(intervals) = yaml["intervals"].as_vec() {
+        let mut intervals = intervals
+            .iter()
+            .map(|i| -> Result<_, Box<dyn std::error::Error>> {
+                let i = i
+                    .as_vec()
+                    .ok_or("Interval should be a tuple of two numbers")?;
+                if i.len() != 2 {
+                    Err("Each interval should be a 2 element list, defining start and end")?
+                }
+                Ok((
+                    i[0].as_i64().ok_or("Interval start should be a number")? as u64,
+                    i[1].as_i64().ok_or("Interval end should be a number")? as u64,
+                ))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        intervals.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(intervals)
+    } else {
+        Ok(vec![])
     }
 }
 
@@ -135,6 +160,7 @@ impl BusCommon {
         } else {
             Err("Reset type can be \"high\" or \"low\"")?
         };
+        let intervals = parse_intervals(yaml)?;
 
         Ok(Self::new(
             name,
@@ -143,6 +169,7 @@ impl BusCommon {
             rst,
             rst_type,
             default_max_burst,
+            intervals,
         ))
     }
     pub fn new(
@@ -152,6 +179,7 @@ impl BusCommon {
         rst_path: SignalPath,
         rst_active_value: u8,
         max_burst_delay: CyclesNum,
+        intervals: Vec<(RealTime, RealTime)>,
     ) -> Self {
         BusCommon {
             bus_name,
@@ -160,6 +188,7 @@ impl BusCommon {
             rst_path,
             rst_active_value,
             max_burst_delay,
+            intervals,
         }
     }
 
@@ -188,6 +217,9 @@ impl BusCommon {
             1 => ValueType::V1,
             _ => ValueType::X,
         }
+    }
+    pub fn intervals(&self) -> &Vec<(RealTime, RealTime)> {
+        &self.intervals
     }
 }
 

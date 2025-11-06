@@ -57,10 +57,10 @@ pub struct AXIWrAnalyzer {
 }
 
 // Count how many clock cycles was reset active
-fn count_reset(rst: &Signal, active_value: ValueType) -> u32 {
-    let mut last = 0;
+fn count_reset(rst: &Signal, active_value: ValueType, start: u32, end: u32) -> u32 {
+    let mut last = start;
     let mut reset = 0;
-    for (time, value) in rst.iter_changes() {
+    for (time, value) in rst.iter_changes().filter(|&(t, _)| t > start && t < end) {
         if is_value_of_type(value, active_value) {
             last = time;
         } else {
@@ -167,7 +167,7 @@ impl AXIRdAnalyzer {
     #[allow(clippy::too_many_arguments)]
     #[inline]
     fn calculate_lite(
-        &mut self,
+        &self,
         usage: &mut MultiChannelBusUsage,
         mut ar: Peekable<ReadyValidTransactionIterator>,
         mut r: Peekable<ReadyValidTransactionIterator>,
@@ -224,7 +224,7 @@ impl AXIRdAnalyzer {
     #[allow(clippy::too_many_arguments)]
     #[inline]
     fn calculate_full(
-        &mut self,
+        &self,
         usage: &mut MultiChannelBusUsage,
         mut ar: Peekable<ReadyValidTransactionIterator>,
         mut r: Peekable<ReadyValidTransactionIterator>,
@@ -274,7 +274,15 @@ impl AXIRdAnalyzer {
                 r.next();
                 let id = get_id_value(r_id, read);
 
-                let t = &mut counting.get_mut(&id).expect("Id should be valid")[0];
+                let Some(t) = counting.get_mut(&id) else {
+                    eprintln!(
+                        "[WARN] R without AR on {} at {}",
+                        self.bus_name(),
+                        time_table[read as usize]
+                    );
+                    continue 'transaction_loop;
+                };
+                let t = &mut t[0];
                 if t.first_data.is_none() {
                     t.first_data = Some(read)
                 }
@@ -340,7 +348,7 @@ impl AnalyzerInternal for AXIRdAnalyzer {
         let (_, rvalid) = &loaded[5];
         let (_, r_resp) = &loaded[6];
 
-        let reset = count_reset(rst, self.common.rst_active_value());
+        let mut reset = 0;
 
         let last_time = clk.time_indices().last().expect("Clock should have values");
         let clock_period = time_table[2];
@@ -351,23 +359,45 @@ impl AnalyzerInternal for AXIRdAnalyzer {
             clock_period,
             self.x_rate,
             self.y_rate,
-            time_table[*last_time as usize],
+            0,
         );
 
-        let ar = ReadyValidTransactionIterator::new(clk, _arready, arvalid, *last_time).peekable();
-        let r = ReadyValidTransactionIterator::new(clk, _rready, rvalid, *last_time).peekable();
-        let rst = RisingSignalIterator::new(rst);
-        match self.full {
-            Some(_) => {
-                let (_, ar_id) = &loaded[7];
-                let (_, r_id) = &loaded[8];
-                let (_, r_last) = &loaded[9];
+        let intervals = if self.common.intervals().is_empty() {
+            &vec![(0, time_table[*last_time as usize])]
+        } else {
+            self.common.intervals()
+        };
+        for (start, end) in intervals {
+            let start_idx = time_table
+                .iter()
+                .position(|time| time >= start)
+                .expect("Invalid interval set") as u32;
+            let end_idx = time_table
+                .iter()
+                .rposition(|time| time <= end)
+                .expect("Invalid interval set") as u32;
 
-                self.calculate_full(
-                    &mut usage, ar, r, rst, r_resp, ar_id, r_id, r_last, last_time, time_table,
-                )
+            reset += count_reset(rst, self.common.rst_active_value(), start_idx, end_idx);
+            let mut ar =
+                ReadyValidTransactionIterator::new(clk, _arready, arvalid, end_idx).peekable();
+            while let Some(_) = ar.next_if(|t| *t < start_idx) {}
+            let mut r =
+                ReadyValidTransactionIterator::new(clk, _rready, rvalid, end_idx).peekable();
+            while let Some(_) = r.next_if(|t| *t < start_idx) {}
+            let rst = RisingSignalIterator::new(rst);
+            match self.full {
+                Some(_) => {
+                    let (_, ar_id) = &loaded[7];
+                    let (_, r_id) = &loaded[8];
+                    let (_, r_last) = &loaded[9];
+
+                    self.calculate_full(
+                        &mut usage, ar, r, rst, r_resp, ar_id, r_id, r_last, &end_idx, time_table,
+                    )
+                }
+                None => self.calculate_lite(&mut usage, ar, r, rst, r_resp, &end_idx, time_table),
             }
-            None => self.calculate_lite(&mut usage, ar, r, rst, r_resp, last_time, time_table),
+            usage.add_time(end - start);
         }
 
         usage.end(reset);
@@ -448,7 +478,7 @@ impl AXIWrAnalyzer {
     #[allow(clippy::too_many_arguments)]
     #[inline]
     fn calculate_lite(
-        &mut self,
+        &self,
         usage: &mut MultiChannelBusUsage,
         mut aw: Peekable<ReadyValidTransactionIterator>,
         mut w: Peekable<ReadyValidTransactionIterator>,
@@ -504,7 +534,7 @@ impl AXIWrAnalyzer {
     #[allow(clippy::too_many_arguments)]
     #[inline]
     fn calculate_full(
-        &mut self,
+        &self,
         usage: &mut MultiChannelBusUsage,
         mut aw: Peekable<ReadyValidTransactionIterator>,
         mut w: Peekable<ReadyValidTransactionIterator>,
@@ -667,7 +697,7 @@ impl AnalyzerInternal for AXIWrAnalyzer {
         let (_, bvalid) = &loaded[7];
         let (_, b_resp) = &loaded[8];
 
-        let reset = count_reset(rst, self.common.rst_active_value());
+        let mut reset = 0;
         let last_time = clk.time_indices().last().expect("Clock should have values");
         let clock_period = time_table[2];
 
@@ -677,24 +707,50 @@ impl AnalyzerInternal for AXIWrAnalyzer {
             clock_period,
             self.x_rate,
             self.y_rate,
-            time_table[*last_time as usize],
+            0,
         );
 
-        let aw = ReadyValidTransactionIterator::new(clk, awready, awvalid, *last_time).peekable();
-        let w = ReadyValidTransactionIterator::new(clk, wready, wvalid, *last_time).peekable();
-        let b = ReadyValidTransactionIterator::new(clk, bready, bvalid, *last_time).peekable();
-        let rst = RisingSignalIterator::new(rst);
+        let intervals = if self.common.intervals().is_empty() {
+            &vec![(0, time_table[*last_time as usize])]
+        } else {
+            self.common.intervals()
+        };
+        for (start, end) in intervals {
+            let start_idx = time_table
+                .iter()
+                .position(|time| time >= start)
+                .expect("Invalid interval set") as u32;
+            let end_idx = time_table
+                .iter()
+                .rposition(|time| time <= end)
+                .expect("Invalid interval set") as u32;
 
-        match self.full {
-            Some(_) => {
-                let (_, aw_id) = &loaded[9];
-                let (_, w_last) = &loaded[10];
-                let (_, b_id) = &loaded[11];
-                self.calculate_full(
-                    &mut usage, aw, w, b, aw_id, w_last, b_id, b_resp, rst, last_time, time_table,
-                )
+            reset += count_reset(rst, self.common.rst_active_value(), start_idx, end_idx);
+
+            let mut aw =
+                ReadyValidTransactionIterator::new(clk, awready, awvalid, end_idx).peekable();
+            while let Some(_) = aw.next_if(|t| *t < start_idx) {}
+            let mut w = ReadyValidTransactionIterator::new(clk, wready, wvalid, end_idx).peekable();
+            while let Some(_) = w.next_if(|t| *t < start_idx) {}
+            let mut b = ReadyValidTransactionIterator::new(clk, bready, bvalid, end_idx).peekable();
+            while let Some(_) = b.next_if(|t| *t < start_idx) {}
+            let rst = RisingSignalIterator::new(rst);
+
+            match self.full {
+                Some(_) => {
+                    let (_, aw_id) = &loaded[9];
+                    let (_, w_last) = &loaded[10];
+                    let (_, b_id) = &loaded[11];
+                    self.calculate_full(
+                        &mut usage, aw, w, b, aw_id, w_last, b_id, b_resp, rst, &end_idx,
+                        time_table,
+                    )
+                }
+                None => {
+                    self.calculate_lite(&mut usage, aw, w, b, b_resp, rst, &end_idx, time_table)
+                }
             }
-            None => self.calculate_lite(&mut usage, aw, w, b, b_resp, rst, last_time, time_table),
+            usage.add_time(end - start);
         }
 
         usage.end(reset);
@@ -831,9 +887,6 @@ impl<'a> Iterator for ReadyValidTransactionIterator<'a> {
                 return None;
             }
         };
-        if self.current_time > self.time_end {
-            return None;
-        }
         // Check if either of ready or valid changed to value 0
         // if so set current_time to that time and perform the check again
         while let Some(smaller) = match (self.ready.peek(), self.valid.peek()) {
@@ -846,6 +899,9 @@ impl<'a> Iterator for ReadyValidTransactionIterator<'a> {
                 &mut self.ready
             }),
         } {
+            if self.current_time > self.time_end {
+                return None;
+            }
             let &(smaller_next, _) = smaller.peek().expect("Already checked");
             if self.current_time > smaller_next {
                 let (_time, v) = smaller.next().expect("Already checked in first if");

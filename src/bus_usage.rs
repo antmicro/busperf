@@ -657,7 +657,10 @@ impl MultiChannelBusUsage {
         }
         self.transaction_delays
             .push(Period::new(resp_time, next, self.clock_period));
-        self.time = next;
+    }
+
+    pub(crate) fn add_time(&mut self, time: RealTime) {
+        self.time += time;
     }
 
     fn transaction_coverage_in_window(&self, period: Period, window_num: u32, offset: u32) -> f32 {
