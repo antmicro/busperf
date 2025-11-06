@@ -95,7 +95,7 @@ pub struct BusCommon {
     rst_path: SignalPath,
     rst_active_value: u8,
     max_burst_delay: CyclesNum,
-    intervals: Vec<(RealTime, RealTime)>,
+    intervals: Vec<[RealTime; 2]>,
 }
 
 fn parse_scope(yaml: &Yaml) -> Result<Vec<String>, Box<dyn std::error::Error>> {
@@ -114,7 +114,7 @@ fn parse_scope(yaml: &Yaml) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     }
 }
 
-fn parse_intervals(yaml: &Yaml) -> Result<Vec<(RealTime, RealTime)>, Box<dyn std::error::Error>> {
+fn parse_intervals(yaml: &Yaml) -> Result<Vec<[RealTime; 2]>, Box<dyn std::error::Error>> {
     if let Some(intervals) = yaml["intervals"].as_vec() {
         let mut intervals = intervals
             .iter()
@@ -125,13 +125,13 @@ fn parse_intervals(yaml: &Yaml) -> Result<Vec<(RealTime, RealTime)>, Box<dyn std
                 if i.len() != 2 {
                     Err("Each interval should be a 2 element list, defining start and end")?
                 }
-                Ok((
+                Ok([
                     i[0].as_i64().ok_or("Interval start should be a number")? as u64,
                     i[1].as_i64().ok_or("Interval end should be a number")? as u64,
-                ))
+                ])
             })
             .collect::<Result<Vec<_>, _>>()?;
-        intervals.sort_by(|a, b| a.0.cmp(&b.0));
+        intervals.sort_by(|a, b| a[0].cmp(&b[0]));
         Ok(intervals)
     } else {
         Ok(vec![])
@@ -179,7 +179,7 @@ impl BusCommon {
         rst_path: SignalPath,
         rst_active_value: u8,
         max_burst_delay: CyclesNum,
-        intervals: Vec<(RealTime, RealTime)>,
+        intervals: Vec<[RealTime; 2]>,
     ) -> Self {
         BusCommon {
             bus_name,
@@ -218,7 +218,7 @@ impl BusCommon {
             _ => ValueType::X,
         }
     }
-    pub fn intervals(&self) -> &Vec<(RealTime, RealTime)> {
+    pub fn intervals(&self) -> &Vec<[RealTime; 2]> {
         &self.intervals
     }
 }

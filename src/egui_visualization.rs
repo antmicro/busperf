@@ -11,7 +11,7 @@ use eframe::{
 };
 use egui_plot::{
     Bar, BarChart, ClosestElem, Legend, Line, Plot, PlotItem, PlotPoint, PlotPoints, Polygon, Text,
-    uniform_grid_spacer,
+    VLine, uniform_grid_spacer,
 };
 use wellen::TimescaleUnit;
 
@@ -723,6 +723,11 @@ fn draw_timeline(
             .width(width)
             .show(ui, |plot_ui| {
                 for (stat_id, statistic) in statistics {
+                    for interval in statistic.vertical_lines.iter().copied() {
+                        plot_ui.vline(
+                            VLine::new("", interval).color(Color32::GRAY.blend(get_color(stat_id))),
+                        );
+                    }
                     plot_ui.line(
                         Line::new(
                             statistic.name,

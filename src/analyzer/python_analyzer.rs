@@ -176,14 +176,13 @@ impl AnalyzerInternal for PythonAnalyzer {
             time_table[2],
             self.x_rate,
             self.y_rate,
-            reset as u64 * time_table[1],
         );
         for (time, resp_time, last_write, first_data, resp, next) in results {
             let [time, resp_time, last_write, first_data, next] =
                 [time, resp_time, last_write, first_data, next].map(|i| time_table[i as usize]);
             usage.add_transaction(time, resp_time, last_write, first_data, &resp, next);
         }
-        usage.end(reset);
+        usage.end(reset, vec![]);
 
         self.result = Some(BusUsage::MultiChannel(usage));
     }

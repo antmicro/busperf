@@ -77,6 +77,7 @@ impl PercentageStatistic {
 pub struct TimelineStatistic {
     pub name: &'static str,
     pub values: Vec<[f64; 2]>,
+    pub vertical_lines: Vec<f64>,
     pub display: String,
     pub description: &'static str,
 }
@@ -509,7 +510,7 @@ pub struct MultiChannelBusUsage {
     // Temporary value - number of correct transactions
     correct_num: u32,
     averaged_bandwidth: f32,
-    bandwidth_windows: Vec<f64>,
+    bandwidth_windows: Vec<[f64; 2]>,
     window_length: u32,
     clock_period: RealTime,
     bandwidth_above_x_rate: f32,
@@ -519,6 +520,7 @@ pub struct MultiChannelBusUsage {
     x_rate: f64,
     /// We have a statistic that calculates % of time that the bandwidth was BELOW this value
     y_rate: f64,
+    intervals: Vec<[u64; 2]>,
 }
 
 impl MultiChannelBusUsage {
@@ -529,7 +531,6 @@ impl MultiChannelBusUsage {
         clock_period: RealTime,
         x_rate: f32,
         y_rate: f32,
-        time: RealTime,
     ) -> Self {
         MultiChannelBusUsage {
             bus_name: bus_name.to_owned(),
@@ -546,14 +547,14 @@ impl MultiChannelBusUsage {
             clock_period,
             bandwidth_above_x_rate: 0.0,
             bandwidth_below_y_rate: 0.0,
-            time,
+            time: 0,
             x_rate: x_rate as f64,
             y_rate: y_rate as f64,
+            intervals: vec![],
         }
     }
 
     pub fn get_statistics<'a>(&'a self, skipped_stats: &[String]) -> Vec<Statistic<'a>> {
-        let window_to_time = (self.clock_period * self.window_length as u64) as f64;
         let mut statistics = vec![
             Statistic::Bucket(BucketsStatistic::new(
                 "Cmd to completion",
@@ -588,6 +589,7 @@ impl MultiChannelBusUsage {
             statistics.push(Statistic::Timeline(TimelineStatistic {
                 name: "Error rate [%]",
                 values: vec![],
+                vertical_lines: vec![], // TODO show times when error occured
                 display: if self.error_rate.is_nan() {
                     "Invalid".to_string()
                 } else {
@@ -598,12 +600,12 @@ impl MultiChannelBusUsage {
         }
         statistics.push(Statistic::Timeline(TimelineStatistic {
             name: "Bandwidth [t/clk]",
-            values: self
-                .bandwidth_windows
+            values: self.bandwidth_windows.clone(),
+            vertical_lines: self
+                .intervals
                 .iter()
-                .enumerate()
-                .map(|(i, v)| [i as f64 * window_to_time / 2.0, *v])
-                .collect::<Vec<_>>(),
+                .flat_map(|&[a, b]| [a as f64, b as f64])
+                .collect(),
             display: format!("{:.4}", self.averaged_bandwidth),
             description: "Averaged bandwidth in transactions per clock cycle.",
         }));
@@ -612,10 +614,11 @@ impl MultiChannelBusUsage {
             values: vec![
                 [0.0, self.x_rate],
                 [
-                    self.bandwidth_windows.len() as f64 * window_to_time / 2.0,
+                    self.bandwidth_windows.last().unwrap_or(&[0.0, 0.0])[0],
                     self.x_rate,
                 ],
             ],
+            vertical_lines: vec![],
             display: format!("{:.2}", self.bandwidth_above_x_rate * 100.0),
             description: "Percentage value of time during which bandwidth was higher than x rate.",
         }));
@@ -624,10 +627,11 @@ impl MultiChannelBusUsage {
             values: vec![
                 [0.0, self.y_rate],
                 [
-                    self.bandwidth_windows.len() as f64 * window_to_time / 2.0,
+                    self.bandwidth_windows.last().unwrap_or(&[0.0, 0.0])[0],
                     self.y_rate,
                 ],
             ],
+            vertical_lines: vec![],
             display: format!("{:.2}", self.bandwidth_below_y_rate * 100.0),
             description: "Percentage value of time during which bandwidth was smaller than y rate.",
         }));
@@ -663,10 +667,10 @@ impl MultiChannelBusUsage {
         self.time += time;
     }
 
-    fn transaction_coverage_in_window(&self, period: Period, window_num: u32, offset: u32) -> f32 {
+    fn transaction_coverage_in_window(&self, period: Period, window_start: u64) -> f32 {
         let (start, end) = (period.start(), period.end());
-        let win_start = (window_num * self.window_length + offset) as u64 * self.clock_period;
-        let win_end = ((window_num + 1) * self.window_length + offset) as u64 * self.clock_period;
+        let win_start = window_start;
+        let win_end = window_start + self.window_length as u64 * self.clock_period;
         if start == end {
             if win_start < start && start < win_end {
                 1.0
@@ -680,40 +684,31 @@ impl MultiChannelBusUsage {
 
     /// Finishes calculation of statistics and makes sure that all temporary values are already taken into account
     // TODO: maybe we should split this struct in two as we should with SingleChannelBusUsage
-    pub(crate) fn end(&mut self, time_in_reset: u32) {
+    pub(crate) fn end(&mut self, time_in_reset: u32, intervals: Vec<[u64; 2]>) {
         let error_num = self.errors.len() as u32;
         self.error_rate = error_num as f32 / (self.correct_num + error_num) as f32;
         self.averaged_bandwidth = self.cmd_to_first_data.len() as f32
             / (self.time - time_in_reset as u64 * self.clock_period) as f32
             * self.clock_period as f32;
 
-        for i in 0..(self.time / self.window_length as u64 / self.clock_period) + 1 {
-            let half = self.window_length / 2;
-            let num: f32 = self
-                .cmd_to_completion
-                .iter()
-                .map(|t| self.transaction_coverage_in_window(*t, i as u32, 0))
-                .sum();
-            self.bandwidth_windows
-                .push(num as f64 / self.window_length as f64);
-
-            if self.time as i64
-                - (self.window_length * i as u32 + half) as i64 * self.clock_period as i64
-                > 0
+        for [start, end] in intervals.iter() {
+            for i in (*start..*end + self.window_length as u64 * self.clock_period / 2)
+                .step_by((self.window_length as u64 / 2 * self.clock_period) as usize)
             {
                 let num: f32 = self
                     .cmd_to_completion
                     .iter()
-                    .map(|t| self.transaction_coverage_in_window(*t, i as u32, half))
+                    .map(|t| self.transaction_coverage_in_window(*t, i))
                     .sum();
                 self.bandwidth_windows
-                    .push(num as f64 / self.window_length as f64);
+                    .push([i as f64, num as f64 / self.window_length as f64]);
             }
         }
 
         self.bandwidth_above_x_rate = self
             .bandwidth_windows
             .iter()
+            .map(|[_, b]| b)
             .filter(|&b| *b > self.x_rate)
             .count() as f32
             / self.bandwidth_windows.len() as f32;
@@ -721,8 +716,11 @@ impl MultiChannelBusUsage {
         self.bandwidth_below_y_rate = self
             .bandwidth_windows
             .iter()
+            .map(|[_, b]| b)
             .filter(|&b| *b < self.y_rate)
             .count() as f32
             / self.bandwidth_windows.len() as f32;
+
+        self.intervals = intervals;
     }
 }

@@ -363,15 +363,14 @@ impl AnalyzerInternal for AXIRdAnalyzer {
             clock_period,
             self.x_rate,
             self.y_rate,
-            0,
         );
 
         let intervals = if self.common.intervals().is_empty() {
-            &vec![(0, time_table[*last_time as usize])]
+            vec![[0, time_table[*last_time as usize]]]
         } else {
-            self.common.intervals()
+            self.common.intervals().clone()
         };
-        for (start, end) in intervals {
+        for [start, end] in intervals.iter() {
             let start_idx = time_table
                 .iter()
                 .position(|time| time >= start)
@@ -384,10 +383,10 @@ impl AnalyzerInternal for AXIRdAnalyzer {
             reset += count_reset(rst, self.common.rst_active_value(), start_idx, end_idx);
             let mut ar =
                 ReadyValidTransactionIterator::new(clk, _arready, arvalid, end_idx).peekable();
-            while let Some(_) = ar.next_if(|t| *t < start_idx) {}
+            while ar.next_if(|t| *t < start_idx).is_some() {}
             let mut r =
                 ReadyValidTransactionIterator::new(clk, _rready, rvalid, end_idx).peekable();
-            while let Some(_) = r.next_if(|t| *t < start_idx) {}
+            while r.next_if(|t| *t < start_idx).is_some() {}
             let rst = RisingSignalIterator::new(rst);
             match self.full {
                 Some(_) => {
@@ -404,7 +403,7 @@ impl AnalyzerInternal for AXIRdAnalyzer {
             usage.add_time(end - start);
         }
 
-        usage.end(reset);
+        usage.end(reset, intervals);
         self.result = Some(BusUsage::MultiChannel(usage));
     }
 
@@ -708,6 +707,11 @@ impl AnalyzerInternal for AXIWrAnalyzer {
         let mut reset = 0;
         let last_time = clk.time_indices().last().expect("Clock should have values");
         let clock_period = time_table[2];
+        let intervals = if self.common.intervals().is_empty() {
+            vec![[0, time_table[*last_time as usize]]]
+        } else {
+            self.common.intervals().clone()
+        };
 
         let mut usage = MultiChannelBusUsage::new(
             self.common.bus_name(),
@@ -715,15 +719,9 @@ impl AnalyzerInternal for AXIWrAnalyzer {
             clock_period,
             self.x_rate,
             self.y_rate,
-            0,
         );
 
-        let intervals = if self.common.intervals().is_empty() {
-            &vec![(0, time_table[*last_time as usize])]
-        } else {
-            self.common.intervals()
-        };
-        for (start, end) in intervals {
+        for [start, end] in intervals.iter() {
             let start_idx = time_table
                 .iter()
                 .position(|time| time >= start)
@@ -737,11 +735,11 @@ impl AnalyzerInternal for AXIWrAnalyzer {
 
             let mut aw =
                 ReadyValidTransactionIterator::new(clk, awready, awvalid, end_idx).peekable();
-            while let Some(_) = aw.next_if(|t| *t < start_idx) {}
+            while aw.next_if(|t| *t < start_idx).is_some() {}
             let mut w = ReadyValidTransactionIterator::new(clk, wready, wvalid, end_idx).peekable();
-            while let Some(_) = w.next_if(|t| *t < start_idx) {}
+            while w.next_if(|t| *t < start_idx).is_some() {}
             let mut b = ReadyValidTransactionIterator::new(clk, bready, bvalid, end_idx).peekable();
-            while let Some(_) = b.next_if(|t| *t < start_idx) {}
+            while b.next_if(|t| *t < start_idx).is_some() {}
             let rst = RisingSignalIterator::new(rst);
 
             match self.full {
@@ -761,7 +759,7 @@ impl AnalyzerInternal for AXIWrAnalyzer {
             usage.add_time(end - start);
         }
 
-        usage.end(reset);
+        usage.end(reset, intervals);
         self.result = Some(BusUsage::MultiChannel(usage));
     }
 }
