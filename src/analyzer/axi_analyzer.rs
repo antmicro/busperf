@@ -319,7 +319,11 @@ impl AXIRdAnalyzer {
                 .join(", "),
         );
         if !unfinished.is_empty() {
-            eprintln!("[WARN] Unfinished transactions at times: {}", unfinished);
+            eprintln!(
+                "[WARN] Unfinished transactions on {} at times: {}",
+                self.bus_name(),
+                unfinished
+            );
         }
     }
 }
@@ -661,7 +665,11 @@ impl AXIWrAnalyzer {
                 .join(", "),
         );
         if !unfinished.is_empty() {
-            eprintln!("[WARN] Unfinished transactions at times: {}", unfinished);
+            eprintln!(
+                "[WARN] Unfinished transactions on {} at times: {}",
+                self.bus_name(),
+                unfinished
+            );
         }
     }
 }
