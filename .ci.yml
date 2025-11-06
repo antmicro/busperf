@@ -71,6 +71,8 @@ test:
     - target/release/busperf taxi/src/axi/tb/taxi_axil_ram/dump.fst tests/taxi_descriptions/axil_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
     - target/debug/busperf taxi/src/axi/tb/taxi_axil_register/dump.fst tests/taxi_descriptions/axil_register.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
     - target/release/busperf taxi/src/axi/tb/taxi_axil_register/dump.fst tests/taxi_descriptions/axil_register.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
+    - target/debug/busperf taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/axi_intervals_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
+    - target/release/busperf taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/axi_intervals_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
   artifacts:
     when: on_failure
     paths:
