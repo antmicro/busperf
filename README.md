@@ -98,6 +98,9 @@ interfaces:
     reset_type: "high"
 
     custom_analyzer: "AXIRdAnalyzer"
+    intervals:
+      - [0, 5000000]
+      - [1234567890,1324567890]
     ar:
       id:    ["s_axi_rd", "arid"]
       ready: ["s_axi_rd", "arready"]
