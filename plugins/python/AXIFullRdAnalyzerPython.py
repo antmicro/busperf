@@ -41,7 +41,7 @@ class Analyzer:
             while next_rst < time:
                 next_rst = next(rst, time_end + 1)
 
-            ar_id_value = next(filter(lambda v: v[0] <= time, ar_id))[1]
+            ar_id_value = next(filter(lambda v: v[0] < time, ar_id))[1]
             next_transaction = ar.peek(time_end)
 
             counting[ar_id_value].append(Transaction(time, next_transaction))
@@ -60,7 +60,7 @@ class Analyzer:
                     break
                 next(r)
 
-                id_value = next(filter(lambda v: v[0] <= read, r_id))[1]
+                id_value = next(filter(lambda v: v[0] < read, r_id))[1]
                 transactions = counting.get(id_value)
                 assert transactions, f"Id {id_value} should be valid {read}"
                 t = transactions[0]
@@ -68,9 +68,9 @@ class Analyzer:
                 if t.first_data is None:
                     t.first_data = read
 
-                resp = next(filter(lambda v: v[0] <= read, r_resp), None)[1]
+                resp = next(filter(lambda v: v[0] < read, r_resp), None)[1]
 
-                if next(filter(lambda v: v[0] <= read, r_last))[1] == "1":
+                if next(filter(lambda v: v[0] < read, r_last))[1] == "1":
                     completed = transactions.popleft()
                     to_return.append((
                         completed.start,

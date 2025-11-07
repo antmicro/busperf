@@ -39,7 +39,7 @@ test:
     - branches
   before_script:
     - apt update -qq &> /dev/null
-    - apt install --yes verilator git python3 python3-venv libpython3-dev make &> /dev/null
+    - apt install --yes verilator git python3 python3-venv libpython3-dev python3-more-itertools make &> /dev/null
     - git clone https://github.com/fpganinja/taxi.git
     - python3 -m venv env
     - source ./env/bin/activate
@@ -73,6 +73,8 @@ test:
     - target/release/busperf analyze taxi/src/axi/tb/taxi_axil_register/dump.fst tests/taxi_descriptions/axil_register.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
     - target/debug/busperf analyze taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/axi_intervals_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
     - target/release/busperf analyze taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/axi_intervals_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
+    - target/debug/busperf analyze taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/python_axi_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
+    - target/release/busperf analyze taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/python_axi_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
   artifacts:
     when: on_failure
     paths:

@@ -11,7 +11,6 @@ class Analyzer:
         return [(3, ["ar"]), (3, ["r"]), (1, ["r", "rresp"])]
 
     def analyze(self, clk, rst, ar, r, rresp):
-        print("foo", ar)
         time_end = clk[-1][0]
         rst = peekable(iter(map(lambda v: v[0], rst)))
         ar = peekable(iter(map(lambda v: v[0], ar)))
@@ -36,13 +35,12 @@ class Analyzer:
                 next_transaction = ar.peek(time_end)
 
                 next(r)
-                print("boo")
 
                 while r.peek(next_transaction) < next_transaction:
                     print(f"[WARN] Read without AR at {time_table[r.peek()]}")
                     next(r)
 
-                resp = next(filter(lambda v: v[0] <= read_time, rresp), None)[1]
+                resp = next(filter(lambda v: v[0] < read_time, rresp), None)[1]
 
                 transactions.append((
                     time,
@@ -52,7 +50,6 @@ class Analyzer:
                     resp,
                     next_transaction
                 ))
-                print(time, read_time, resp, next_transaction)
             else:
                 print("[WARN] unfinished transaction")
 

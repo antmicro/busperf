@@ -177,6 +177,7 @@ impl AnalyzerInternal for PythonAnalyzer {
             self.x_rate,
             self.y_rate,
         );
+        usage.add_time(time_table[time_end as usize]);
         for (time, resp_time, last_write, first_data, resp, next) in results {
             let [time, resp_time, last_write, first_data, next] =
                 [time, resp_time, last_write, first_data, next].map(|i| time_table[i as usize]);

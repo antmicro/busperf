@@ -271,6 +271,15 @@ fn axi_test() {
     );
 }
 
+#[test]
+fn python_axi() {
+    test_basic(
+        "tests/test_dumps/axi.vcd",
+        "tests/taxi_descriptions/python_axi_ram.yaml",
+        1,
+    );
+}
+
 // functions returning correct usages for tests
 
 fn correct_test() -> BusUsage {
