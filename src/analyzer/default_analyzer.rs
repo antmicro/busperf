@@ -1,3 +1,4 @@
+use constcat::concat_slices;
 use wellen::{SignalValue, TimeTable};
 
 use crate::{
@@ -107,6 +108,9 @@ impl AnalyzerInternal for DefaultAnalyzer {
     }
 }
 
+const DEFAULT_YAML: &[&str] =
+    concat_slices!([&str]: &super::COMMON_YAML, &["ready", "valid", "handshake"]);
+
 impl Analyzer for DefaultAnalyzer {
     fn analyze(&mut self, simulation_data: &mut crate::SimulationData, verbose: bool) {
         let usage = analyze_single_bus(&self.common, &*self.bus_desc, simulation_data, verbose);
@@ -115,6 +119,10 @@ impl Analyzer for DefaultAnalyzer {
 
     fn get_results(&self) -> Option<&BusUsage> {
         self.result.as_ref()
+    }
+
+    fn required_yaml_definitions(&self) -> Vec<&str> {
+        Vec::from(DEFAULT_YAML)
     }
 }
 

@@ -4,6 +4,7 @@ use std::{
     iter::Peekable,
 };
 
+use constcat::concat_slices;
 use wellen::{Signal, SignalValue, TimeTable, TimeTableIdx};
 
 use crate::{
@@ -55,6 +56,17 @@ pub struct AXIWrAnalyzer {
     x_rate: f32,
     y_rate: f32,
 }
+
+const AXI_RD_YAML: &[&str; 13] = concat_slices!([&str]: super::COMMON_YAML, &[
+    "ar.id", "ar.ready", "ar.valid",
+    "r.id", "r.ready", "r.valid", "r.resp", "r.last",
+]);
+
+const AXI_WR_YAML: &[&str; 15] = concat_slices!([&str]: super::COMMON_YAML, &[
+    "aw.id", "aw.ready", "aw.valid",
+    "w.ready", "w.valid", "w.last",
+    "b.ready", "b.valid", "b.resp", "b.id"
+]);
 
 // Count how many clock cycles was reset active
 fn count_reset(rst: &Signal, active_value: ValueType, start: u32, end: u32) -> u32 {
@@ -416,6 +428,10 @@ impl Analyzer for AXIRdAnalyzer {
     fn get_results(&self) -> Option<&BusUsage> {
         self.result.as_ref()
     }
+
+    fn required_yaml_definitions(&self) -> Vec<&str> {
+        Vec::from(AXI_RD_YAML)
+    }
 }
 
 impl AXIWrAnalyzer {
@@ -767,6 +783,10 @@ impl AnalyzerInternal for AXIWrAnalyzer {
 impl Analyzer for AXIWrAnalyzer {
     fn get_results(&self) -> Option<&BusUsage> {
         self.result.as_ref()
+    }
+
+    fn required_yaml_definitions(&self) -> Vec<&str> {
+        Vec::from(AXI_WR_YAML)
     }
 }
 

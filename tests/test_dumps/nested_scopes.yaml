@@ -1,6 +1,7 @@
-base: &base_scope
-  - top
-  - tb
+scopes:
+  base: &base_scope
+    - top
+    - tb
   
 interfaces:
   "a_":
@@ -22,5 +23,5 @@ interfaces:
     handshake: "ReadyValid"
     ready: "b_ready"
     valid: "b_valid"
- 
+    foo: "bla bla"
 

@@ -18,6 +18,7 @@ pub struct PythonAnalyzer {
     window_length: u32,
     x_rate: f32,
     y_rate: f32,
+    used_yaml: Vec<String>,
 }
 
 // u32 is an enum
@@ -37,45 +38,56 @@ impl PythonAnalyzer {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let obj = load_python_plugin(class_name)?;
 
-        let Ok(signals) = Python::with_gil(|py| -> PyResult<Vec<(u32, Vec<String>)>> {
-            obj.getattr(py, "get_yaml_signals")?
-                .call0(py)?
-                .extract::<Vec<(u32, Vec<String>)>>(py)
-        }) else {
-            return Err("Python plugin returned bad signal names")?;
-        };
-        let signals = signals
+        let signals = Python::with_gil(
+            #[allow(clippy::type_complexity)]
+            |py| -> Result<Vec<(u32, Vec<String>)>, Box<dyn std::error::Error>> {
+                Ok(obj
+                    .getattr(py, "get_yaml_signals")?
+                    .call0(py)
+                    .map_err(|_| "'get_yaml_signals' object is not callable")?
+                    .extract::<Vec<(u32, Vec<String>)>>(py)
+                    .map_err(|_| "get_yaml_signals returned invalid value")?)
+            },
+        )?;
+        let mut used_yaml: Vec<_> = super::COMMON_YAML.iter().map(|s| s.to_string()).collect();
+        let signals: Vec<_> = signals
             .iter()
             .map(|(type_, path)| {
                 let mut i = i;
                 for s in path {
                     i = &i[s.as_str()];
                 }
-                match type_ {
+                let name = path.join(".");
+                let a: Result<(u32, Vec<SignalPath>), Box<dyn std::error::Error>> = match type_ {
                     1 | 2 => {
                         match SignalPath::from_yaml_ref_with_prefix(common.module_scope(), i) {
-                            Ok(path) => Ok((*type_, vec![path])),
-                            Err(_) => Err(format!("Yaml should define {:?} signal", path)),
+                            Ok(path) => {
+                                used_yaml.push(name);
+                                Ok((*type_, vec![path]))
+                            }
+                            Err(_) => Err(format!("Yaml should define {} signal", name))?,
                         }
                     }
                     3 => {
-                        if let Ok(r) = SignalPath::from_yaml_ref_with_prefix(
+                        used_yaml.push(name.clone() + ".ready");
+                        used_yaml.push(name.clone() + ".valid");
+                        let r = SignalPath::from_yaml_ref_with_prefix(
                             common.module_scope(),
                             &i["ready"],
-                        ) && let Ok(v) = SignalPath::from_yaml_ref_with_prefix(
+                        )
+                        .map_err(|_| format!("Yaml is missing ready signal for {name}",))?;
+                        let v = SignalPath::from_yaml_ref_with_prefix(
                             common.module_scope(),
                             &i["valid"],
-                        ) {
-                            Ok((*type_, vec![r, v]))
-                        } else {
-                            Err(format!(
-                                "Yaml is missing ready and/or valid signal for {}",
-                                path.last().expect("Invalid yaml")
-                            ))
-                        }
+                        )
+                        .map_err(|_| format!("Yaml is missing valid signal for {name}",))?;
+                        Ok((*type_, vec![r, v]))
                     }
-                    _ => Err("Invalid type returned from python analyzer")?,
-                }
+                    other => Err(format!(
+                        "Invalid type of signal {other} for {name}, but can be only 1, 2, 3"
+                    ))?,
+                };
+                a
             })
             .collect::<Result<_, _>>()?;
 
@@ -87,6 +99,7 @@ impl PythonAnalyzer {
             window_length,
             x_rate,
             y_rate,
+            used_yaml,
         })
     }
 }
@@ -146,16 +159,6 @@ impl AnalyzerInternal for PythonAnalyzer {
             })
             .collect();
 
-        // let loaded: Vec<_> = loaded
-        //     .iter()
-        //     .map(|(_, signal)| {
-        //         signal
-        //             .iter_changes()
-        //             .map(|(t, v)| (t, v.to_bit_string().expect("Function never returns None")))
-        //             .collect::<Vec<(u32, String)>>()
-        //     })
-        //     .collect();
-
         #[allow(clippy::type_complexity)]
         let results = Python::with_gil(|py| -> PyResult<Vec<(u32, u32, u32, u32, String, u32)>> {
             let res = self
@@ -192,5 +195,9 @@ impl AnalyzerInternal for PythonAnalyzer {
 impl Analyzer for PythonAnalyzer {
     fn get_results(&self) -> Option<&BusUsage> {
         self.result.as_ref()
+    }
+
+    fn required_yaml_definitions(&self) -> Vec<&str> {
+        self.used_yaml.iter().map(|s| s.as_str()).collect()
     }
 }

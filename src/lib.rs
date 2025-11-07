@@ -40,32 +40,49 @@ pub fn load_bus_analyzers(
     let mut s = String::new();
     f.read_to_string(&mut s)?;
     let mut yaml = YamlLoader::load_from_str(&s)?;
-    let doc = yaml.remove(0);
-    let doc = doc
+    let mut doc = yaml
+        .remove(0)
         .into_hash()
-        .ok_or("Yaml should not be empty")?
+        .ok_or("Yaml should not be empty")?;
+    let interfaces = doc
         .remove(&yaml_rust2::Yaml::from_str("interfaces"))
         .ok_or("Yaml should define interfaces")?
         .into_hash()
         .ok_or("Invalid yaml format")?;
+    let unused = doc
+        .into_iter()
+        .filter_map(|(name, _)| {
+            if let Some(s) = name.into_string()
+                && s != "scopes"
+            {
+                Some(s)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    if !unused.is_empty() {
+        Err(format!(
+            "Yaml can only have interfaces and scopes(optional) in top level, but has extra: {}",
+            unused.join(", ")
+        ))?;
+    }
     let mut analyzers: Vec<Box<dyn Analyzer>> = vec![];
-    for (name, dict) in doc {
+    for (name, dict) in interfaces {
         let n = name
             .as_str()
             .ok_or("Each bus should have a name")?
             .to_owned();
-        match AnalyzerBuilder::build(
-            (name, dict),
-            default_max_burst_delay,
-            window_length,
-            x_rate,
-            y_rate,
-        ) {
-            Ok(analyzer) => analyzers.push(analyzer),
-            Err(e) => {
-                eprintln!("Failed to load {}, {:?}", n, e)
-            }
-        }
+        analyzers.push(
+            AnalyzerBuilder::build(
+                (name, dict),
+                default_max_burst_delay,
+                window_length,
+                x_rate,
+                y_rate,
+            )
+            .map_err(|e| format!("bus {n}, {e}"))?,
+        );
     }
     Ok(analyzers)
 }

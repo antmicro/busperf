@@ -24,6 +24,7 @@ bincode = "2.0.1"
 flate2 = { version = "1.1.4", default-features = false, features = ["zlib-rs"] }
 blake3 = "1.8.2"
 rfd = "0.15.4"
+constcat = "0.6.1"
 
 [features]
 default = ["help-colors"]

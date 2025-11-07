@@ -14,6 +14,8 @@ mod axi_analyzer;
 mod default_analyzer;
 mod python_analyzer;
 
+const COMMON_YAML: &[&str] = &["scope", "clock", "reset", "reset_type", "custom_analyzer"];
+
 pub(crate) struct AnalyzerBuilder {}
 
 impl AnalyzerBuilder {
@@ -25,7 +27,8 @@ impl AnalyzerBuilder {
         y_rate: f32,
     ) -> Result<Box<dyn Analyzer>, Box<dyn std::error::Error>> {
         let (name, dict) = yaml;
-        Ok(if let Some(custom) = dict["custom_analyzer"].as_str() {
+        let to_check = dict.clone();
+        let analyzer: Box<dyn Analyzer> = if let Some(custom) = dict["custom_analyzer"].as_str() {
             match custom {
                 "AXIWrAnalyzer" => Box::new(AXIWrAnalyzer::build_from_yaml(
                     (name, dict),
@@ -47,14 +50,10 @@ impl AnalyzerBuilder {
                         &dict,
                         default_max_burst_delay,
                     )?;
-                    Box::new(PythonAnalyzer::new(
-                        custom,
-                        common,
-                        &dict,
-                        window_length,
-                        x_rate,
-                        y_rate,
-                    )?)
+                    Box::new(
+                        PythonAnalyzer::new(custom, common, &dict, window_length, x_rate, y_rate)
+                            .map_err(|e| format!("plugin {custom}: {e}"))?,
+                    )
                 }
             }
         } else {
@@ -62,7 +61,13 @@ impl AnalyzerBuilder {
                 (name, dict),
                 default_max_burst_delay,
             )?)
-        })
+        };
+        check_unused_signals(
+            &to_check,
+            &analyzer.required_yaml_definitions(),
+            &mut vec![],
+        );
+        Ok(analyzer)
     }
 }
 
@@ -107,5 +112,29 @@ pub trait Analyzer: private::AnalyzerInternal {
     fn get_results(&self) -> Option<&BusUsage>;
     fn finished_analysis(&self) -> bool {
         self.get_results().is_some()
+    }
+
+    fn required_yaml_definitions(&self) -> Vec<&str>;
+}
+
+fn check_unused_signals(yaml: &Yaml, used: &[&str], path: &mut Vec<String>) {
+    match yaml {
+        Yaml::Hash(linked_hash_map) => {
+            for (k, v) in linked_hash_map {
+                if let Yaml::String(s) = k {
+                    path.push(s.clone());
+                    check_unused_signals(v, used, path);
+                    path.pop();
+                } else {
+                    eprintln!("[WARN] Non string hash key {}.{k:?}", path.join("."))
+                }
+            }
+        }
+        _ => {
+            let path = path.join(".");
+            if !used.contains(&path.as_str()) {
+                eprintln!("[WARN] YAML value {path} is not used by the analyzer.");
+            }
+        }
     }
 }
