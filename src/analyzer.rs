@@ -14,7 +14,14 @@ mod axi_analyzer;
 mod default_analyzer;
 mod python_analyzer;
 
-const COMMON_YAML: &[&str] = &["scope", "clock", "reset", "reset_type", "custom_analyzer"];
+const COMMON_YAML: &[&str] = &[
+    "scope",
+    "clock",
+    "reset",
+    "reset_type",
+    "custom_analyzer",
+    "intervals",
+];
 
 pub(crate) struct AnalyzerBuilder {}
 

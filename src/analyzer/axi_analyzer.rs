@@ -57,12 +57,12 @@ pub struct AXIWrAnalyzer {
     y_rate: f32,
 }
 
-const AXI_RD_YAML: &[&str; 13] = concat_slices!([&str]: super::COMMON_YAML, &[
+const AXI_RD_YAML: &[&str; 14] = concat_slices!([&str]: super::COMMON_YAML, &[
     "ar.id", "ar.ready", "ar.valid",
     "r.id", "r.ready", "r.valid", "r.resp", "r.last",
 ]);
 
-const AXI_WR_YAML: &[&str; 15] = concat_slices!([&str]: super::COMMON_YAML, &[
+const AXI_WR_YAML: &[&str; 16] = concat_slices!([&str]: super::COMMON_YAML, &[
     "aw.id", "aw.ready", "aw.valid",
     "w.ready", "w.valid", "w.last",
     "b.ready", "b.valid", "b.resp", "b.id"
