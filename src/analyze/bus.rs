@@ -231,6 +231,7 @@ impl BusDescriptionBuilder {
     pub fn build(
         yaml: Yaml,
         scope: &[String],
+        plugins_path: &str,
     ) -> Result<Box<dyn BusDescription>, Box<dyn std::error::Error>> {
         let i = yaml;
 
@@ -251,7 +252,12 @@ impl BusDescriptionBuilder {
                     let handshake = i["custom_handshake"]
                         .as_str()
                         .ok_or("Custom bus has to specify handshake interpreter")?;
-                    Ok(Box::new(PythonCustomBus::from_yaml(handshake, &i, scope)?))
+                    Ok(Box::new(PythonCustomBus::from_yaml(
+                        handshake,
+                        &i,
+                        scope,
+                        plugins_path,
+                    )?))
                 }
                 #[cfg(not(feature = "python-plugins"))]
                 {

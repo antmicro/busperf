@@ -64,6 +64,7 @@ struct AnalyzeArgs {
     window_length: u32,
     x_rate: f32,
     y_rate: f32,
+    plugins_path: String,
 }
 
 struct FileArgs {
@@ -156,6 +157,11 @@ impl AnalyzeArgs {
             .argument("Y_RATE")
             .fallback(0.00001);
         let verbose = short('v').long("verbose").switch();
+        let plugins_path = short('p')
+            .long("plugins_path")
+            .help("Path to python plugins [default: \"./plugins/python]\"")
+            .argument("PATH")
+            .fallback("./plugins/python".to_string());
 
         let parser = construct!(AnalyzeArgs {
             output_type,
@@ -167,6 +173,7 @@ impl AnalyzeArgs {
             x_rate,
             y_rate,
             verbose,
+            plugins_path,
             files,
         });
         construct!(Args::Analyze(parser))
@@ -193,6 +200,7 @@ fn main() {
                 args.window_length,
                 args.x_rate,
                 args.y_rate,
+                &args.plugins_path,
             )
             .unwrap();
             let mut data = load_simulation_trace(&args.files.simulation_trace, args.verbose);

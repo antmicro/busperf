@@ -25,13 +25,14 @@ impl DefaultAnalyzer {
     pub fn from_yaml(
         yaml: (yaml_rust2::Yaml, yaml_rust2::Yaml),
         default_max_burst_delay: CyclesNum,
+        plugins_path: &str,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let (name, dict) = yaml;
         let name = name
             .into_string()
             .ok_or("Name of bus should be a valid string")?;
         let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
-        let bus_desc = BusDescriptionBuilder::build(dict, common.module_scope())?;
+        let bus_desc = BusDescriptionBuilder::build(dict, common.module_scope(), plugins_path)?;
         Ok(DefaultAnalyzer {
             common,
             bus_desc,

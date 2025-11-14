@@ -1,14 +1,16 @@
 from more_itertools import peekable
+from busperf import Transaction
+from busperf import SignalType
+
 
 class Analyzer:
     def __init__(self):
         print("Loaded AXILiteRdAnalyzerPython")
 
-    # 1 - Signal
-    # 2 - RisingSignal
-    # 3 - ReadyValid
     def get_yaml_signals(self):
-        return [(3, ["ar"]), (3, ["r"]), (1, ["r", "rresp"])]
+        return [(SignalType.ReadyValid, ["ar"]),
+                (SignalType.ReadyValid, ["r"]),
+                (SignalType.Signal, ["r", "rresp"])]
 
     def analyze(self, clk, rst, ar, r, rresp):
         time_end = clk[-1][0]
@@ -37,12 +39,12 @@ class Analyzer:
                 next(r)
 
                 while r.peek(next_transaction) < next_transaction:
-                    print(f"[WARN] Read without AR at {time_table[r.peek()]}")
+                    print(f"[WARN] Read without AR at {r.peek()}")
                     next(r)
 
                 resp = next(filter(lambda v: v[0] < read_time, rresp), None)[1]
 
-                transactions.append((
+                transactions.append(Transaction(
                     time,
                     read_time,
                     read_time,
@@ -54,6 +56,7 @@ class Analyzer:
                 print("[WARN] unfinished transaction")
 
         return transactions
-            
+
+
 def create():
     return Analyzer()

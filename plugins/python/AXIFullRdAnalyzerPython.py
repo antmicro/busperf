@@ -1,21 +1,27 @@
 from collections import defaultdict, deque
 from more_itertools import peekable
+from busperf import SignalType
+from busperf import Transaction
 
-class Transaction:
+
+class InProgressTransaction:
     def __init__(self, start, next_time):
         self.start = start
         self.next = next_time
         self.first_data = None
-        
+
+
 class Analyzer:
     def __init__(self):
         print("Loaded AXIFullRdAnalyzerPython")
 
-    # 1 - Signal
-    # 2 - RisingSignal
-    # 3 - ReadyValid
     def get_yaml_signals(self):
-        return [(3, ["ar"]), (3, ["r"]), (1, ["r", "rresp"]), (1, ["ar", "id"]), (1, ["r", "id"]), (1, ["r", "rlast"])]
+        return [(SignalType.ReadyValid, ["ar"]),
+                (SignalType.ReadyValid, ["r"]),
+                (SignalType.Signal, ["r", "rresp"]),
+                (SignalType.Signal, ["ar", "id"]),
+                (SignalType.Signal, ["r", "id"]),
+                (SignalType.Signal, ["r", "rlast"])]
 
     def analyze(self, clk, rst, ar, r, r_resp, ar_id, r_id, r_last):
         time_end = clk[-1][0]
@@ -44,14 +50,14 @@ class Analyzer:
             ar_id_value = next(filter(lambda v: v[0] < time, ar_id))[1]
             next_transaction = ar.peek(time_end)
 
-            counting[ar_id_value].append(Transaction(time, next_transaction))
+            counting[ar_id_value].append(InProgressTransaction(time, next_transaction))
 
             while r.peek(next_transaction) < next_transaction:
                 read = r.peek()
 
                 if read > next_rst:
                     all_times = [
-                        time_table[t.start]
+                        t.start
                         for txns in counting.values()
                         for t in txns
                     ]
@@ -72,11 +78,11 @@ class Analyzer:
 
                 if next(filter(lambda v: v[0] < read, r_last))[1] == "1":
                     completed = transactions.popleft()
-                    to_return.append((
+                    to_return.append(Transaction(
                         completed.start,
-                        read,
-                        read,
                         completed.first_data,
+                        read,
+                        read,
                         resp,
                         completed.next,
                     ))
@@ -92,6 +98,7 @@ class Analyzer:
         if unfinished.strip():
             print(f"[WARN] Unfinished transactions at times: {unfinished.strip(', ')}")
         return to_return
-            
+
+
 def create():
     return Analyzer()

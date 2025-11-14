@@ -27,6 +27,7 @@ pub fn load_bus_analyzers(
     window_length: u32,
     x_rate: f32,
     y_rate: f32,
+    plugins_path: &str,
 ) -> Result<Vec<Box<dyn Analyzer>>, Box<dyn std::error::Error>> {
     let mut f = File::open(filename)?;
     let mut s = String::new();
@@ -73,6 +74,7 @@ pub fn load_bus_analyzers(
                 window_length,
                 x_rate,
                 y_rate,
+                plugins_path,
             )
             .map_err(|e| format!("bus {n}, {e}"))?,
         );

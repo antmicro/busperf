@@ -30,6 +30,8 @@ const COMMON_YAML: &[&str] = &[
     "reset_type",
     "custom_analyzer",
     "intervals",
+    "custom_handshake",
+    "handshake",
 ];
 
 pub(crate) struct AnalyzerBuilder {}
@@ -41,6 +43,7 @@ impl AnalyzerBuilder {
         window_length: u32,
         x_rate: f32,
         y_rate: f32,
+        plugins_path: &str,
     ) -> Result<Box<dyn Analyzer>, Box<dyn std::error::Error>> {
         let (name, dict) = yaml;
         let to_check = dict.clone();
@@ -76,6 +79,7 @@ impl AnalyzerBuilder {
                                 window_length,
                                 x_rate,
                                 y_rate,
+                                plugins_path,
                             )
                             .map_err(|e| format!("plugin {custom}: {e}"))?,
                         )
@@ -93,6 +97,7 @@ impl AnalyzerBuilder {
             Box::new(DefaultAnalyzer::from_yaml(
                 (name, dict),
                 default_max_burst_delay,
+                plugins_path,
             )?)
         };
         check_unused_signals(

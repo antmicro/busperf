@@ -1,9 +1,11 @@
 use super::private::AnalyzerInternal;
 use crate::{
-    analyze::analyzer::axi_analyzer::ReadyValidTransactionIterator,
-    analyze::bus::{BusCommon, SignalPath, is_value_of_type},
-    analyze::plugins::load_python_plugin,
-    bus_usage::{BusUsage, MultiChannelBusUsage},
+    analyze::{
+        analyzer::axi_analyzer::ReadyValidTransactionIterator,
+        bus::{BusCommon, SignalPath, is_value_of_type},
+        plugins::load_python_plugin,
+    },
+    bus_usage::{BusUsage, MultiChannelBusUsage, RealTime},
 };
 
 use super::Analyzer;
@@ -22,11 +24,58 @@ pub struct PythonAnalyzer {
     used_yaml: Vec<String>,
 }
 
-// u32 is an enum
-// 1 - Signal
-// 2 - RisingSignal
-// 3 - ReadyValid
-type SignalInfo = (u32, Vec<SignalPath>);
+#[pyclass]
+#[derive(Clone)]
+struct Transaction {
+    start: RealTime,
+    first_data: RealTime,
+    last_data: RealTime,
+    resp_time: RealTime,
+    resp: String,
+    next_start: RealTime,
+}
+
+#[pymethods]
+impl Transaction {
+    #[new]
+    fn new(
+        start: RealTime,
+        first_data: RealTime,
+        last_data: RealTime,
+        resp_time: RealTime,
+        resp: String,
+        next_start: RealTime,
+    ) -> PyResult<Self> {
+        Ok(Transaction {
+            start,
+            first_data,
+            last_data,
+            resp_time,
+            resp,
+            next_start,
+        })
+    }
+}
+
+#[pyclass]
+#[derive(Clone, Copy)]
+enum SignalType {
+    Signal,
+    RisingSignal,
+    ReadyValid,
+}
+
+impl std::fmt::Display for SignalType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SignalType::Signal => f.write_str("Signal"),
+            SignalType::RisingSignal => f.write_str("RisingSignal"),
+            SignalType::ReadyValid => f.write_str("ReadyValid"),
+        }
+    }
+}
+
+type SignalInfo = (SignalType, Vec<SignalPath>);
 
 impl PythonAnalyzer {
     pub fn new(
@@ -36,17 +85,36 @@ impl PythonAnalyzer {
         window_length: u32,
         x_rate: f32,
         y_rate: f32,
+        plugins_path: &str,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let obj = load_python_plugin(class_name)?;
+        Python::with_gil(|py| -> PyResult<()> {
+            let module = match py.import("sys")?.getattr("modules")?.get_item("busperf") {
+                Ok(module) => {
+                    println!("used");
+                    module.extract()?
+                }
+                _ => {
+                    println!("created");
+                    PyModule::new(py, "busperf")?
+                }
+            };
+            module.add_class::<SignalType>()?;
+            module.add_class::<Transaction>()?;
+            py.import("sys")?
+                .getattr("modules")?
+                .set_item("busperf", module)?;
+            Ok(())
+        })?;
+        let obj = load_python_plugin(plugins_path, class_name)?;
 
         let signals = Python::with_gil(
             #[allow(clippy::type_complexity)]
-            |py| -> Result<Vec<(u32, Vec<String>)>, Box<dyn std::error::Error>> {
+            |py| -> Result<Vec<(SignalType, Vec<String>)>, Box<dyn std::error::Error>> {
                 Ok(obj
                     .getattr(py, "get_yaml_signals")?
                     .call0(py)
                     .map_err(|_| "'get_yaml_signals' object is not callable")?
-                    .extract::<Vec<(u32, Vec<String>)>>(py)
+                    .extract::<Vec<(SignalType, Vec<String>)>>(py)
                     .map_err(|_| "get_yaml_signals returned invalid value")?)
             },
         )?;
@@ -59,8 +127,8 @@ impl PythonAnalyzer {
                     i = &i[s.as_str()];
                 }
                 let name = path.join(".");
-                let a: Result<(u32, Vec<SignalPath>), Box<dyn std::error::Error>> = match type_ {
-                    1 | 2 => {
+                let signal: Result<SignalInfo, Box<dyn std::error::Error>> = match type_ {
+                    SignalType::Signal | SignalType::RisingSignal => {
                         match SignalPath::from_yaml_ref_with_prefix(common.module_scope(), i) {
                             Ok(path) => {
                                 used_yaml.push(name);
@@ -69,7 +137,7 @@ impl PythonAnalyzer {
                             Err(_) => Err(format!("Yaml should define {} signal", name))?,
                         }
                     }
-                    3 => {
+                    SignalType::ReadyValid => {
                         used_yaml.push(name.clone() + ".ready");
                         used_yaml.push(name.clone() + ".valid");
                         let r = SignalPath::from_yaml_ref_with_prefix(
@@ -84,11 +152,8 @@ impl PythonAnalyzer {
                         .map_err(|_| format!("Yaml is missing valid signal for {name}",))?;
                         Ok((*type_, vec![r, v]))
                     }
-                    other => Err(format!(
-                        "Invalid type of signal {other} for {name}, but can be only 1, 2, 3"
-                    ))?,
                 };
-                a
+                signal
             })
             .collect::<Result<_, _>>()?;
 
@@ -135,45 +200,6 @@ impl AnalyzerInternal for PythonAnalyzer {
         }
         reset /= 2;
         let (time_end, _) = clk.iter_changes().last().expect("Clock should have cycles");
-
-        let mut i = 0;
-        let loaded: Vec<_> = [(1, vec![]), (2, vec![])]
-            .iter()
-            .chain(self.signals.iter())
-            .map(|(type_, _)| match type_ {
-                1 | 2 => {
-                    let (_, signal) = &loaded[i];
-                    i += 1;
-                    signal
-                        .iter_changes()
-                        .map(|(t, v)| (t, v.to_bit_string().expect("Function never returns None")))
-                        .collect::<Vec<(u32, String)>>()
-                }
-                3 => {
-                    let (_, ready) = &loaded[i];
-                    let (_, valid) = &loaded[i + 1];
-                    i += 2;
-                    let a = ReadyValidTransactionIterator::new(clk, ready, valid, time_end);
-                    a.map(|time| (time, String::new())).collect()
-                }
-                _ => unreachable!("Would fail during loading of signals"),
-            })
-            .collect();
-
-        #[allow(clippy::type_complexity)]
-        let results = Python::with_gil(|py| -> PyResult<Vec<(u32, u32, u32, u32, String, u32)>> {
-            let res = self
-                .obj
-                .getattr(py, "analyze")?
-                .call1(py, PyTuple::new(py, loaded)?)?;
-            res.extract(py)
-        })
-        .unwrap_or_else(|e| {
-            panic!(
-                "Python plugin returned bad result for bus {} {e}",
-                self.common.bus_name()
-            )
-        });
         let mut usage = MultiChannelBusUsage::new(
             self.common.bus_name(),
             self.window_length,
@@ -181,13 +207,85 @@ impl AnalyzerInternal for PythonAnalyzer {
             self.x_rate,
             self.y_rate,
         );
-        usage.add_time(time_table[time_end as usize]);
-        for (time, resp_time, last_write, first_data, resp, next) in results {
-            let [time, resp_time, last_write, first_data, next] =
-                [time, resp_time, last_write, first_data, next].map(|i| time_table[i as usize]);
-            usage.add_transaction(time, resp_time, last_write, first_data, &resp, next);
+
+        let intervals = if self.common.intervals().is_empty() {
+            vec![[0, time_table[time_end as usize]]]
+        } else {
+            self.common.intervals().clone()
+        };
+        for [start, end] in intervals {
+            let mut i = 0;
+            let loaded: Vec<_> = [
+                (SignalType::Signal, vec![]),
+                (SignalType::RisingSignal, vec![]),
+            ]
+            .iter()
+            .chain(self.signals.iter())
+            .map(|(type_, _)| match type_ {
+                SignalType::Signal | SignalType::RisingSignal => {
+                    let (_, signal) = &loaded[i];
+                    i += 1;
+                    signal
+                        .iter_changes()
+                        .filter_map(|(t, v)| {
+                            let time = time_table[t as usize];
+                            if time >= start && time <= end {
+                                Some((
+                                    time,
+                                    v.to_bit_string().expect("Function never returns None"),
+                                ))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<(RealTime, String)>>()
+                }
+                SignalType::ReadyValid => {
+                    let (_, ready) = &loaded[i];
+                    let (_, valid) = &loaded[i + 1];
+                    i += 2;
+                    let a = ReadyValidTransactionIterator::new(clk, ready, valid, time_end);
+                    a.filter_map(|time_idx| {
+                        let time = time_table[time_idx as usize];
+                        if time >= start && time < end {
+                            Some((time_table[time_idx as usize], String::new()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+                }
+            })
+            .collect();
+
+            #[allow(clippy::type_complexity)]
+            let results = Python::with_gil(|py| -> PyResult<Vec<Transaction>> {
+                let res = self
+                    .obj
+                    .getattr(py, "analyze")?
+                    .call1(py, PyTuple::new(py, loaded)?)?;
+                res.extract(py)
+            })
+            .unwrap_or_else(|e| {
+                panic!(
+                    "Python plugin returned bad result for bus {} {e}",
+                    self.common.bus_name()
+                )
+            });
+            for Transaction {
+                start: time,
+                resp_time,
+                last_data: last_write,
+                first_data,
+                resp,
+                next_start: next,
+            } in results
+            {
+                usage.add_transaction(time, resp_time, last_write, first_data, &resp, next);
+            }
         }
-        usage.end(reset, vec![]);
+        usage.add_time(time_table[time_end as usize]);
+        usage.end(reset, vec![[0, time_table[time_end as usize]]]);
 
         self.result = Some(BusUsage::MultiChannel(usage));
     }
