@@ -123,8 +123,7 @@ impl AnalyzeArgs {
             .argument("FILENAME")
             .optional();
 
-        let skipped_stats = short('s')
-            .long("skip")
+        let skipped_stats = long("skip")
             .help("Stats to skip separated by a comma.")
             .argument::<String>("SKIPPED_STATS")
             .optional();
