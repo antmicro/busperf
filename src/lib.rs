@@ -54,6 +54,7 @@ pub fn load_bus_analyzers(
         .filter_map(|(name, _)| {
             if let Some(s) = name.into_string()
                 && s != "scopes"
+                && s != "common_clk_rst_ifs"
             {
                 Some(s)
             } else {
@@ -63,7 +64,7 @@ pub fn load_bus_analyzers(
         .collect::<Vec<_>>();
     if !unused.is_empty() {
         Err(format!(
-            "Yaml can only have interfaces and scopes(optional) in top level, but has extra: {}",
+            "Yaml can only have interfaces, scopes(optional) and common_clk_rst_ifs(optional) in top level, but has extra: {}",
             unused.join(", ")
         ))?;
     }

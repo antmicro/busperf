@@ -2,13 +2,17 @@ scopes:
   base: &base_scope
     - top
     - tb
+
+common_clk_rst_ifs:
+  common_clk: &common_clk
+    clock: "clk_i"
+    reset: "rst_ni"
+    reset_type: "low"
   
 interfaces:
   "a_":
     scope: [*base_scope, "$rootio"]
-    clock: "clk_i"
-    reset: "rst_ni"
-    reset_type: "low"
+    clk_rst_if: *common_clk
 
     handshake: "ReadyValid"
     ready: "a_ready"
@@ -16,11 +20,8 @@ interfaces:
  
   "b_":
     scope: [*base_scope, "some_module"]
-    clock: "clk_i"
-    reset: "rst_ni"
-    reset_type: "low"
+    clk_rst_if: *common_clk
 
     handshake: "ReadyValid"
     ready: "b_ready"
     valid: "b_valid"
-

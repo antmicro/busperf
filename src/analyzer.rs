@@ -16,8 +16,11 @@ mod python_analyzer;
 
 const COMMON_YAML: &[&str] = &[
     "scope",
+    "clk_rst_if.clock",
     "clock",
+    "clk_rst_if.reset",
     "reset",
+    "clk_rst_if.reset_type",
     "reset_type",
     "custom_analyzer",
     "intervals",

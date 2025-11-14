@@ -106,6 +106,15 @@ fn nested_scopes() {
     );
 }
 
+#[test]
+fn common_clk_rst_ifs() {
+    test_basic(
+        "tests/test_dumps/nested_scopes.vcd",
+        "tests/test_dumps/clk_rst_if.yaml",
+        2,
+    );
+}
+
 // test whether max_burst_delay functions correctly
 #[test]
 fn basic_max_burst_delay() {

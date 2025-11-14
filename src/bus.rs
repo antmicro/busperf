@@ -144,8 +144,24 @@ impl BusCommon {
         yaml: &Yaml,
         default_max_burst: CyclesNum,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let i = yaml;
+        let mut i = yaml;
         let scope = parse_scope(&i["scope"])?;
+        match &i["clk_rst_if"] {
+            Yaml::Hash(_) => {
+                if let Yaml::BadValue = i["clock"]
+                    && let Yaml::BadValue = i["reset"]
+                    && let Yaml::BadValue = i["reset_type"]
+                {
+                    i = &i["clk_rst_if"];
+                } else {
+                    Err(
+                        "clock, reset and reset_type all should be defined inside clk_rst_if or all outside",
+                    )?;
+                }
+            }
+            Yaml::BadValue => (),
+            _ => Err("clk_rst_if should be a mapping containing clock, reset, and reset_type")?,
+        }
         let clk = SignalPath::from_yaml_ref_with_prefix(&scope, &i["clock"])
             .map_err(|e| format!("Bus should have clock signal: {e}"))?;
         let rst = SignalPath::from_yaml_ref_with_prefix(&scope, &i["reset"])
