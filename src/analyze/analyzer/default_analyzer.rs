@@ -161,6 +161,15 @@ pub fn analyze_single_bus(
         {
             continue;
         }
+        let intervals = common.intervals();
+        let time_table = &simulation_data.body.time_table;
+        if !intervals.is_empty()
+            && intervals.iter().all(|&[start, end]| {
+                time_table[time as usize] < start || time_table[time as usize] > end
+            })
+        {
+            continue;
+        }
         // We subtract one to use values just before clock signal
         let time = time.saturating_sub(1);
         let reset = reset.get_value_at(
