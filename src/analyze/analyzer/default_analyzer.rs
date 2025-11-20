@@ -111,8 +111,7 @@ impl AnalyzerInternal for DefaultAnalyzer {
     }
 }
 
-const DEFAULT_YAML: &[&str] =
-    concat_slices!([&str]: &super::COMMON_YAML, &["ready", "valid", "handshake"]);
+const DEFAULT_YAML: &[&str] = concat_slices!([&str]: &super::COMMON_YAML, &["ready", "valid", "credit", "valid", "htrans", "hready", "psel", "penable", "pready"]);
 
 impl Analyzer for DefaultAnalyzer {
     fn analyze(&mut self, simulation_data: &mut SimulationData, verbose: bool) {

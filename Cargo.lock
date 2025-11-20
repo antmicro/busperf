@@ -593,6 +593,7 @@ dependencies = [
  "futures",
  "log",
  "num",
+ "owo-colors",
  "pyo3",
  "rfd",
  "serde",

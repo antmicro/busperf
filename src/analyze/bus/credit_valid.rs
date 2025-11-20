@@ -47,7 +47,7 @@ impl BusDescription for CreditValidBus {
                 (1.., V0) => CycleType::Free,
                 (0, V1) => {
                     eprintln!(
-                        "[WARN]: Credit is 0 and valid 1 on credit/valid bus time: {}",
+                        "[WARN] credit is 0 and valid 1 on credit/valid bus time: {}",
                         time
                     );
                     CycleType::Busy
@@ -55,7 +55,7 @@ impl BusDescription for CreditValidBus {
                 (0, V0) => CycleType::NoTransaction,
                 _ => {
                     eprintln!(
-                        "signal has invalid value credit: {} valid: {}",
+                        "[WARN] signal has invalid value credit: {} valid: {}",
                         credit, valid
                     );
                     CycleType::Unknown
@@ -63,7 +63,7 @@ impl BusDescription for CreditValidBus {
             }
         } else {
             eprintln!(
-                "bus in unknown state outside reset credit: {}, valid: {}",
+                "[WARN] bus in unknown state outside reset credit: {}, valid: {}",
                 credit, valid
             );
             CycleType::Unknown

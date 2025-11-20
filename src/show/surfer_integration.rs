@@ -11,6 +11,7 @@ use std::{
 
 use num::{BigInt, FromPrimitive};
 
+use owo_colors::OwoColorize;
 use proto::{MarkerInfo, WcpCSMessage, WcpCommand, WcpSCMessage};
 
 #[allow(dead_code)]
@@ -91,7 +92,10 @@ impl Surfer {
         let Some(WcpSCMessage::response(proto::WcpResponse::get_item_list { ids })) =
             self.send_message(&WcpCSMessage::command(proto::WcpCommand::get_item_list))
         else {
-            eprintln!("[ERROR] Did not receive response for get_item_list");
+            eprintln!(
+                "{}",
+                "[ERROR] Did not receive response for get_item_list".bright_red()
+            );
             return;
         };
         if ids.len() != self.loaded_signals.len() {
@@ -100,7 +104,10 @@ impl Surfer {
                     ids,
                 }))
             else {
-                eprintln!("[ERROR] Did not receive response for get_item_list");
+                eprintln!(
+                    "{}",
+                    "[ERROR] Did not receive response for get_item_list".bright_red()
+                );
                 return;
             };
             self.loaded_signals = results.into_iter().map(|r| r.name).collect();
@@ -128,12 +135,16 @@ impl Surfer {
                 } => self.commands = commands,
                 response => {
                     eprintln!(
-                        "[ERROR] Received other response from surfer for greeting {response:?}"
+                        "{} {response:?}",
+                        "[ERROR] Received other response from surfer for greeting".bright_red()
                     )
                 }
             }
         } else {
-            eprintln!("[ERROR] Did not receive response for a greeting from surfer");
+            eprintln!(
+                "{}",
+                "[ERROR] Did not receive response for a greeting from surfer".bright_red()
+            );
         }
 
         let mut trace_full_path =
@@ -147,11 +158,17 @@ impl Surfer {
                     eprintln!("[Info] Succesfully connected to Surfer.")
                 }
                 response => {
-                    eprintln!("[ERROR] Received other response from surfer for load {response:?}")
+                    eprintln!(
+                        "{} {response:?}",
+                        "[ERROR] Received other response from surfer for load".bright_red()
+                    )
                 }
             }
         } else {
-            eprintln!("[ERROR] Did not receive response for a load from surfer");
+            eprintln!(
+                "{}",
+                "[ERROR] Did not receive response for a load from surfer".bright_red()
+            );
         }
     }
 }
@@ -179,7 +196,7 @@ fn connect_or_start_surfer() -> Option<TcpStream> {
                 {}
             });
             let Ok(port) = port_receiver.recv() else {
-                eprintln!("[ERROR] Failed to open a socket");
+                eprintln!("{}", "[ERROR] Failed to open a socket".bright_red());
                 return None;
             };
             std::thread::spawn(move || {
@@ -194,21 +211,24 @@ fn connect_or_start_surfer() -> Option<TcpStream> {
                                 && let Ok(stderr) = str::from_utf8(&output.stderr)
                             {
                                 eprintln!(
-                                    "[ERROR] Surfer stopped unexpectedly\nstdout: {}\nstderr: {}",
-                                    stdout, stderr
+                                    "{}\nstdout: {}\n{} {}",
+                                    "[ERROR] Surfer stopped unexpectedly".bright_red(),
+                                    stdout,
+                                    "stderr:".bright_red(),
+                                    stderr
                                 );
                             } else {
                                 eprintln!("[ERROR] Surfer stopped unexpectedly");
                             }
                         }
                     }
-                    Err(e) => eprintln!("[ERROR] Failed to run surfer: {e}"),
+                    Err(e) => eprintln!("{} {e}", "[ERROR] Failed to run surfer:".bright_red()),
                 };
             });
             let ret = rx.recv_timeout(Duration::from_secs(1)).ok();
             // if Surfer fails to start above timeout returns None, then we want to close the socket that is waiting in accept
             if ret.is_none() && TcpStream::connect(format!("127.0.0.1:{port}")).is_err() {
-                eprintln!("[ERROR] Failed to cleanup the listener");
+                eprintln!("{}", "[ERROR] Failed to cleanup the listener".bright_red());
             }
             ret
         }
@@ -312,6 +332,9 @@ pub fn zoom_to_range(start: u64, end: u64) {
             eprintln!("[Info] Surfer version does not support setting viewport range. Skipping");
         }
     } else {
-        eprintln!("[ERROR] Failed to zoom to range: Connection to surfer invalid.");
+        eprintln!(
+            "{}",
+            "[ERROR] Failed to zoom to range: Connection to surfer invalid.".bright_red()
+        );
     }
 }

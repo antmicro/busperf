@@ -46,7 +46,8 @@ impl SignalPath {
                 scope.append(&mut yaml_scope);
                 Ok(SignalPath { scope, name })
             }
-            _ => Err("Invalid YAML")?,
+            Yaml::BadValue => Err("not found")?,
+            _ => Err("invalid value")?,
         }
     }
 }
@@ -59,7 +60,7 @@ macro_rules! bus_from_yaml {
             let $signal_name = SignalPath::from_yaml_with_prefix(
                 bus_scope,
                 yaml.remove(&Yaml::from_str(stringify!($signal_name)))
-                    .ok_or(concat!(stringify!($name), " bus requires ready signal"))?,
+                    .ok_or(concat!(stringify!($bus_type), " bus requires ", stringify!($signal_name), " signal"))?,
             )?;
             )*
             Ok($bus_type::new(
@@ -107,20 +108,32 @@ fn parse_intervals(yaml: &Yaml) -> Result<Vec<[RealTime; 2]>, Box<dyn std::error
             .map(|i| -> Result<_, Box<dyn std::error::Error>> {
                 let i = i
                     .as_vec()
-                    .ok_or("Interval should be a tuple of two numbers")?;
+                    .ok_or("interval should be an array of two numbers")?;
                 if i.len() != 2 {
-                    Err("Each interval should be a 2 element list, defining start and end")?
+                    Err("each interval should be a 2 element list, defining start and end")?
+                }
+                if i[0] >= i[1] {
+                    Err("interval start is later than end")?;
                 }
                 Ok([
-                    i[0].as_i64().ok_or("Interval start should be a number")? as u64,
-                    i[1].as_i64().ok_or("Interval end should be a number")? as u64,
+                    i[0].as_i64()
+                        .ok_or(format!("interval start should be a number not {:?}", i[0]))?
+                        as u64,
+                    i[1].as_i64()
+                        .ok_or(format!("interval end should be a number not {:?}", i[1]))?
+                        as u64,
                 ])
             })
             .collect::<Result<Vec<_>, _>>()?;
         intervals.sort_by(|a, b| a[0].cmp(&b[0]));
         Ok(intervals)
-    } else {
+    } else if let Yaml::BadValue = yaml["intervals"] {
         Ok(vec![])
+    } else {
+        Err(format!(
+            "intervals should be an array of intervals not {:?}",
+            yaml["intervals"]
+        ))?
     }
 }
 
@@ -149,18 +162,18 @@ impl BusCommon {
             _ => Err("clk_rst_if should be a mapping containing clock, reset, and reset_type")?,
         }
         let clk = SignalPath::from_yaml_ref_with_prefix(&scope, &i["clock"])
-            .map_err(|e| format!("Bus should have clock signal: {e}"))?;
+            .map_err(|e| format!("clock signal definition {e}"))?;
         let rst = SignalPath::from_yaml_ref_with_prefix(&scope, &i["reset"])
-            .map_err(|e| format!("Bus should have reset signal: {e}"))?;
+            .map_err(|e| format!("reset signal definition {e}"))?;
         let rst_type = i["reset_type"]
             .as_str()
-            .ok_or("Bus should have reset type defined")?;
+            .ok_or("reset type should be \"high\" or \"low\"")?;
         let rst_type = if rst_type == "low" {
             0
         } else if rst_type == "high" {
             1
         } else {
-            Err("Reset type can be \"high\" or \"low\"")?
+            Err("reset type should be \"high\" or \"low\"")?
         };
         let intervals = parse_intervals(yaml)?;
 
@@ -261,11 +274,11 @@ impl BusDescriptionBuilder {
                 }
                 #[cfg(not(feature = "python-plugins"))]
                 {
-                    Err("Python plugins are disabled")?
+                    Err("python plugins are disabled")?
                 }
             }
 
-            _ => Err(format!("Invalid handshake {}", handshake))?,
+            _ => Err(format!("invalid handshake {}", handshake))?,
         }
     }
 }

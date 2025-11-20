@@ -1,5 +1,6 @@
 use bpaf::{OptionParser, Parser, construct, long, positional, short};
 use busperf::show::OutputType;
+use owo_colors::OwoColorize;
 
 enum Args {
     Analyze(AnalyzeArgs),
@@ -194,16 +195,34 @@ fn main() {
                 run_visualization,
             };
 
-            let mut analyzers = load_bus_analyzers(
+            let mut analyzers = match load_bus_analyzers(
                 &args.files.bus_description,
                 args.max_burst_delay as i32,
                 args.window_length,
                 args.x_rate,
                 args.y_rate,
                 &args.plugins_path,
-            )
-            .unwrap();
-            let mut data = load_simulation_trace(&args.files.simulation_trace, args.verbose);
+            ) {
+                Ok(analyzers) => analyzers,
+                Err(e) => {
+                    eprintln!(
+                        "{} {}",
+                        "[ERROR] Invalid bus decription:".bright_red(),
+                        e.bright_red()
+                    );
+                    std::process::exit(1);
+                }
+            };
+
+            let mut data = load_simulation_trace(&args.files.simulation_trace, args.verbose)
+                .unwrap_or_else(|e| {
+                    eprintln!(
+                        "{} {}",
+                        "[ERROR] Invalid simulation trace:".bright_red(),
+                        e.bright_red()
+                    );
+                    std::process::exit(1);
+                });
             for a in analyzers.iter_mut() {
                 a.analyze(&mut data, args.verbose);
             }

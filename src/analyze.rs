@@ -1,6 +1,6 @@
 use std::{
     fs::File,
-    io::{Read, Write},
+    io::{BufReader, Read, Write},
     sync::{Arc, atomic::AtomicU64},
 };
 
@@ -91,21 +91,23 @@ pub struct SimulationData {
 ///
 /// * `filename` - path to file.
 /// * `verbose` - prints how long it took to load.
-pub fn load_simulation_trace(filename: &str, verbose: bool) -> SimulationData {
+pub fn load_simulation_trace(
+    filename: &str,
+    verbose: bool,
+) -> Result<SimulationData, Box<dyn std::error::Error>> {
     let start = std::time::Instant::now();
     let load_options = LoadOptions {
         multi_thread: true,
         remove_scopes_with_empty_name: false,
     };
-    let header =
-        viewers::read_header_from_file(filename, &load_options).expect("Failed to load file.");
+    let file = BufReader::new(std::fs::File::open(filename)?);
+    let header = viewers::read_header(file, &load_options)?;
     let hierarchy = header.hierarchy;
-    let body = viewers::read_body(header.body, &hierarchy, Some(Arc::new(AtomicU64::new(0))))
-        .expect("Failed to load body.");
+    let body = viewers::read_body(header.body, &hierarchy, Some(Arc::new(AtomicU64::new(0))))?;
     if verbose {
         println!("Loading trace took {:?}", start.elapsed());
     }
-    SimulationData { hierarchy, body }
+    Ok(SimulationData { hierarchy, body })
 }
 
 fn load_signals(

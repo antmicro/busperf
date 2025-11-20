@@ -3,6 +3,7 @@ use crate::analyze::bus::SignalPath;
 use crate::analyze::plugins::load_python_plugin;
 
 use super::BusDescription;
+use owo_colors::OwoColorize;
 use pyo3::{
     prelude::*,
     types::{PyList, PyTuple},
@@ -67,6 +68,13 @@ impl BusDescription for PythonCustomBus {
             let o = obj.extract::<Py<CycleType>>(py)?;
             Ok(*o.borrow(py))
         })
-        .expect("Python returned bad result")
+        .unwrap_or_else(|e| {
+            eprintln!(
+                "{} {}",
+                "[ERROR] Python returned bad result".bright_red(),
+                e.bright_red()
+            );
+            crate::CycleType::Unknown
+        })
     }
 }

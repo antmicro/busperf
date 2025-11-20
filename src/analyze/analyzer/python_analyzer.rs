@@ -7,6 +7,7 @@ use crate::{
     },
     bus_usage::{BusUsage, MultiChannelBusUsage, RealTime},
 };
+use owo_colors::OwoColorize;
 
 use super::Analyzer;
 use pyo3::{prelude::*, types::PyTuple};
@@ -89,14 +90,8 @@ impl PythonAnalyzer {
     ) -> Result<Self, Box<dyn std::error::Error>> {
         Python::with_gil(|py| -> PyResult<()> {
             let module = match py.import("sys")?.getattr("modules")?.get_item("busperf") {
-                Ok(module) => {
-                    println!("used");
-                    module.extract()?
-                }
-                _ => {
-                    println!("created");
-                    PyModule::new(py, "busperf")?
-                }
+                Ok(module) => module.extract()?,
+                _ => PyModule::new(py, "busperf")?,
             };
             module.add_class::<SignalType>()?;
             module.add_class::<Transaction>()?;
@@ -258,31 +253,35 @@ impl AnalyzerInternal for PythonAnalyzer {
             })
             .collect();
 
-            #[allow(clippy::type_complexity)]
-            let results = Python::with_gil(|py| -> PyResult<Vec<Transaction>> {
+            match Python::with_gil(|py| -> PyResult<Vec<Transaction>> {
                 let res = self
                     .obj
                     .getattr(py, "analyze")?
                     .call1(py, PyTuple::new(py, loaded)?)?;
                 res.extract(py)
-            })
-            .unwrap_or_else(|e| {
-                panic!(
-                    "Python plugin returned bad result for bus {} {e}",
-                    self.common.bus_name()
-                )
-            });
-            for Transaction {
-                start: time,
-                resp_time,
-                last_data: last_write,
-                first_data,
-                resp,
-                next_start: next,
-            } in results
-            {
-                usage.add_transaction(time, resp_time, last_write, first_data, &resp, next);
-            }
+            }) {
+                Ok(results) => {
+                    for Transaction {
+                        start: time,
+                        resp_time,
+                        last_data: last_write,
+                        first_data,
+                        resp,
+                        next_start: next,
+                    } in results
+                    {
+                        usage.add_transaction(time, resp_time, last_write, first_data, &resp, next);
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "{} {} {}",
+                        "[ERROR] Python plugin returned bad result for bus".bright_red(),
+                        self.common.bus_name().bright_red(),
+                        e.bright_red()
+                    )
+                }
+            };
         }
         usage.add_time(time_table[time_end as usize]);
         usage.end(reset, vec![[0, time_table[time_end as usize]]]);

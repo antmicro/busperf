@@ -6,7 +6,7 @@ use busperf::{
 
 // helper function to check if analyzer returns expected result
 fn test(trace: &str, yaml: &str, max_burst_delay: i32, correct: &[BusUsage]) {
-    let mut data = load_simulation_trace(trace, false);
+    let mut data = load_simulation_trace(trace, false).unwrap();
     let mut descs = load_bus_analyzers(
         yaml,
         max_burst_delay,
@@ -26,7 +26,7 @@ fn test(trace: &str, yaml: &str, max_burst_delay: i32, correct: &[BusUsage]) {
 
 // helper function to check if provided number of results has been calculated
 fn test_basic(trace: &str, yaml: &str, num: usize) {
-    let mut data = load_simulation_trace(trace, false);
+    let mut data = load_simulation_trace(trace, false).unwrap();
     let mut descs = load_bus_analyzers(yaml, 0, 10000, 0.0001, 0.00001, "plugins/python").unwrap();
     for desc in descs.iter_mut() {
         desc.analyze(&mut data, false);
@@ -310,7 +310,7 @@ fn python_axi() {
 
 #[test]
 fn custom_plugin_path() {
-    let mut data = load_simulation_trace("tests/test_dumps/test.vcd", false);
+    let mut data = load_simulation_trace("tests/test_dumps/test.vcd", false).unwrap();
     let mut descs = load_bus_analyzers(
         "tests/test_dumps/python_test.yaml",
         0,
