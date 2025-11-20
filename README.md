@@ -9,201 +9,17 @@ Manual analysis of the system busses is tiresome and error prone.
 
 ## Goals
 
-* BusPerf will analyse and provide bus activity statistics based on the simulation trace, in order to 
+* Busperf analyzes and provides bus activity statistics based on the simulation trace, in order to 
 guide developer to the buses with lowest utilisation and highest backpressure.
-* It will be done by  ingesting VCD/FST files, analysing traces and providing statistics in visual and text forms.
-* It should also provide API, so that user can extend functionality with features such as transfer-to-transfer delay, command-to-response delay, or which side of the channel creates bottleneck.
-* It will read VCD file with accompanying YAML file.
-  YAML file contains buses descriptions:
-  * names of the bus signals,
-  * their handshake type (valid/ready, valid/credit, valid/stall),
-  * optionally bus type.
-* (Optional) YAML files would be created using topwarp with some modifications, and ideally this file could also 
-be used for the uvm-dvgen to generate testing environments.
-
-## YAML bus description
-
-### Single channel bus
-
-Example `.yaml` for `tests/test_dumps/dump.vcd`:
-
-```
-interfaces:
-  "a_":
-    scope: "some_module"
-    clock: "clk_i"
-    reset: "rst_ni"
-    reset_type: "low"
-
-    handshake: "ReadyValid"
-    ready: "a_ready"
-    valid: "a_valid"
- 
-  "b_":
-    scope: "some_module"
-    clock: "clk_i"
-    reset: "rst_ni"
-    reset_type: "low"
-
-    handshake: "Custom"
-    custom_handshake: "PythonReadyValid"
-    ready: "b_ready"
-    valid: "b_valid"
-```
-
-- "a_", "b_": names of buses
-- reset_type: "low" or "high"
-- handshake: possible values: "ReadyValid", "CreditValid", "AHB", "APB", Custom"
-- custom_handshake: if handshake is set to "Custom" a name of python plugin should be provided
-
-Scopes can also be nested. Example `.yaml` for `tests/test_dumps/nested_scopes.vcd`:
-
-```
-base: &base_scope
-  - top
-  - tb
-  
-interfaces:
-  "a_":
-    scope: [*base_scope, "$rootio"]
-    clock: "clk_i"
-    reset: "rst_ni"
-    reset_type: "low"
-
-    handshake: "ReadyValid"
-    ready: "a_ready"
-    valid: "a_valid"
- 
-  "b_":
-    scope: [*base_scope, "some_module"]
-    clock: "clk_i"
-    reset: "rst_ni"
-    reset_type: "low"
-
-    handshake: "ReadyValid"
-    ready: "b_ready"
-    valid: "b_valid"
-```
-
-### Multi channel bus
-
-Example `.yaml` for multi channel bus
-
-```
-interfaces:
-  "ram_rd":
-    scope: ["test_taxi_axi_ram", "uut"]
-    clock: "clk"
-    reset: "rst"
-    reset_type: "high"
-
-    custom_analyzer: "AXIRdAnalyzer"
-    intervals:
-      - [0, 5000000]
-      - [1234567890,1324567890]
-    ar:
-      id:    ["s_axi_rd", "arid"]
-      ready: ["s_axi_rd", "arready"]
-      valid: ["s_axi_rd", "arvalid"]
-    r:
-      id:    ["s_axi_rd", "rid"]
-      ready: ["s_axi_rd", "rready"]
-      valid: ["s_axi_rd", "rvalid"]
-      rresp: ["s_axi_rd", "rresp"]
-      rlast: ["s_axi_rd", "rlast"]
-
-  "ram_wr":
-    scope: ["test_taxi_axi_ram", "uut"]
-    clock: "clk"
-    reset: "rst"
-    reset_type: "high"
-
-    custom_analyzer: "AXIWrAnalyzer"
-    aw:
-      id:    ["s_axi_rd", "awid"]
-      ready: ["s_axi_wr", "awready"]
-      valid: ["s_axi_wr", "awvalid"]
-    w:
-      ready: ["s_axi_wr", "wready"]
-      valid: ["s_axi_wr", "wvalid"]
-      wlast: ["s_axi_wr", "wlast"]
-    b:
-      ready: ["s_axi_wr", "bready"]
-      valid: ["s_axi_wr", "bvalid"]
-      bresp: ["s_axi_wr", "bresp"]
-      id:    ["s_axi_rd", "bid"]
-```
-
-For a multi channel bus an analyzer has to be specified alongside with signals required by that analyzer.
-- custom_analyzer: possible values: "AXIRdAnalyzer", "AXIWrAnalyzer", "\<name of custom python analyzer\>"
-
-## Output
-
-For each described bus busperf will calculate and display:
-
-### Single channel
-
-- `bus_name`: name of bus
-- `busy`: number of clock cycles performing transaction
-- `free`: bus is not used
-- `no transaction`: transaction is not performed
-- `backpressure`: [backpressure](https://en.wikipedia.org/wiki/Back_pressure)
-- `no data`: receiver ready but no data is avaible to tranfer
-- `delays between transaction`: delays in clock cycles between transactions
-- `burst lengths`: lengths of bursts including delays during burst
-
-Table matching state of the bus with busperf statistic name:
-
-| busperf        | busy                  | free               | no transaction     | backpressure      | no data         | unknown        |
-|----------------|-----------------------|--------------------|--------------------|-------------------|-----------------|----------------|
-| axi            | ready && valid        | !ready && !valid   | not used           | !ready && valid   | ready && !valid | no used        |
-| ahb            | seq / no seq          | idle               | not used           | hready            | trans=BUSY      | other          |
-| credit valid   | credit>0 && valid     | credit>0 && !valid | credit=0 && !valid | not used          | not used        | other          |
-| apb            | setup or access phase | !psel              | not used           | access && !pready | not used        | other          |
-
-### Multi channel
-- `Cmd to completion`: Number of clock cycles from issuing a command to receving a reponse.
-- `Cmd to first data`: Number of clock cycles from issuing a command to first data being transfered.
-- `Last data to completion`: Number of clock cycles from last data being transfered to transaction end.
-- `Transaction delays`: Delays between transactions in clock cycles
-- `Error rate`: Percentage of transactions that resulted in error.
-- `Bandwidth`: Averaged bandwidth in transactions per clock cycle.
-
-### Example output
-
-**Single channel buses**
-```
-╭──────────┬──────┬──────────────┬─────────┬────────────────┬──────┬───────┬──────────────────────┬──────────────────────╮
-│ bus name │ Busy │ Backpressure │ No data │ No transaction │ Free │ Reset │ Transaction delays   │ Burst lengths        │
-├──────────┼──────┼──────────────┼─────────┼────────────────┼──────┼───────┼──────────────────────┼──────────────────────┤
-│ test     │ 9    │ 5            │ 3       │ 0              │ 3    │ 2     │ 1 x1; 4-7 x1; 2-3 x3 │ 4-7 x1; 2-3 x1; 1 x3 │
-╰──────────┴──────┴──────────────┴─────────┴────────────────┴──────┴───────┴──────────────────────┴──────────────────────╯
-```
-```
-╭──────────┬──────┬──────────────┬─────────┬────────────────┬──────┬───────┬────────────────────┬───────────────╮
-│ bus name │ Busy │ Backpressure │ No data │ No transaction │ Free │ Reset │ Transaction delays │ Burst lengths │
-├──────────┼──────┼──────────────┼─────────┼────────────────┼──────┼───────┼────────────────────┼───────────────┤
-│ a_       │ 0    │ 0            │ 15      │ 0              │ 0    │ 15    │ 16-31 x1           │               │
-│ b_       │ 0    │ 0            │ 15      │ 0              │ 0    │ 15    │ 16-31 x1           │               │
-╰──────────┴──────┴──────────────┴─────────┴────────────────┴──────┴───────┴────────────────────┴───────────────╯
-```
-
-**Multi channel buses**
-```
-╭──────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬──────────────────────┬─────────────────────────────┬───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┬───────────────────┬─────────────────────────┬─────────────────────────────────┬───────────────────────────────╮
-│ bus name │ Cmd to completion                                                                                                         │ Cmd to first data    │ Last data to completion     │ Transaction delays                                                                                                                                                        │ Error rate        │ Bandwidth               │ x rate                          │ y rate                        │
-├──────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼──────────────────────┼─────────────────────────────┼───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┼───────────────────┼─────────────────────────┼─────────────────────────────────┼───────────────────────────────┤
-│ ram_rd   │ 1-2k x120; 16-31 x126; 4-7 x650; 32-63 x158; 8-15 x364; 2-3 x979; 256-511 x417; 64-127 x333; 512-1023 x44; 128-255 x141   │ 4-7 x1282; 2-3 x2050 │ 0 x3332                     │ 32-63 x127; 2-4k x32; 512-1023 x32; 16-31 x483; -2 x682; -1 x106; 4-7 x200; 128-255 x71; 1-2k x64; 64-127 x27; 0 x638; 4-8k x16; 2-3 x108; 256-511 x147; 8-15 x565; 1 x34 │ Error rate: 0.00% │ Bandwidth: 0.0046 t/clk │ Bandwidth above x rate: 100.00% │ Bandwidth below y rate: 0.00% │
-│ ram_wr   │ 16-31 x136; 2-3 x1082; 8-15 x445; 256-511 x467; 128-255 x141; 1-2k x84; 64-127 x324; 32-63 x164; 4-7 x1536; 512-1023 x129 │ 1 x3624; 2-3 x884    │ 4-7 x685; 2-3 x414; 1 x3409 │ 0 x1567; 8-15 x906; -2 x165; 128-255 x70; -1 x157; 2-4k x16; 4-8k x17; 32-63 x19; 2-3 x877; 256-511 x148; 1-2k x80; 512-1023 x17; 64-127 x27; 16-31 x179; 4-7 x263        │ Error rate: 0.00% │ Bandwidth: 0.0062 t/clk │ Bandwidth above x rate: 100.00% │ Bandwidth below y rate: 0.00% │
-╰──────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴──────────────────────┴─────────────────────────────┴───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┴───────────────────┴─────────────────────────┴─────────────────────────────────┴───────────────────────────────╯
-```
-
-![gui example](screenshots/example.png)
+* It ingests VCD/FST file with accompanying YAML, analyzes traces and provides statistics in visual and text forms.
+* YAML file describes which buses to profile, their type and time intervals of interest.
+* It allows user to extend functionality with custom python plugins.
 
 ## Usage
 
 ### Docs
 
+Project documentation is available in `docs/` directory. Rustdoc can be generated with:
 ```sh
 $ cargo doc --no-deps --open
 ```
@@ -299,6 +115,8 @@ Available options:
 ```
 
 ### GUI
+
+![gui example](screenshots/example.png)
 
 On left panel there is a list for selection of any of the analyzer buses.
 On the main panel on top there is a overview of the statistics of selected
