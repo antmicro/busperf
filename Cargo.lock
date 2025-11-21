@@ -463,6 +463,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
 
 [[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
 name = "bincode"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -582,9 +588,11 @@ checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
 name = "busperf"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "bincode",
  "blake3",
  "bpaf",
+ "cfg-if",
  "constcat",
  "csv",
  "eframe",
@@ -618,6 +626,7 @@ dependencies = [
  "getrandom",
  "log",
  "rfd",
+ "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
  "wellen 0.17.1",

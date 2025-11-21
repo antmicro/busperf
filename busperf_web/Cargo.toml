@@ -16,5 +16,6 @@ wellen = "0.17.0"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.50"
+wasm-bindgen = "0.2.105"
 web-sys = "0.3.70"  
 log = "0.4.27"

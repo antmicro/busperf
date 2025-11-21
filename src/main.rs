@@ -1,5 +1,6 @@
 use bpaf::{OptionParser, Parser, construct, long, positional, short};
 use busperf::show::OutputType;
+use cfg_if::cfg_if;
 use owo_colors::OwoColorize;
 
 enum Args {
@@ -73,7 +74,6 @@ struct AnalyzeArgs {
     output: Option<String>,
     skipped_stats: Option<String>,
     output_type: OutputType,
-    save: Option<String>,
     window_length: u32,
     x_rate: f32,
     y_rate: f32,
@@ -112,11 +112,6 @@ impl AnalyzeArgs {
             .help("Output filename")
             .argument("OUT")
             .optional();
-        let save = short('s')
-            .long("save")
-            .help("Save analyzed statistics for later view")
-            .argument("FILENAME")
-            .optional();
 
         let skipped_stats = long("skip")
             .help("Stats to skip separated by a comma.")
@@ -133,7 +128,20 @@ impl AnalyzeArgs {
         let text = long("text")
             .help("Format output as table")
             .req_flag(OutputType::Pretty);
-        let output_type = construct!([gui, csv, md, text]);
+
+        let data = long("save")
+            .help("Save data in busperf format")
+            .req_flag(OutputType::Data);
+        cfg_if! {
+            if #[cfg(feature = "generate-html")] {
+                let html = long("html")
+                    .help("Generate HTML with embeded busperf_web")
+                    .req_flag(OutputType::Html);
+                let output_type = construct!([gui, csv, md, text, data, html]);
+            } else {
+                let output_type = construct!([gui, csv, md, text, data]);
+            }
+        }
 
         let window_length = short('w')
             .long("window")
@@ -161,7 +169,6 @@ impl AnalyzeArgs {
             output_type,
             output,
             skipped_stats,
-            save,
             max_burst_delay,
             window_length,
             x_rate,
@@ -219,19 +226,32 @@ fn main() {
             for a in analyzers.iter_mut() {
                 a.analyze(&mut data, args.verbose);
             }
-            if let Some(name) = args.save {
-                use busperf::analyze::save_data;
-
-                save_data(&analyzers, &name, &args.files.simulation_trace);
+            if let OutputType::Data = args.output_type {
+                args.output.as_ref().unwrap_or_else(|| {
+                    eprintln!(
+                        "Error: Output file name (-o option) is required for data output type."
+                    );
+                    std::process::exit(1)
+                });
             }
-            let mut out: &mut dyn std::io::Write = match args.output {
+            #[cfg(feature = "generate-html")]
+            if let OutputType::Html = args.output_type {
+                args.output.as_ref().unwrap_or_else(|| {
+                    eprintln!(
+                        "Error: Output file name (-o option) is required for html output type."
+                    );
+                    std::process::exit(1)
+                });
+            }
+
+            let mut out: &mut dyn std::io::Write = match args.output.clone() {
                 None => &mut std::io::stdout(),
                 Some(filename) => &mut std::fs::File::create(filename).unwrap(),
             };
             run_visualization(
                 analyzers,
                 args.output_type,
-                Some(&mut out),
+                &mut out,
                 &mut data,
                 &args.files.simulation_trace,
                 args.verbose,

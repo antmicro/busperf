@@ -71,7 +71,7 @@ impl std::fmt::Display for SignalPath {
 pub fn run_visualization(
     mut analyzers: Vec<Box<dyn Analyzer>>,
     type_: OutputType,
-    out: Option<&mut impl Write>,
+    out: &mut impl Write,
     simulation_data: &mut SimulationData,
     trace_path: &str,
     verbose: bool,

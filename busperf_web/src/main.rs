@@ -15,6 +15,17 @@ impl Test {
     }
 }
 
+use wasm_bindgen::prelude::*;
+
+static mut DATA: Vec<u8> = Vec::new();
+
+#[wasm_bindgen]
+pub fn set_busperf_data(data: Vec<u8>) {
+    unsafe {
+        DATA = data;
+    }
+}
+
 impl eframe::App for Test {
     fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
         if let Some(file) = ctx.input(|input| input.raw.dropped_files.first().map(|f| f.clone())) {
@@ -29,6 +40,18 @@ impl eframe::App for Test {
         if let Some(app) = &mut *self.bp.borrow_mut() {
             app.update(ctx, frame);
         } else {
+            unsafe {
+                #[allow(static_mut_refs)]
+                let foo = if !DATA.is_empty() { true } else { false };
+                if foo {
+                    web_sys::console::log_1(&"LOADED DATA".into());
+                    #[allow(static_mut_refs)]
+                    if let Ok(a) = BusperfApp::build_from_bytes(&DATA) {
+                        *self.bp.borrow_mut() = Some(a);
+                    }
+                    ctx.request_repaint();
+                }
+            }
             egui::CentralPanel::default().show(ctx, |ui| {
                 ui.add_space(ui.available_height() / 3.0);
                 ui.with_layout(
@@ -49,10 +72,13 @@ impl eframe::App for Test {
                             wasm_bindgen_futures::spawn_local(async move {
                                 if let Some(file) = rfd::AsyncFileDialog::new().pick_file().await {
                                     let data = file.read().await;
-                                    if let Ok(a) = BusperfApp::build_from_bytes(&data) {
-                                        *app.borrow_mut() = Some(a);
+                                    unsafe {
+                                        DATA = data;
                                     }
-                                    ctx.request_repaint();
+                                    // if let Ok(a) = BusperfApp::build_from_bytes(&data) {
+                                    //     *app.borrow_mut() = Some(a);
+                                    // }
+                                    // ctx.request_repaint();
                                 };
                             });
                         }

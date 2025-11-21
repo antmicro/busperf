@@ -1,4 +1,5 @@
 use blake3::Hash;
+use flate2::Compression;
 use std::io::Read;
 use std::str::FromStr;
 use std::{cell::Cell, io::Write};
@@ -18,23 +19,11 @@ pub enum OutputType {
     Md,
     /// GUI
     Rendered,
-}
-
-/// * "text" -> Pretty
-/// * "csv" -> Csv
-/// * "md" -> Md
-/// * "gui" -> Rendered
-impl TryFrom<&str> for OutputType {
-    type Error = &'static str;
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "text" => Ok(Self::Pretty),
-            "csv" => Ok(Self::Csv),
-            "md" => Ok(Self::Md),
-            "gui" => Ok(Self::Rendered),
-            _ => Err("Expected one of [csv, md, gui, text]"),
-        }
-    }
+    /// Busperf data - binary format
+    Data,
+    /// Busperf web with embedded data in one html file
+    #[cfg(feature = "generate-html")]
+    Html,
 }
 
 pub struct WaveformFile {
@@ -47,25 +36,32 @@ pub fn show_data(
     usages: Vec<BusData>,
     trace: WaveformFile,
     type_: OutputType,
-    out: Option<&mut impl Write>,
+    out: &mut impl Write,
     verbose: bool,
     skipped_stats: &[String],
 ) {
     match type_ {
         OutputType::Pretty => {
             let usages = usages.iter().map(|u| &u.usage).collect::<Vec<_>>();
-            text_output::print_statistics(out.unwrap(), &usages, verbose, skipped_stats);
+            text_output::print_statistics(out, &usages, verbose, skipped_stats);
         }
         OutputType::Csv => {
             let usages = usages.iter().map(|u| &u.usage).collect::<Vec<_>>();
-            text_output::generate_csv(out.unwrap(), &usages, verbose, skipped_stats)
+            text_output::generate_csv(out, &usages, verbose, skipped_stats)
         }
         OutputType::Md => {
             let usages = usages.iter().map(|u| &u.usage).collect::<Vec<_>>();
-            text_output::generate_md_table(out.unwrap(), &usages, verbose, skipped_stats)
+            text_output::generate_md_table(out, &usages, verbose, skipped_stats)
         }
         OutputType::Rendered => {
             egui_visualization::run_visualization(usages, trace, wellen::TimescaleUnit::PicoSeconds)
+        }
+        OutputType::Data => {
+            save_data(usages, trace, out);
+        }
+        #[cfg(feature = "generate-html")]
+        OutputType::Html => {
+            generate_html(usages, trace, out);
         }
     }
 }
@@ -90,8 +86,43 @@ pub fn visualization_from_file(filename: &str, output_type: OutputType, verbose:
         usages,
         trace,
         output_type,
-        Some(&mut std::io::stdout()),
+        &mut std::io::stdout(),
         verbose,
         &[],
     );
+}
+
+#[inline]
+fn prepare_data(usages: Vec<BusData>, trace: WaveformFile, out: &mut impl Write) {
+    let data = (trace.path, trace.hash.to_string(), usages);
+    let config = bincode::config::standard();
+    let data = bincode::encode_to_vec(data, config).expect("Serialization failed");
+    let mut encoder = flate2::write::GzEncoder::new(out, Compression::default());
+    encoder.write_all(&data).expect("Write to file failed");
+}
+
+fn save_data(usages: Vec<BusData>, trace: WaveformFile, out: &mut impl Write) {
+    prepare_data(usages, trace, out);
+}
+
+#[cfg(feature = "generate-html")]
+fn generate_html(usages: Vec<BusData>, trace: WaveformFile, out: &mut impl Write) {
+    use base64::prelude::*;
+
+    let mut busperf_data = Vec::new();
+    prepare_data(usages, trace, &mut busperf_data);
+
+    let busperf_data = BASE64_STANDARD.encode(busperf_data);
+
+    let js = include_str!("../target_wasm/busperf_web.js");
+
+    let wasm = include_bytes!("../target_wasm/busperf_web_bg.wasm");
+    let wasm = BASE64_STANDARD.encode(wasm);
+
+    let html = String::from(include_str!("../template.html"));
+    let html = html.replace("JAVASCRIPT_HERE", &js);
+    let html = html.replace("WASM_HERE", &wasm);
+    let html = html.replace("DATA_HERE", &busperf_data);
+
+    out.write_all(html.as_bytes()).expect("Failed to write")
 }

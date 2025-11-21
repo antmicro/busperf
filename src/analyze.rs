@@ -1,17 +1,16 @@
 use std::{
     fs::File,
-    io::{BufReader, Read, Write},
+    io::{BufReader, Read},
     sync::{Arc, atomic::AtomicU64},
 };
 
-use flate2::Compression;
 use wellen::{
     Hierarchy, LoadOptions,
     viewers::{self, BodyResult},
 };
 use yaml_rust2::YamlLoader;
 
-use crate::{CyclesNum, bus_usage::BusData, calculate_file_hash};
+use crate::CyclesNum;
 use analyzer::{Analyzer, AnalyzerBuilder};
 use bus::SignalPath;
 
@@ -134,29 +133,4 @@ fn load_signals(
             .expect("There should be one loaded signal for each signal_ref")
     });
     loaded
-}
-
-pub fn save_data(analyzers: &[Box<dyn Analyzer>], filename: &str, trace_path: &str) {
-    let mut file = File::create(filename).expect("Failed to create output file");
-    let hash = calculate_file_hash(trace_path)
-        .expect("File already checked")
-        .to_string();
-
-    let data = (
-        trace_path,
-        hash,
-        analyzers
-            .iter()
-            .filter_map(|a| {
-                a.get_results().map(|r| {
-                    BusData::new(r.clone(), a.get_signals().into_iter().cloned().collect())
-                })
-            })
-            .collect::<Vec<_>>(),
-    );
-
-    let config = bincode::config::standard();
-    let data = bincode::encode_to_vec(data, config).expect("Serialization failed");
-    let mut encoder = flate2::write::GzEncoder::new(&mut file, Compression::default());
-    encoder.write_all(&data).expect("Write to file failed");
 }
