@@ -271,6 +271,16 @@ fn python_dump() {
     );
 }
 
+// test for intervals for default analyzer
+#[test]
+fn default_analyzer_intervals() {
+    test_basic(
+        "tests/test_dumps/test.vcd",
+        "tests/test_dumps/ready_valid_intervals.yaml",
+        1,
+    );
+}
+
 // test multichannel axi analyzer
 #[test]
 fn axi_test() {
