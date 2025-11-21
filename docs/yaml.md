@@ -36,9 +36,10 @@ interfaces:
 Scopes can also be nested. Example `.yaml` for `tests/test_dumps/nested_scopes.vcd`:
 
 ```
-base: &base_scope
-  - top
-  - tb
+scopes:
+  base: &base_scope
+    - top
+    - tb
   
 interfaces:
   "a_":
