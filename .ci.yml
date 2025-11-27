@@ -63,9 +63,10 @@ test:
     - git clone https://github.com/fpganinja/taxi.git
     - python3 -m venv env
     - source ./env/bin/activate
-    - pip install cocotb &> /dev/null
-    - pip install cocotbext-axi &> /dev/null
-    - pip install cocotb-test &> /dev/null
+    - pip install cocotb==2.0.0 &> /dev/null
+    - pip install cocotb-bus==0.2.1 &> /dev/null
+    - pip install cocotbext-axi==0.1.26 &> /dev/null
+    - pip install cocotb-test==0.2.6 &> /dev/null
     - export WAVES=1
     - cd taxi/src/axi/tb/
     - cd taxi_axi_ram/
