@@ -19,7 +19,19 @@ impl Args {
             .command("show");
 
         let parser: OptionParser<Args> = construct!([analyze, show]).to_options();
-        parser.run()
+        let mut args = parser.run();
+
+        // swap simulation trace and bus description when files are passed in wrong order
+        if let Args::Analyze(args) = &mut args {
+            let files = &mut args.files;
+            if files.simulation_trace.ends_with(".yaml")
+                && (files.bus_description.ends_with(".fst")
+                    || files.bus_description.ends_with(".vcd"))
+            {
+                std::mem::swap(&mut files.simulation_trace, &mut files.bus_description);
+            }
+        }
+        args
     }
 }
 
@@ -76,39 +88,20 @@ struct FileArgs {
 impl AnalyzeArgs {
     pub fn parse() -> impl Parser<Args> {
         // We accept simulation trace as either options or positional arguments
-        let simulation_trace = short('t')
-            .long("trace")
-            .help("vcd/fst file with simulation trace")
-            .argument::<String>("TRACE")
-            .complete_shell(bpaf::ShellComp::File {
-                mask: Some("*.(fst|vcd)"),
-            });
-        let bus_description = short('b')
-            .long("bus-config")
-            .help("yaml with description of buses")
-            .argument::<String>("BUS_CONFIG")
-            .complete_shell(bpaf::ShellComp::File {
-                mask: Some("*.(yaml|yml)"),
-            });
-        let opt = construct!(FileArgs {
-            simulation_trace,
-            bus_description
-        });
         let simulation_trace = positional("TRACE")
             .help("vcd/fst file with simulation trace")
             .complete_shell(bpaf::ShellComp::File {
                 mask: Some("*.(fst|vcd)"),
             });
-        let bus_description = positional("BUS")
+        let bus_description = positional("BUS_CONFIG")
             .help("yaml with description of buses")
             .complete_shell(bpaf::ShellComp::File {
                 mask: Some("*.(yaml|yml)"),
             });
-        let pos = construct!(FileArgs {
+        let files = construct!(FileArgs {
             simulation_trace,
             bus_description
         });
-        let files = construct!([opt, pos]);
 
         let max_burst_delay = short('m')
             .long("max_burst_delay")
