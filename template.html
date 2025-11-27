@@ -6,43 +6,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
 <head>
-    <!-- change this to your project name -->
     <title>Busperf viewer</title>
 
-    <!-- config for our rust wasm binary. go to https://trunkrs.dev/assets/#rust for more customization -->
-
-<script type="module" id="busperf_web_js">
-	JAVASCRIPT_HERE
-</script>
+    <script type="module" id="busperf_web_js">
+    	JAVASCRIPT_HERE
+    </script>
     
-<script type="module">
-const jsSource = document.getElementById("busperf_web_js").textContent;
+    <script type="module">
+        const jsSource = document.getElementById("busperf_web_js").textContent;
+        const jsBlob = new Blob([jsSource], { type: "application/javascript" });
+        const jsModuleUrl = URL.createObjectURL(jsBlob);
+        const { default: init, ...bindings } = await import(jsModuleUrl);
 
-// Create a Blob object containing the JS source
-const jsBlob = new Blob([jsSource], { type: "application/javascript" });
+        const wasmBase64 = "WASM_HERE";
+        const wasmBytes = Uint8Array.from(atob(wasmBase64), c => c.charCodeAt(0));
+        const wasm = await init(wasmBytes.buffer);
 
-// Create a module URL
-const jsModuleUrl = URL.createObjectURL(jsBlob);
-
-// Import the wasm-bindgen init function and exports
-const { default: init, ...bindings } = await import(jsModuleUrl);
-
-const wasmBase64 = "WASM_HERE";
-const wasmBytes = Uint8Array.from(atob(wasmBase64), c => c.charCodeAt(0));
-const wasm = await init(wasmBytes.buffer);
-
-const dataBase64 = "DATA_HERE";
-const dataBytes = Uint8Array.from(atob(dataBase64), c => c.charCodeAt(0));
-bindings.set_busperf_data(dataBytes);
-
-window.wasmBindings = bindings;
-
-
-dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
-
-</script>
-    <!-- this is the base url relative to which other urls will be constructed. trunk will insert this from the public-url option -->
-    <base href="/" />
+        const dataBase64 = "DATA_HERE";
+        const dataBytes = Uint8Array.from(atob(dataBase64), c => c.charCodeAt(0));
+        bindings.set_busperf_data(dataBytes);
+    </script>
 
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="white">
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#404040">
