@@ -1,7 +1,7 @@
 use blake3::Hash;
 use std::fs::File;
 #[cfg(all(feature = "analyze", feature = "show"))]
-use std::io::Write;
+use std::{error::Error, io::Write};
 
 #[cfg(all(feature = "analyze", feature = "show"))]
 use crate::{
@@ -76,7 +76,7 @@ pub fn run_visualization(
     trace_path: &str,
     verbose: bool,
     skipped_stats: &[String],
-) {
+) -> Result<(), Box<dyn Error>> {
     use crate::{
         bus_usage::BusData,
         show::{WaveformFile, show_data},
@@ -84,14 +84,22 @@ pub fn run_visualization(
 
     let usages = analyzers
         .iter_mut()
-        .map(|a| -> BusData {
-            if !a.finished_analysis() {
-                a.analyze(simulation_data, verbose);
+        .filter_map(|a| {
+            if !a.finished_analysis()
+                && let Err(e) = a.analyze(simulation_data, verbose)
+            {
+                use owo_colors::OwoColorize;
+                eprintln!(
+                    "{} {} {}",
+                    "[Error] failed to analyze:".bright_red(),
+                    a.bus_name(),
+                    e.bright_red()
+                );
             }
-            BusData {
-                usage: a.get_results().cloned().expect("Has just been calculated"),
+            a.get_results().cloned().map(|usage| BusData {
+                usage,
                 signals: a.get_signals().into_iter().cloned().collect(),
-            }
+            })
         })
         .collect();
 
@@ -100,5 +108,6 @@ pub fn run_visualization(
         hash: [0; 32].into(),
         checked: true.into(),
     };
-    show_data(usages, trace, type_, out, verbose, skipped_stats);
+    show_data(usages, trace, type_, out, verbose, skipped_stats)?;
+    Ok(())
 }

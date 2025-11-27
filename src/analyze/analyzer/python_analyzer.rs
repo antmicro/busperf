@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use super::private::AnalyzerInternal;
 use crate::{
     analyze::{
@@ -179,9 +181,9 @@ impl AnalyzerInternal for PythonAnalyzer {
 
     fn calculate(
         &mut self,
-        loaded: Vec<(wellen::SignalRef, wellen::Signal)>,
+        loaded: Vec<&(wellen::SignalRef, wellen::Signal)>,
         time_table: &TimeTable,
-    ) {
+    ) -> Result<(), Box<dyn Error>> {
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let mut last = 0;
@@ -194,11 +196,16 @@ impl AnalyzerInternal for PythonAnalyzer {
             }
         }
         reset /= 2;
-        let (time_end, _) = clk.iter_changes().last().expect("Clock should have cycles");
+        let (time_end, _) = clk
+            .iter_changes()
+            .last()
+            .ok_or("clock should have cycles")?;
         let mut usage = MultiChannelBusUsage::new(
             self.common.bus_name(),
             self.window_length,
-            time_table[2],
+            *time_table
+                .get(2)
+                .ok_or("Why do you use a trace that has less than one clock cycle???")?,
             self.x_rate,
             self.y_rate,
         );
@@ -225,15 +232,18 @@ impl AnalyzerInternal for PythonAnalyzer {
                         .filter_map(|(t, v)| {
                             let time = time_table[t as usize];
                             if time >= start && time <= end {
-                                Some((
-                                    time,
-                                    v.to_bit_string().expect("Function never returns None"),
-                                ))
+                                match v.to_bit_string() {
+                                    Some(v) => Some(Ok((time, v))),
+                                    None => Some(Err(format!(
+                                        "signal is invalid at {}",
+                                        time_table[time as usize]
+                                    ))),
+                                }
                             } else {
                                 None
                             }
                         })
-                        .collect::<Vec<(RealTime, String)>>()
+                        .collect::<Result<Vec<(RealTime, String)>, _>>()
                 }
                 SignalType::ReadyValid => {
                     let (_, ready) = &loaded[i];
@@ -243,7 +253,7 @@ impl AnalyzerInternal for PythonAnalyzer {
                     a.filter_map(|time_idx| {
                         let time = time_table[time_idx as usize];
                         if time >= start && time < end {
-                            Some((time_table[time_idx as usize], String::new()))
+                            Some(Ok((time_table[time_idx as usize], String::new())))
                         } else {
                             None
                         }
@@ -251,7 +261,7 @@ impl AnalyzerInternal for PythonAnalyzer {
                     .collect()
                 }
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
             match Python::with_gil(|py| -> PyResult<Vec<Transaction>> {
                 let res = self
@@ -273,20 +283,19 @@ impl AnalyzerInternal for PythonAnalyzer {
                         usage.add_transaction(time, resp_time, last_write, first_data, &resp, next);
                     }
                 }
-                Err(e) => {
-                    eprintln!(
-                        "{} {} {}",
-                        "[ERROR] Python plugin returned bad result for bus".bright_red(),
-                        self.common.bus_name().bright_red(),
-                        e.bright_red()
-                    )
-                }
+                Err(e) => Err(format!(
+                    "{} {} {}",
+                    "python plugin returned bad result for bus".bright_red(),
+                    self.common.bus_name().bright_red(),
+                    e.bright_red()
+                ))?,
             };
         }
         usage.add_time(time_table[time_end as usize]);
         usage.end(reset, vec![[0, time_table[time_end as usize]]]);
 
         self.result = Some(BusUsage::MultiChannel(usage));
+        Ok(())
     }
 }
 

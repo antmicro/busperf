@@ -326,9 +326,14 @@ pub fn is_value_of_type(value: SignalValue, type_: ValueType) -> bool {
             ValueType::Z => false,
         },
         SignalValue::Binary(_, _) => false,
-        SignalValue::FourValue(_items, 1) => false,
-        SignalValue::FourValue(_items, _) => panic!(),
-        SignalValue::NineValue(_items, _) => todo!(),
+        SignalValue::FourValue(items, 1) => match type_ {
+            ValueType::V0 => false,
+            ValueType::V1 => false,
+            ValueType::X => items[0] == 66,
+            ValueType::Z => items[0] == 67,
+        },
+        SignalValue::FourValue(_, _) => false,
+        SignalValue::NineValue(_, _) => false,
         SignalValue::String(_) => false,
         SignalValue::Real(_) => false,
     }

@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::{cell::RefCell, collections::HashMap, f32, io::Read, str::FromStr};
 
 use blake3::Hash;
@@ -27,18 +28,34 @@ use crate::{
 };
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn run_visualization(usages: Vec<BusData>, trace_path: WaveformFile, time_unit: TimescaleUnit) {
+pub fn run_visualization(
+    usages: Vec<BusData>,
+    trace_path: WaveformFile,
+    time_unit: TimescaleUnit,
+) -> Result<(), Box<dyn Error>> {
     let options = eframe::NativeOptions::default();
     eframe::run_native(
         "busperf",
         options,
         Box::new(|_| Ok(Box::new(BusperfApp::new(usages, trace_path, time_unit)))),
     )
-    .expect("Failed to init egui");
+    .map_err(|e| {
+        use owo_colors::OwoColorize;
+        format!(
+            "{} {}",
+            "[Error] failed to run egui".bright_red(),
+            e.bright_red()
+        )
+    })?;
+    Ok(())
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn run_visualization(usages: Vec<BusData>, trace_path: WaveformFile, time_unit: TimescaleUnit) {
+pub fn run_visualization(
+    usages: Vec<BusData>,
+    trace_path: WaveformFile,
+    time_unit: TimescaleUnit,
+) -> Result<(), Box<dyn Error>> {
     use eframe::wasm_bindgen::JsCast as _;
 
     // Redirect `log` message to `console.log` and friends:
@@ -81,6 +98,8 @@ pub fn run_visualization(usages: Vec<BusData>, trace_path: WaveformFile, time_un
             }
         }
     });
+
+    Ok(())
 }
 
 #[derive(PartialEq)]
@@ -163,13 +182,15 @@ impl BusperfApp {
     pub fn build_from_bytes(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
         let mut decoder = flate2::read::GzDecoder::new(data);
         let mut buf = Vec::new();
-        decoder.read_to_end(&mut buf).expect("Failed decompression");
+        decoder
+            .read_to_end(&mut buf)
+            .map_err(|_| "invalid file: failed decompression")?;
         let config = bincode::config::standard();
         let data: (String, String, Vec<BusData>) = bincode::decode_from_slice(&buf, config)
-            .expect("Invalid file data")
+            .map_err(|_| "invalid file data")?
             .0;
         let (waveform_path, hash, usages) = data;
-        let hash = Hash::from_str(&hash).expect("Invalid hash value");
+        let hash = Hash::from_str(&hash).map_err(|_| "invalid file: invalid hash")?;
         let trace = WaveformFile {
             path: waveform_path,
             hash,
@@ -251,10 +272,12 @@ impl BusperfApp {
                     if ui.button("Select different file").clicked() {
                         #[cfg(not(target_arch = "wasm32"))]
                         if let Some(path) = rfd::FileDialog::new().pick_file() {
-                            self.trace_path.path = path
+                            let Ok(path) = path
                                 .into_os_string()
-                                .into_string()
-                                .expect("Invalid file name");
+                                .into_string() else {
+                                return;
+                            };
+                            self.trace_path.path = path;
                             if ensure_trace_matches(&self.trace_path, &mut self.surfer) {
                                 ui.close();
                                 if let Some(action) = self.surfer.modal_action.take() {
@@ -294,24 +317,17 @@ impl BusperfApp {
                 ui.horizontal(|ui| {
                     ui.text_edit_singleline(&mut self.trace_path.path);
                     #[cfg(not(target_arch = "wasm32"))]
-                    if ui.button("Select").clicked()
-                    // && let Some(path) = rfd::FileDialog::new().pick_file()
-                    {
-                        use std::sync::mpsc::channel;
-
-                        let (sender, receiver) = channel();
-                        let future = async {
-                            let file = rfd::AsyncFileDialog::new().pick_file().await;
-                            file.unwrap().path().to_path_buf()
-                        };
+                    if ui.button("Select").clicked() {
+                        let future = async { rfd::AsyncFileDialog::new().pick_file().await };
                         let data = futures::executor::block_on(future);
-                        sender.send(data).unwrap();
-                        let path = receiver.recv().unwrap();
-                        self.trace_path.path = path
-                            .into_os_string()
-                            .into_string()
-                            .expect("Invalid file name");
-                        self.surfer.warning = String::new();
+                        if let Some(handle) = data {
+                            if let Some(path) = handle.path().to_str() {
+                                self.trace_path.path = path.to_string();
+                                self.surfer.warning = String::new();
+                            } else {
+                                self.surfer.warning = String::from("Non UTF8 in file name");
+                            }
+                        }
                     }
                 });
                 if !self.surfer.warning.is_empty() {
@@ -844,12 +860,8 @@ fn waveform_to_plot_time(
     waveform_time_unit: &TimescaleUnit,
     plot_time_unit: &TimescaleUnit,
 ) -> f64 {
-    let diff = plot_time_unit
-        .to_exponent()
-        .expect("Should always be valid") as i32
-        - waveform_time_unit
-            .to_exponent()
-            .expect("Should always be valid") as i32;
+    let diff = plot_time_unit.to_exponent().unwrap_or(0) as i32
+        - waveform_time_unit.to_exponent().unwrap_or(0) as i32;
     if diff > 0 {
         value / 10.0f64.powi(diff.abs())
     } else {
@@ -863,12 +875,8 @@ fn plot_to_waveform_time(
     waveform_time_unit: &TimescaleUnit,
     plot_time_unit: &TimescaleUnit,
 ) -> f64 {
-    let diff = waveform_time_unit
-        .to_exponent()
-        .expect("Should always be valid") as i32
-        - plot_time_unit
-            .to_exponent()
-            .expect("Should always be valid") as i32;
+    let diff = waveform_time_unit.to_exponent().unwrap_or(0) as i32
+        - plot_time_unit.to_exponent().unwrap_or(0) as i32;
     if diff > 0 {
         value / 10.0f64.powi(diff.abs())
     } else {

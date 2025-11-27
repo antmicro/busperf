@@ -86,25 +86,18 @@ fn count_reset(rst: &Signal, active_value: ValueType, start: u32, end: u32) -> u
 }
 
 #[inline]
-fn get_id_value(signal: &Signal, time: TimeTableIdx) -> String {
-    get_value_at_time(signal, time.saturating_sub(1))
-        .to_bit_string()
-        .expect("Should be valid")
+fn get_id_value(signal: &Signal, time: TimeTableIdx) -> Option<String> {
+    get_value_at_time(signal, time.saturating_sub(1))?.to_bit_string()
 }
 
 #[inline]
-fn get_logic_value(signal: &Signal, time: TimeTableIdx) -> ValueType {
-    get_value(get_value_at_time(signal, time.saturating_sub(1))).expect("Value should be valid")
+fn get_logic_value(signal: &Signal, time: TimeTableIdx) -> Option<ValueType> {
+    get_value(get_value_at_time(signal, time.saturating_sub(1))?)
 }
 
 #[inline]
-fn get_value_at_time(signal: &Signal, time: TimeTableIdx) -> SignalValue<'_> {
-    signal.get_value_at(
-        &signal
-            .get_offset(time)
-            .expect("Value should be valid at that time"),
-        0,
-    )
+fn get_value_at_time(signal: &Signal, time: TimeTableIdx) -> Option<SignalValue<'_>> {
+    Some(signal.get_value_at(&signal.get_offset(time)?, 0))
 }
 
 struct Transaction {
@@ -190,7 +183,7 @@ impl AXIRdAnalyzer {
         r_resp: &Signal,
         last_time: &u32,
         time_table: &TimeTable,
-    ) {
+    ) -> Result<(), Box<dyn Error>> {
         let mut next_rst = rst.next().unwrap_or(*last_time + 1);
         while let Some(time) = ar.next() {
             while next_rst < time {
@@ -209,13 +202,17 @@ impl AXIRdAnalyzer {
                 }
                 let resp = r_resp
                     .get_value_at(
-                        &r_resp
-                            .get_offset(read_time)
-                            .expect("There should be a response available at response time"),
+                        &r_resp.get_offset(read_time).ok_or(format!(
+                            "rresp is invalid at {}",
+                            time_table[read_time as usize]
+                        ))?,
                         0,
                     )
                     .to_bit_string()
-                    .expect("Function never returns None");
+                    .ok_or(format!(
+                        "rresp is invalid at {}",
+                        time_table[read_time as usize]
+                    ))?;
                 let [time, read_time, next_transaction] =
                     [time, read_time, *next_transaction].map(|i| time_table[i as usize]);
                 usage.add_transaction(
@@ -234,6 +231,7 @@ impl AXIRdAnalyzer {
                 )
             }
         }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -250,7 +248,7 @@ impl AXIRdAnalyzer {
         r_last: &Signal,
         last_time: &u32,
         time_table: &TimeTable,
-    ) {
+    ) -> Result<(), Box<dyn Error>> {
         let mut next_rst = rst.next().unwrap_or(*last_time + 1);
         let mut counting: HashMap<String, VecDeque<Transaction>> = HashMap::new();
         let mut unfinished = String::new();
@@ -258,7 +256,8 @@ impl AXIRdAnalyzer {
             while next_rst < time {
                 next_rst = rst.next().unwrap_or(*last_time + 1);
             }
-            let ar_id = get_id_value(ar_id, time);
+            let ar_id = get_id_value(ar_id, time)
+                .ok_or(format!("arid is invalid at {}", time_table[time as usize]))?;
             let next_transaction = *ar.peek().unwrap_or(last_time);
             if let Some(transactions) = counting.get_mut(&ar_id) {
                 transactions.push_back(Transaction::new(time, next_transaction));
@@ -287,9 +286,10 @@ impl AXIRdAnalyzer {
                     continue 'transaction_loop;
                 }
                 r.next();
-                let id = get_id_value(r_id, read);
+                let id = get_id_value(r_id, read)
+                    .ok_or(format!("rid is invalid at {}", time_table[read as usize]))?;
 
-                let Some(t) = counting.get_mut(&id) else {
+                let Some(t_vec) = counting.get_mut(&id) else {
                     eprintln!(
                         "[WARN] R without AR on {} at {}",
                         self.bus_name(),
@@ -297,17 +297,26 @@ impl AXIRdAnalyzer {
                     );
                     continue 'transaction_loop;
                 };
-                let t = &mut t[0];
+                let Some(t) = t_vec.get_mut(0) else {
+                    eprintln!(
+                        "[WARN] R without AR on {} at {}",
+                        self.bus_name(),
+                        time_table[read as usize]
+                    );
+                    continue 'transaction_loop;
+                };
                 if t.first_data.is_none() {
                     t.first_data = Some(read)
                 }
-                let resp = get_id_value(r_resp, read);
-                if get_logic_value(r_last, read) == ValueType::V1 {
-                    let t = counting
-                        .get_mut(&id)
-                        .expect("Id should be valid")
+                if get_logic_value(r_last, read)
+                    .ok_or(format!("rlast is invalid at {}", time_table[read as usize]))?
+                    == ValueType::V1
+                {
+                    let resp = get_id_value(r_resp, read)
+                        .ok_or(format!("rresp is invalid at {}", time_table[read as usize]))?;
+                    let t = t_vec
                         .pop_front()
-                        .expect("Transaction should exist");
+                        .expect("Already checked that transaction exists");
                     let [time, last_data, first_data, next_transaction] =
                         [t.start, read, t.first_data.expect("Should be set"), t.next]
                             .map(|i| time_table[i as usize]);
@@ -340,6 +349,7 @@ impl AXIRdAnalyzer {
                 unfinished
             );
         }
+        Ok(())
     }
 }
 
@@ -358,7 +368,11 @@ impl AnalyzerInternal for AXIRdAnalyzer {
         signals
     }
 
-    fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, Signal)>, time_table: &TimeTable) {
+    fn calculate(
+        &mut self,
+        loaded: Vec<&(wellen::SignalRef, Signal)>,
+        time_table: &TimeTable,
+    ) -> Result<(), Box<dyn Error>> {
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let (_, _arready) = &loaded[2];
@@ -369,8 +383,10 @@ impl AnalyzerInternal for AXIRdAnalyzer {
 
         let mut reset = 0;
 
-        let last_time = clk.time_indices().last().expect("Clock should have values");
-        let clock_period = time_table[2];
+        let last_time = clk.time_indices().last().ok_or("clock has no values")?;
+        let clock_period = *time_table
+            .get(2)
+            .ok_or("Why even run on a trace that has less than one clock cycle")?;
 
         let mut usage = MultiChannelBusUsage::new(
             self.common.bus_name(),
@@ -389,11 +405,11 @@ impl AnalyzerInternal for AXIRdAnalyzer {
             let start_idx = time_table
                 .iter()
                 .position(|time| time >= start)
-                .expect("Invalid interval set") as u32;
+                .ok_or("Invalid interval set")? as u32;
             let end_idx = time_table
                 .iter()
                 .rposition(|time| time <= end)
-                .expect("Invalid interval set") as u32;
+                .ok_or("Invalid interval set")? as u32;
 
             reset += count_reset(rst, self.common.rst_active_value(), start_idx, end_idx);
             let mut ar =
@@ -411,15 +427,18 @@ impl AnalyzerInternal for AXIRdAnalyzer {
 
                     self.calculate_full(
                         &mut usage, ar, r, rst, r_resp, ar_id, r_id, r_last, &end_idx, time_table,
-                    )
+                    )?;
                 }
-                None => self.calculate_lite(&mut usage, ar, r, rst, r_resp, &end_idx, time_table),
+                None => {
+                    self.calculate_lite(&mut usage, ar, r, rst, r_resp, &end_idx, time_table)?
+                }
             }
             usage.add_time(end - start);
         }
 
         usage.end(reset, intervals);
         self.result = Some(BusUsage::MultiChannel(usage));
+        Ok(())
     }
 
     fn bus_name(&self) -> &str {
@@ -509,7 +528,7 @@ impl AXIWrAnalyzer {
         mut rst: RisingSignalIterator,
         last_time: &u32,
         time_table: &TimeTable,
-    ) {
+    ) -> Result<(), Box<dyn Error>> {
         let mut next_rst = rst.next().unwrap_or(*last_time + 1);
         while let Some(time) = aw.next() {
             while next_rst < time {
@@ -526,13 +545,17 @@ impl AXIWrAnalyzer {
 
                 let resp = b_resp
                     .get_value_at(
-                        &b_resp
-                            .get_offset(resp_time)
-                            .expect("There should be a response available at response time"),
+                        &b_resp.get_offset(resp_time).ok_or(format!(
+                            "bresp is invalid at {}",
+                            time_table[resp_time as usize]
+                        ))?,
                         0,
                     )
                     .to_bit_string()
-                    .expect("Function never returns None");
+                    .ok_or(format!(
+                        "bresp is invalid at {}",
+                        time_table[resp_time as usize]
+                    ))?;
                 let [time, resp_time, data_time, next_transaction] =
                     [time, resp_time, data_time, *next_transaction].map(|i| time_table[i as usize]);
                 usage.add_transaction(
@@ -551,6 +574,7 @@ impl AXIWrAnalyzer {
                 )
             }
         }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -568,7 +592,7 @@ impl AXIWrAnalyzer {
         mut rst: RisingSignalIterator,
         last_time: &u32,
         time_table: &TimeTable,
-    ) {
+    ) -> Result<(), Box<dyn Error>> {
         let mut next_rst = rst.next().unwrap_or(*last_time + 1);
         let mut counting: HashMap<String, VecDeque<Transaction>> = HashMap::new();
         let mut unfinished = String::new();
@@ -576,7 +600,8 @@ impl AXIWrAnalyzer {
             while next_rst < time {
                 next_rst = rst.next().unwrap_or(*last_time + 1);
             }
-            let aw_id = get_id_value(aw_id, time);
+            let aw_id = get_id_value(aw_id, time)
+                .ok_or(format!("awid is invalid at {}", time_table[time as usize]))?;
             let next_transaction = *aw.peek().unwrap_or(last_time);
             if let Some(transactions) = counting.get_mut(&aw_id) {
                 transactions.push_back(Transaction::new(time, next_transaction));
@@ -587,6 +612,11 @@ impl AXIWrAnalyzer {
                 );
             }
 
+            let t = counting
+                .get_mut(&aw_id)
+                .expect("Should be valid because it's just been added")
+                .back_mut()
+                .expect("Should be valid because it's just been added");
             while let Some(&write) = w.peek() {
                 if write > next_rst {
                     unfinished.push_str(
@@ -604,15 +634,14 @@ impl AXIWrAnalyzer {
                     continue 'transactions_loop;
                 }
                 w.next();
-                let t = counting
-                    .get_mut(&aw_id)
-                    .expect("Id should be valid")
-                    .back_mut()
-                    .expect("Transaction should exist");
                 if t.first_data.is_none() {
                     t.first_data = Some(write);
                 }
-                if get_logic_value(w_last, write) == ValueType::V1 {
+                if get_logic_value(w_last, write).ok_or(format!(
+                    "wlast is invalid at {}",
+                    time_table[write as usize]
+                ))? == ValueType::V1
+                {
                     t.last_data = Some(write);
                     break;
                 }
@@ -637,27 +666,35 @@ impl AXIWrAnalyzer {
                     continue 'transactions_loop;
                 }
                 b.next();
-                let b_id = get_id_value(b_id, resp_time);
-                let t = counting
-                    .get_mut(&b_id)
-                    .expect("ID should be valid")
-                    .pop_front()
-                    .expect("Transaction should exist");
+                let b_id = get_id_value(b_id, resp_time).ok_or(format!(
+                    "bid is invalid at {}",
+                    time_table[resp_time as usize]
+                ))?;
+                let Some(t_vec) = counting.get_mut(&b_id) else {
+                    eprintln!(
+                        "[WARN] Transaction response without command at {}",
+                        time_table[resp_time as usize]
+                    );
+                    continue;
+                };
+                let Some(t) = t_vec.pop_front() else {
+                    eprintln!(
+                        "[WARN] Transaction response without command at {}",
+                        time_table[resp_time as usize]
+                    );
+                    continue;
+                };
 
-                let resp = b_resp
-                    .get_value_at(
-                        &b_resp
-                            .get_offset(resp_time)
-                            .expect("There should be a response available at response time"),
-                        0,
-                    )
-                    .to_bit_string()
-                    .expect("Function never returns None");
+                let resp = get_id_value(b_resp, resp_time).ok_or(format!(
+                    "bresp is invalid at {}",
+                    time_table[resp_time as usize]
+                ))?;
+
                 let [time, resp_time, last_data, first_data, next_transaction] = [
                     t.start,
                     resp_time,
-                    t.last_data.expect("Last write should be valid"),
-                    t.first_data.expect("First write should be valid"),
+                    t.last_data.ok_or(format!("wlast was not asserted before response for transaction at {}-{}", t.start, t.next))?,
+                    t.first_data.ok_or(format!("no data was transfered nor wlast was not asserted before response for transaction at {}-{}", t.start, t.next))?,
                     t.next,
                 ]
                 .map(|i| time_table[i as usize]);
@@ -689,6 +726,7 @@ impl AXIWrAnalyzer {
                 unfinished
             );
         }
+        Ok(())
     }
 }
 
@@ -712,7 +750,11 @@ impl AnalyzerInternal for AXIWrAnalyzer {
         self.common.bus_name()
     }
 
-    fn calculate(&mut self, loaded: Vec<(wellen::SignalRef, Signal)>, time_table: &TimeTable) {
+    fn calculate(
+        &mut self,
+        loaded: Vec<&(wellen::SignalRef, Signal)>,
+        time_table: &TimeTable,
+    ) -> Result<(), Box<dyn Error>> {
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let (_, awready) = &loaded[2];
@@ -724,8 +766,13 @@ impl AnalyzerInternal for AXIWrAnalyzer {
         let (_, b_resp) = &loaded[8];
 
         let mut reset = 0;
-        let last_time = clk.time_indices().last().expect("Clock should have values");
-        let clock_period = time_table[2];
+        let last_time = clk
+            .time_indices()
+            .last()
+            .ok_or("Clock should have values")?;
+        let clock_period = *time_table
+            .get(2)
+            .ok_or("Why do you use a trace that has less than one clock cycle???")?;
         let intervals = if self.common.intervals().is_empty() {
             vec![[0, time_table[*last_time as usize]]]
         } else {
@@ -744,11 +791,11 @@ impl AnalyzerInternal for AXIWrAnalyzer {
             let start_idx = time_table
                 .iter()
                 .position(|time| time >= start)
-                .expect("Invalid interval set") as u32;
+                .ok_or("Invalid interval set")? as u32;
             let end_idx = time_table
                 .iter()
                 .rposition(|time| time <= end)
-                .expect("Invalid interval set") as u32;
+                .ok_or("Invalid interval set")? as u32;
 
             reset += count_reset(rst, self.common.rst_active_value(), start_idx, end_idx);
 
@@ -769,10 +816,10 @@ impl AnalyzerInternal for AXIWrAnalyzer {
                     self.calculate_full(
                         &mut usage, aw, w, b, aw_id, w_last, b_id, b_resp, rst, &end_idx,
                         time_table,
-                    )
+                    )?;
                 }
                 None => {
-                    self.calculate_lite(&mut usage, aw, w, b, b_resp, rst, &end_idx, time_table)
+                    self.calculate_lite(&mut usage, aw, w, b, b_resp, rst, &end_idx, time_table)?
                 }
             }
             usage.add_time(end - start);
@@ -780,6 +827,7 @@ impl AnalyzerInternal for AXIWrAnalyzer {
 
         usage.end(reset, intervals);
         self.result = Some(BusUsage::MultiChannel(usage));
+        Ok(())
     }
 }
 
@@ -833,18 +881,18 @@ impl<'a> Iterator for RisingSignalIterator<'a> {
             self.peeked = None;
             Some(t)
         } else {
-            match self.signal.next() {
-                Some((time, value)) => {
-                    if matches!(
-                        get_value(value).expect("Value should be valid"),
-                        ValueType::V1
-                    ) {
-                        Some(time)
-                    } else {
-                        self.signal.next().map(|(time, _)| time)
+            loop {
+                match self.signal.next() {
+                    Some((_, value)) => {
+                        if matches!(get_value(value), Some(ValueType::V0))
+                            && let Some((time, next_value)) = self.signal.next()
+                            && matches!(get_value(next_value), Some(ValueType::V1))
+                        {
+                            return Some(time);
+                        }
                     }
+                    None => return None,
                 }
-                None => None,
             }
         }
     }
@@ -871,22 +919,12 @@ impl<'a> ReadyValidTransactionIterator<'a> {
         let valid: Box<dyn Iterator<Item = (u32, SignalValue)>> = Box::new(valid.iter_changes());
         let mut ready = ready.peekable();
         let mut valid = valid.peekable();
-        let first_ready = ready.find(|(_, value)| {
-            matches!(
-                get_value(*value).expect("Signal value should be valid"),
-                ValueType::V1
-            )
-        });
+        let first_ready = ready.find(|(_, value)| matches!(get_value(*value), Some(ValueType::V1)));
         match first_ready {
             Some((time, _)) => current_time = time,
             None => current_time = time_end,
         };
-        let first_valid = valid.find(|(_, value)| {
-            matches!(
-                get_value(*value).expect("Signal value should be valid"),
-                ValueType::V1
-            )
-        });
+        let first_valid = valid.find(|(_, value)| matches!(get_value(*value), Some(ValueType::V1)));
         match first_valid {
             Some((time, _)) => current_time = current_time.max(time),
             None => current_time = time_end,
@@ -933,12 +971,16 @@ impl<'a> Iterator for ReadyValidTransactionIterator<'a> {
             }
             let &(smaller_next, _) = smaller.peek().expect("Already checked");
             if self.current_time > smaller_next {
-                let (_time, v) = smaller.next().expect("Already checked in first if");
-                debug_assert!(
-                    matches!(get_value(v).unwrap(), ValueType::V0),
-                    "Next change should be to value 0"
-                );
+                while smaller
+                    .next_if(|(_, v)| match get_value(*v) {
+                        Some(v) => !matches!(v, ValueType::V1),
+                        None => true,
+                    })
+                    .is_some()
+                {}
+
                 match smaller.next() {
+                    #[allow(clippy::unwrap_used)]
                     Some((time, v)) => {
                         debug_assert!(
                             matches!(get_value(v).unwrap(), ValueType::V1),

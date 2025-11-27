@@ -60,7 +60,7 @@ impl Surfer {
         message: &WcpCSMessage,
     ) -> Result<WcpSCMessage, Box<dyn Error>> {
         let stream = &mut self.stream.as_mut().ok_or("No connection to Surfer")?;
-        let buf = serde_json::to_string(message).expect("Message should be serializable");
+        let buf = serde_json::to_string(message).map_err(|_| "Message could not be serialized")?;
         stream.write_all(buf.as_bytes())?;
         stream.write_all(b"\0")?;
 
@@ -82,7 +82,7 @@ impl Surfer {
         message: &WcpCSMessage,
     ) -> Result<(), Box<dyn Error>> {
         let stream = &mut self.stream.as_mut().ok_or("No connection to Surfer")?;
-        let buf = serde_json::to_string(message).expect("Message should be serializable");
+        let buf = serde_json::to_string(message).map_err(|_| "Message should be serializable")?;
         stream.write_all(buf.as_bytes())?;
         stream.write_all(b"\0")?;
         Ok(())
@@ -186,11 +186,18 @@ fn connect_or_start_surfer() -> Option<TcpStream> {
             let (port_sender, port_receiver) = channel();
             let (tx, rx) = channel();
             std::thread::spawn(move || {
-                let listener =
-                    TcpListener::bind("127.0.0.1:0").expect("There should be some free port");
+                let Ok(listener) = TcpListener::bind("127.0.0.1:0") else {
+                    eprintln!("{}", "[ERROR] no free port".bright_red());
+                    return;
+                };
                 port_sender
-                    .send(listener.local_addr().unwrap().port())
-                    .expect("Port number should be sent");
+                    .send(
+                        listener
+                            .local_addr()
+                            .expect("Listener should have an address")
+                            .port(),
+                    )
+                    .expect("Main thread should not close channel before receiving port");
                 if let Ok((stream, _)) = listener.accept()
                     && let Ok(_) = tx.send(stream)
                 {}
@@ -239,7 +246,7 @@ pub fn open_at_time(trace_path: &str, signals: Vec<String>, time: f64) {
     let mut surfer = CONNECTION
         .get_or_init(|| Mutex::new(Surfer::new(trace_path)))
         .lock()
-        .unwrap();
+        .expect("Connection mutex got poisoned");
     surfer.load_signals(signals);
     if surfer.commands.contains(&String::from("add_markers")) {
         surfer.send_message(&WcpCSMessage::command(WcpCommand::add_markers {
@@ -265,7 +272,7 @@ pub fn open_and_mark_periods(
     let mut surfer = CONNECTION
         .get_or_init(|| Mutex::new(Surfer::new(trace_path)))
         .lock()
-        .unwrap();
+        .expect("Connection mutex got poisoned");
     surfer.load_signals(signals);
     if surfer.commands.contains(&String::from("add_markers")) {
         let mut markers = Vec::with_capacity(periods.len() * 2);
@@ -294,17 +301,23 @@ pub fn open_and_mark_periods(
                 }
                 for id in ids {
                     surfer.loaded_signals.push(format!("marker {}", id.0));
-                    surfer
+                    if surfer
                         .send_message_without_response(&WcpCSMessage::command(
                             WcpCommand::set_item_color {
                                 id,
                                 color: String::from(color),
                             },
                         ))
-                        .unwrap()
+                        .is_err()
+                    {
+                        eprintln!("{}", "[Error] Failed to send add markers".bright_red());
+                    }
                 }
-                if ids_len > 0 {
-                    surfer.await_reponse().unwrap();
+                if ids_len > 0 && surfer.await_reponse().is_err() {
+                    eprintln!(
+                        "{}",
+                        "[Error] No response from surfer for add markers".bright_red()
+                    );
                 }
             } else if let WcpSCMessage::error { message, .. } = response {
                 eprintln!("[WARN] Received error from surfer {message}");
@@ -317,7 +330,7 @@ pub fn open_and_mark_periods(
 
 pub fn zoom_to_range(start: u64, end: u64) {
     if let Some(surfer) = CONNECTION.get() {
-        let mut surfer = surfer.lock().unwrap();
+        let mut surfer = surfer.lock().expect("Connection mutex got poisoned");
         if surfer
             .commands
             .contains(&String::from("set_viewport_range"))

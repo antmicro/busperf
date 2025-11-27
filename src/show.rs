@@ -1,10 +1,12 @@
 use blake3::Hash;
 use flate2::Compression;
+use std::error::Error;
 use std::io::Read;
 use std::str::FromStr;
 use std::{cell::Cell, io::Write};
 
 use crate::bus_usage::BusData;
+use crate::calculate_file_hash;
 
 pub mod egui_visualization;
 mod surfer_integration;
@@ -39,11 +41,11 @@ pub fn show_data(
     out: &mut impl Write,
     verbose: bool,
     skipped_stats: &[String],
-) {
+) -> Result<(), Box<dyn Error>> {
     match type_ {
         OutputType::Pretty => {
             let usages = usages.iter().map(|u| &u.usage).collect::<Vec<_>>();
-            text_output::print_statistics(out, &usages, verbose, skipped_stats);
+            text_output::print_statistics(out, &usages, verbose, skipped_stats)
         }
         OutputType::Csv => {
             let usages = usages.iter().map(|u| &u.usage).collect::<Vec<_>>();
@@ -56,27 +58,26 @@ pub fn show_data(
         OutputType::Rendered => {
             egui_visualization::run_visualization(usages, trace, wellen::TimescaleUnit::PicoSeconds)
         }
-        OutputType::Data => {
-            save_data(usages, trace, out);
-        }
+        OutputType::Data => save_data(usages, trace, out),
         #[cfg(feature = "generate-html")]
-        OutputType::Html => {
-            generate_html(usages, trace, out);
-        }
+        OutputType::Html => generate_html(usages, trace, out),
     }
 }
 
-pub fn visualization_from_file(filename: &str, output_type: OutputType, verbose: bool) {
-    let data = std::fs::read(filename).expect("Failed to load file");
+pub fn visualization_from_file(
+    filename: &str,
+    output_type: OutputType,
+    verbose: bool,
+) -> Result<(), Box<dyn Error>> {
+    let data = std::fs::read(filename).map_err(|e| format!("Failed to load file {e}"))?;
     let mut decoder = flate2::read::GzDecoder::new(&*data);
     let mut buf = Vec::new();
-    decoder.read_to_end(&mut buf).expect("Failed decompression");
+    decoder.read_to_end(&mut buf).map_err(|_| "Invalid file")?;
     let config = bincode::config::standard();
-    let data: (String, String, Vec<BusData>) = bincode::decode_from_slice(&buf, config)
-        .expect("Invalid file data")
-        .0;
+    let (data, _): ((String, String, Vec<BusData>), _) =
+        bincode::decode_from_slice(&buf, config).map_err(|_| "Invalid file data")?;
     let (waveform_path, hash, usages) = data;
-    let hash = Hash::from_str(&hash).expect("Invalid hash value");
+    let hash = Hash::from_str(&hash).map_err(|_| "Invalid file: bad hash value")?;
     let trace = WaveformFile {
         path: waveform_path,
         hash,
@@ -89,24 +90,42 @@ pub fn visualization_from_file(filename: &str, output_type: OutputType, verbose:
         &mut std::io::stdout(),
         verbose,
         &[],
-    );
+    )?;
+    Ok(())
 }
 
 #[inline]
-fn prepare_data(usages: Vec<BusData>, trace: WaveformFile, out: &mut impl Write) {
-    let data = (trace.path, trace.hash.to_string(), usages);
+fn prepare_data(
+    usages: Vec<BusData>,
+    trace: WaveformFile,
+    out: &mut impl Write,
+) -> Result<(), Box<dyn Error>> {
+    let hash = calculate_file_hash(&trace.path)
+        .map_err(|e| format!("[ERROR] failed to calculate trace hash: {e}"))?;
+    let data = (trace.path, hash.to_string(), usages);
     let config = bincode::config::standard();
-    let data = bincode::encode_to_vec(data, config).expect("Serialization failed");
+    let data = bincode::encode_to_vec(data, config).map_err(|_| "Serialization failed")?;
     let mut encoder = flate2::write::GzEncoder::new(out, Compression::default());
-    encoder.write_all(&data).expect("Write to file failed");
+    encoder
+        .write_all(&data)
+        .map_err(|e| format!("Write to file failed {e}"))?;
+    Ok(())
 }
 
-fn save_data(usages: Vec<BusData>, trace: WaveformFile, out: &mut impl Write) {
-    prepare_data(usages, trace, out);
+fn save_data(
+    usages: Vec<BusData>,
+    trace: WaveformFile,
+    out: &mut impl Write,
+) -> Result<(), Box<dyn Error>> {
+    prepare_data(usages, trace, out)
 }
 
 #[cfg(feature = "generate-html")]
-fn generate_html(usages: Vec<BusData>, trace: WaveformFile, out: &mut impl Write) {
+fn generate_html(
+    usages: Vec<BusData>,
+    trace: WaveformFile,
+    out: &mut impl Write,
+) -> Result<(), Box<dyn Error>> {
     use base64::prelude::*;
 
     let mut busperf_data = Vec::new();
@@ -124,5 +143,7 @@ fn generate_html(usages: Vec<BusData>, trace: WaveformFile, out: &mut impl Write
     let html = html.replace("WASM_HERE", &wasm);
     let html = html.replace("DATA_HERE", &busperf_data);
 
-    out.write_all(html.as_bytes()).expect("Failed to write")
+    out.write_all(html.as_bytes())
+        .map_err(|e| format!("Failed to write {e}"))?;
+    Ok(())
 }

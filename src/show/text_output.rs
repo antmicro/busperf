@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, io::Write};
+use std::{collections::BTreeMap, error::Error, io::Write};
 
 use crate::bus_usage::BusUsage;
 
@@ -118,7 +118,8 @@ fn print_statistics_internal<O>(
     verbose: bool,
     style: O,
     skipped_stats: &[String],
-) where
+) -> Result<(), Box<dyn Error>>
+where
     O: tabled::settings::TableOption<
             tabled::grid::records::vec_records::VecRecords<
                 tabled::grid::records::vec_records::Text<String>,
@@ -137,7 +138,7 @@ fn print_statistics_internal<O>(
     if !single_usages.is_empty() {
         let header = get_header(&single_usages, skipped_stats);
         let data = get_data(&single_usages, verbose, skipped_stats);
-        writeln!(write, "{}", generate_tabled(&header, &data, style.clone())).unwrap();
+        writeln!(write, "{}", generate_tabled(&header, &data, style.clone()))?;
     }
 
     let multi_usage: Vec<_> = usages
@@ -150,8 +151,9 @@ fn print_statistics_internal<O>(
     if !multi_usage.is_empty() {
         let header = get_header(&multi_usage, skipped_stats);
         let data = get_data(&multi_usage, verbose, skipped_stats);
-        writeln!(write, "{}", generate_tabled(&header, &data, style)).unwrap();
+        writeln!(write, "{}", generate_tabled(&header, &data, style))?;
     }
+    Ok(())
 }
 
 pub fn print_statistics(
@@ -159,14 +161,14 @@ pub fn print_statistics(
     usages: &[&BusUsage],
     verbose: bool,
     skipped_stats: &[String],
-) {
+) -> Result<(), Box<dyn Error>> {
     print_statistics_internal(
         write,
         usages,
         verbose,
         tabled::settings::Style::rounded(),
         skipped_stats,
-    );
+    )
 }
 
 pub fn generate_md_table(
@@ -174,14 +176,14 @@ pub fn generate_md_table(
     usages: &[&BusUsage],
     verbose: bool,
     skipped_stats: &[String],
-) {
+) -> Result<(), Box<dyn Error>> {
     print_statistics_internal(
         write,
         usages,
         verbose,
         tabled::settings::Style::markdown(),
         skipped_stats,
-    );
+    )
 }
 
 pub fn generate_csv(
@@ -189,7 +191,7 @@ pub fn generate_csv(
     usages: &[&BusUsage],
     verbose: bool,
     skipped_stats: &[String],
-) {
+) -> Result<(), Box<dyn Error>> {
     let mut wtr = csv::Writer::from_writer(write);
     let single_usages: Vec<_> = usages
         .iter()
@@ -200,10 +202,10 @@ pub fn generate_csv(
         .collect();
     if !single_usages.is_empty() {
         let header = get_header(&single_usages, skipped_stats);
-        wtr.write_record(header).unwrap();
+        wtr.write_record(header)?;
         let data = get_data(&single_usages, verbose, skipped_stats);
         for d in data {
-            wtr.write_record(d).unwrap();
+            wtr.write_record(d)?;
         }
     }
     let multi_usage: Vec<_> = usages
@@ -215,11 +217,12 @@ pub fn generate_csv(
         .collect();
     if !multi_usage.is_empty() {
         let header = get_header(&multi_usage, skipped_stats);
-        wtr.write_record(header).unwrap();
+        wtr.write_record(header)?;
         let data = get_data(&multi_usage, verbose, skipped_stats);
         for d in data {
-            wtr.write_record(d).unwrap();
+            wtr.write_record(d)?;
         }
     }
-    wtr.flush().unwrap();
+    wtr.flush()?;
+    Ok(())
 }

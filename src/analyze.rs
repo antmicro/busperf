@@ -1,4 +1,5 @@
 use std::{
+    error::Error,
     fs::File,
     io::{BufReader, Read},
     sync::{Arc, atomic::AtomicU64},
@@ -109,28 +110,36 @@ pub fn load_simulation_trace(
     Ok(SimulationData { hierarchy, body })
 }
 
-fn load_signals(
+fn load_signals<'a>(
     simulation_data: &mut SimulationData,
     signal_paths: &Vec<&SignalPath>,
-) -> Vec<(wellen::SignalRef, wellen::Signal)> {
+    buffer: &'a mut Vec<(wellen::SignalRef, wellen::Signal)>,
+) -> Result<Vec<&'a (wellen::SignalRef, wellen::Signal)>, Box<dyn Error>> {
     let hierarchy = &simulation_data.hierarchy;
     let body = &mut simulation_data.body;
     let signal_refs: Vec<wellen::SignalRef> = signal_paths
         .iter()
         .map(|path| {
-            hierarchy[hierarchy
+            Ok(hierarchy[hierarchy
                 .lookup_var(&path.scope, &path.name)
-                .unwrap_or_else(|| panic!("signal \"{}\" does not exist", path))]
-            .signal_ref()
+                .ok_or(format!("signal \"{}\" does not exist", path))?]
+            .signal_ref())
+        })
+        .collect::<Result<_, Box<dyn Error>>>()?;
+
+    *buffer = body.source.load_signals(&signal_refs, hierarchy, true);
+    // SignalSource::load_signals can return a vector of different size than passsed signals refs vector
+    // e.g when some ref is duplicated (this can happen if a user uses the same simulation signal in two
+    // analyzer signals) but we want to return loaded signals in same order as in requested paths
+    let loaded = signal_refs
+        .iter()
+        .map(|signal_ref| {
+            buffer
+                .iter()
+                .find(|(r, _)| signal_ref == r)
+                .expect("Signal should be loaded for each SignalRef")
         })
         .collect();
 
-    let mut loaded = body.source.load_signals(&signal_refs, hierarchy, true);
-    loaded.sort_by_key(|(signal_ref, _)| {
-        signal_refs
-            .iter()
-            .position(|s| s == signal_ref)
-            .expect("There should be one loaded signal for each signal_ref")
-    });
-    loaded
+    Ok(loaded)
 }

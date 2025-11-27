@@ -196,7 +196,7 @@ fn main() {
                 run_visualization,
             };
 
-            let mut analyzers = match load_bus_analyzers(
+            let analyzers = match load_bus_analyzers(
                 &args.files.bus_description,
                 args.max_burst_delay as i32,
                 args.window_length,
@@ -224,9 +224,6 @@ fn main() {
                     );
                     std::process::exit(1);
                 });
-            for a in analyzers.iter_mut() {
-                a.analyze(&mut data, args.verbose);
-            }
             if let OutputType::Data = args.output_type {
                 args.output.as_ref().unwrap_or_else(|| {
                     eprintln!(
@@ -247,9 +244,16 @@ fn main() {
 
             let mut out: &mut dyn std::io::Write = match args.output.clone() {
                 None => &mut std::io::stdout(),
-                Some(filename) => &mut std::fs::File::create(filename).unwrap(),
+                Some(filename) => &mut std::fs::File::create(filename).unwrap_or_else(|e| {
+                    eprintln!(
+                        "{} {}",
+                        "[ERROR] Failed to create output file:".bright_red(),
+                        e.bright_red()
+                    );
+                    std::process::exit(1);
+                }),
             };
-            run_visualization(
+            if let Err(e) = run_visualization(
                 analyzers,
                 args.output_type,
                 &mut out,
@@ -257,12 +261,18 @@ fn main() {
                 &args.files.simulation_trace,
                 args.verbose,
                 &skipped_stats,
-            );
+            ) {
+                eprintln!("{} {}", "[ERROR]".bright_red(), e.bright_red());
+                std::process::exit(1);
+            }
         }
         Args::Show(args) => {
             use busperf::show::visualization_from_file;
 
-            visualization_from_file(&args.file, args.output_type, args.verbose);
+            if let Err(e) = visualization_from_file(&args.file, args.output_type, args.verbose) {
+                eprintln!("{} {}", "[ERROR]".bright_red(), e.bright_red());
+                std::process::exit(1);
+            }
         }
     }
 }

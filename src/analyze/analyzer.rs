@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use default_analyzer::DefaultAnalyzer;
 #[cfg(feature = "python-plugins")]
 use python_analyzer::PythonAnalyzer;
@@ -44,7 +46,7 @@ impl AnalyzerBuilder {
         x_rate: f32,
         y_rate: f32,
         plugins_path: &str,
-    ) -> Result<Box<dyn Analyzer>, Box<dyn std::error::Error>> {
+    ) -> Result<Box<dyn Analyzer>, Box<dyn Error>> {
         let (name, dict) = yaml;
         let to_check = dict.clone();
         let analyzer: Box<dyn Analyzer> = if let Some(custom) = dict["custom_analyzer"].as_str() {
@@ -110,6 +112,8 @@ impl AnalyzerBuilder {
 }
 
 mod private {
+    use std::error::Error;
+
     use crate::analyze::bus::SignalPath;
     use wellen::{Signal, SignalRef, TimeTable};
 
@@ -118,16 +122,25 @@ mod private {
         // Returns waveform scope paths to every signal required by the analyzer.
         fn get_signals(&self) -> Vec<&SignalPath>;
         // Method that should perform all calculations for an analysis of the bus
-        fn calculate(&mut self, loaded: Vec<(SignalRef, Signal)>, time_table: &TimeTable);
+        fn calculate(
+            &mut self,
+            loaded: Vec<&(SignalRef, Signal)>,
+            time_table: &TimeTable,
+        ) -> Result<(), Box<dyn Error>>;
     }
 }
 
 pub trait Analyzer: private::AnalyzerInternal {
     /// Trait method that performs an analysis of a loaded bus.
-    fn analyze(&mut self, simulation_data: &mut SimulationData, verbose: bool) {
+    fn analyze(
+        &mut self,
+        simulation_data: &mut SimulationData,
+        verbose: bool,
+    ) -> Result<(), Box<dyn Error>> {
         let start = std::time::Instant::now();
         let signal_paths = self.get_signals();
-        let loaded = load_signals(simulation_data, &signal_paths);
+        let mut buffer = Vec::new();
+        let loaded = load_signals(simulation_data, &signal_paths, &mut buffer)?;
         if verbose {
             println!(
                 "Loading signals for {} took {:?}",
@@ -137,7 +150,7 @@ pub trait Analyzer: private::AnalyzerInternal {
         }
 
         let start = std::time::Instant::now();
-        self.calculate(loaded, &simulation_data.body.time_table);
+        self.calculate(loaded, &simulation_data.body.time_table)?;
         if verbose {
             println!(
                 "Calculating statistics for {} took {:?}",
@@ -145,6 +158,7 @@ pub trait Analyzer: private::AnalyzerInternal {
                 start.elapsed()
             );
         }
+        Ok(())
     }
     /// If the analysis was run returns [Some] result of the analysis. If not - returns [None].
     fn get_results(&self) -> Option<&BusUsage>;

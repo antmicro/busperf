@@ -54,10 +54,20 @@ impl BusDescription for PythonCustomBus {
     }
 
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], _time: u32) -> crate::CycleType {
-        let signals: Vec<String> = signals
+        let signals: Vec<String> = match signals
             .iter()
-            .map(|s| s.to_bit_string().expect("Function never returns None"))
-            .collect();
+            .map(|s| {
+                s.to_bit_string()
+                    .ok_or(format!("invalid signal value at {}", _time))
+            })
+            .collect::<Result<_, _>>()
+        {
+            Ok(signals) => signals,
+            Err(e) => {
+                eprintln!("{e}");
+                return crate::CycleType::Unknown;
+            }
+        };
 
         Python::with_gil(|py| -> PyResult<CycleType> {
             let obj = self

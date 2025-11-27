@@ -100,30 +100,6 @@ impl TimelineStatistic {
     pub fn get_data(&self) -> &Vec<[f64; 2]> {
         &self.values
     }
-    /// Gets min and max value of each axis (min_x, max_x, min_y, max_y)
-    pub fn get_bounds(data: &[[f64; 2]]) -> (f64, f64, f64, f64) {
-        let min_x = *data
-            .iter()
-            .map(|[x, _]| x)
-            .min_by(|a, b| a.total_cmp(b))
-            .unwrap();
-        let max_x = *data
-            .iter()
-            .map(|[x, _]| x)
-            .max_by(|a, b| a.total_cmp(b))
-            .unwrap();
-        let min_y = *data
-            .iter()
-            .map(|[_, y]| y)
-            .min_by(|a, b| a.total_cmp(b))
-            .unwrap();
-        let max_y = *data
-            .iter()
-            .map(|[_, y]| y)
-            .max_by(|a, b| a.total_cmp(b))
-            .unwrap();
-        (min_x, max_x, min_y, max_y)
-    }
 }
 
 /// Stores in what state is the bus currently

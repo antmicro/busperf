@@ -18,7 +18,7 @@ fn test(trace: &str, yaml: &str, max_burst_delay: i32, correct: &[BusUsage]) {
     .unwrap();
     assert_eq!(correct.len(), descs.len());
     for (desc, correct) in descs.iter_mut().zip(correct) {
-        desc.analyze(&mut data, false);
+        desc.analyze(&mut data, false).unwrap();
         let usage = desc.get_results();
         assert_eq!(usage, Some(correct));
     }
@@ -29,7 +29,7 @@ fn test_basic(trace: &str, yaml: &str, num: usize) {
     let mut data = load_simulation_trace(trace, false).unwrap();
     let mut descs = load_bus_analyzers(yaml, 0, 10000, 0.0001, 0.00001, "plugins/python").unwrap();
     for desc in descs.iter_mut() {
-        desc.analyze(&mut data, false);
+        desc.analyze(&mut data, false).unwrap();
         assert!(matches!(desc.get_results(), Some(_)))
     }
     assert!(descs.len() == num)
@@ -321,7 +321,7 @@ fn custom_plugin_path() {
     )
     .unwrap();
     for desc in descs.iter_mut() {
-        desc.analyze(&mut data, false);
+        desc.analyze(&mut data, false).unwrap();
         assert!(matches!(desc.get_results(), Some(_)))
     }
     assert!(descs.len() == 1)
