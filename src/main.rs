@@ -109,6 +109,7 @@ impl AnalyzeArgs {
             .argument("BURST")
             .fallback(0);
         let output = short('o')
+            .long("output")
             .help("Output filename")
             .argument("OUT")
             .optional();
