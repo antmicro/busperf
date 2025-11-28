@@ -74,12 +74,12 @@ Available commands:
 
 **busperf analyze**
 ```
-Usage: busperf analyze (--gui | --csv | --md | --text) [-o=OUT] [-s=FILENAME] [-m=BURST] [-w=WINDOW]
-[-x=X_RATE] [-y=Y_RATE] [-v] (-t=TRACE -b=BUS_CONFIG | TRACE BUS)
+Usage: busperf analyze (--gui | --csv | --md | --text) [-o=OUT] [--skip=SKIPPED_STATS]
+[-s=FILENAME] [-m=BURST] [-w=WINDOW] [-x=X_RATE] [-y=Y_RATE] [-v] [-p=PATH] TRACE BUS_CONFIG
 
 Available positional items:
-    TRACE                vcd/fst file with simulation trace
-    BUS                  yaml with description of buses
+    TRACE                     vcd/fst file with simulation trace
+    BUS_CONFIG                yaml with description of buses
 
 Available options:
         --gui            Run GUI
@@ -93,9 +93,9 @@ Available options:
     -x, --x_rate=X_RATE  Set x_rate for bandwidth above x_rate [default: 0.0001]
     -y, --y_rate=Y_RATE  Set y_rate for bandwidth below y_rate [default: 0.00001]
     -v, --verbose
-    -t, --trace=TRACE    vcd/fst file with simulation trace
-    -b, --bus-config=BUS_CONFIG  yaml with description of buses
     -h, --help           Prints help information
+    -p, --plugins_path=PATH   Path to python plugins [default: "./plugins/python]"
+    -h, --help                Prints help information
 ```
 
 **busperf show**
