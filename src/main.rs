@@ -131,12 +131,12 @@ impl AnalyzeArgs {
             .req_flag(OutputType::Pretty);
 
         let data = long("save")
-            .help("Save data in busperf format")
+            .help("Save data in busperf format (requires setting -o)")
             .req_flag(OutputType::Data);
         cfg_if! {
             if #[cfg(feature = "generate-html")] {
                 let html = long("html")
-                    .help("Generate HTML with embeded busperf_web")
+                    .help("Generate HTML with embeded busperf_web (requires setting -o)")
                     .req_flag(OutputType::Html);
                 let output_type = construct!([gui, csv, md, text, data, html]);
             } else {

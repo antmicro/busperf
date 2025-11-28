@@ -74,18 +74,19 @@ Available positional items:
     BUS_CONFIG                yaml with description of buses
 
 Available options:
-        --gui            Run GUI
-        --csv            Format output as csv
-        --md             Format output as md table
-        --text           Format output as table
-    -o=OUT               Output filename
-    -s, --save=FILENAME  Save analyzed statistics for later view
+        --gui                 Run GUI
+        --csv                 Format output as csv
+        --md                  Format output as md table
+        --text                Format output as table
+        --save                Save data in busperf format (requires setting -o)
+        --html                Generate HTML with embeded busperf_web (requires setting -o)
+    -o, --output=OUT          Output filename
+        --skip=SKIPPED_STATS  Stats to skip separated by a comma.
     -m, --max_burst_delay=BURST  Max delay during a burst [default: 0]
-    -w, --window=WINDOW  Set size of the rolling window [default: 10000]
-    -x, --x_rate=X_RATE  Set x_rate for bandwidth above x_rate [default: 0.0001]
-    -y, --y_rate=Y_RATE  Set y_rate for bandwidth below y_rate [default: 0.00001]
+    -w, --window=WINDOW       Set size of the rolling window [default: 10000]
+    -x, --x_rate=X_RATE       Set x_rate for bandwidth above x_rate [default: 0.0001]
+    -y, --y_rate=Y_RATE       Set y_rate for bandwidth below y_rate [default: 0.00001]
     -v, --verbose
-    -h, --help           Prints help information
     -p, --plugins_path=PATH   Path to python plugins [default: "./plugins/python]"
     -h, --help                Prints help information
 ```
