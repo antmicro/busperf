@@ -1,19 +1,11 @@
-# Busperf - post-simulation bus performance analysis
+# Busperf
 
-## Motivation
+Copyright (c) 2025 [Antmicro](https://www.antmicro.com)
 
-When improving, or creating new, data processing IP cores it is hard to find which submodule(s) are 
-bottlenecking the pipeline and causing lower than expected performance. 
-Manual analysis of the system busses is tiresome and error prone. 
-
-
-## Goals
-
-* Busperf analyzes and provides bus activity statistics based on the simulation trace, in order to 
-guide developer to the buses with lowest utilisation and highest backpressure.
-* It ingests VCD/FST file with accompanying YAML, analyzes traces and provides statistics in visual and text forms.
-* YAML file describes which buses to profile, their type and time intervals of interest.
-* It allows user to extend functionality with custom python plugins.
+Busperf helps analyze bus performance and identify throughput bottlenecks based on simulation traces.
+It ingests VCD/FST files with an accompanying bus description in YAML, then generates both visual and textual statistics on bus activity.
+This helps users quickly identify buses with low utilization or high backpressure.
+Additonally, the tool supports Python plugins for analyzing custom bus protocols.
 
 ## Usage
 
