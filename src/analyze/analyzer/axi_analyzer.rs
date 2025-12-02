@@ -384,9 +384,9 @@ impl AnalyzerInternal for AXIRdAnalyzer {
         let mut reset = 0;
 
         let last_time = clk.time_indices().last().ok_or("clock has no values")?;
-        let clock_period = *time_table
-            .get(2)
-            .ok_or("Why even run on a trace that has less than one clock cycle")?;
+        let clock_period = *time_table.get(2).ok_or(
+            "trace is too short (less than 3 time indices), cannot calculate clock period",
+        )?;
 
         let mut usage = MultiChannelBusUsage::new(
             self.common.bus_name(),
@@ -770,9 +770,9 @@ impl AnalyzerInternal for AXIWrAnalyzer {
             .time_indices()
             .last()
             .ok_or("Clock should have values")?;
-        let clock_period = *time_table
-            .get(2)
-            .ok_or("Why do you use a trace that has less than one clock cycle???")?;
+        let clock_period = *time_table.get(2).ok_or(
+            "trace is too short (less than 3 time indices), cannot calculate clock period",
+        )?;
         let intervals = if self.common.intervals().is_empty() {
             vec![[0, time_table[*last_time as usize]]]
         } else {

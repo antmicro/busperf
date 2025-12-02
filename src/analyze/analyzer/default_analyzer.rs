@@ -63,9 +63,9 @@ impl AnalyzerInternal for DefaultAnalyzer {
         let mut usage = SingleChannelBusUsage::new(
             self.common.bus_name(),
             self.common.max_burst_delay(),
-            *time_table
-                .get(2)
-                .ok_or("Why do you use a trace that has less than one clock cycle???")?,
+            *time_table.get(2).ok_or(
+                "trace is too short (less than 3 time indices), cannot calculate clock period",
+            )?,
         );
         for (time, value) in clock.iter_changes() {
             if let SignalValue::Binary(v, 1) = value
