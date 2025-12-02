@@ -110,11 +110,11 @@ pub fn load_simulation_trace(
     Ok(SimulationData { hierarchy, body })
 }
 
-fn load_signals<'a>(
+fn load_signals<'signal_buffer>(
     simulation_data: &mut SimulationData,
     signal_paths: &Vec<&SignalPath>,
-    buffer: &'a mut Vec<(wellen::SignalRef, wellen::Signal)>,
-) -> Result<Vec<&'a (wellen::SignalRef, wellen::Signal)>, Box<dyn Error>> {
+    buffer: &'signal_buffer mut Vec<(wellen::SignalRef, wellen::Signal)>,
+) -> Result<Vec<&'signal_buffer (wellen::SignalRef, wellen::Signal)>, Box<dyn Error>> {
     let hierarchy = &simulation_data.hierarchy;
     let body = &mut simulation_data.body;
     let signal_refs: Vec<wellen::SignalRef> = signal_paths
