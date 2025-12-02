@@ -1,13 +1,13 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
 use busperf::show::egui_visualization::BusperfApp;
 use eframe::egui::{self, Ui};
 
-struct Test {
+struct BusperfWebApp {
     bp: Rc<RefCell<Option<BusperfApp>>>,
 }
 
-impl Test {
+impl BusperfWebApp {
     fn new() -> Self {
         Self {
             bp: Rc::new(RefCell::new(None)),
@@ -17,16 +17,14 @@ impl Test {
 
 use wasm_bindgen::prelude::*;
 
-static mut DATA: Vec<u8> = Vec::new();
+static DATA: OnceLock<Vec<u8>> = OnceLock::new();
 
 #[wasm_bindgen]
 pub fn set_busperf_data(data: Vec<u8>) {
-    unsafe {
-        DATA = data;
-    }
+    DATA.get_or_init(|| data);
 }
 
-impl eframe::App for Test {
+impl eframe::App for BusperfWebApp {
     fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
         if let Some(file) = ctx.input(|input| input.raw.dropped_files.first().map(|f| f.clone())) {
             let name = &file.name;
@@ -40,17 +38,11 @@ impl eframe::App for Test {
         if let Some(app) = &mut *self.bp.borrow_mut() {
             app.update(ctx, frame);
         } else {
-            unsafe {
-                #[allow(static_mut_refs)]
-                let foo = if !DATA.is_empty() { true } else { false };
-                if foo {
-                    web_sys::console::log_1(&"LOADED DATA".into());
-                    #[allow(static_mut_refs)]
-                    if let Ok(a) = BusperfApp::build_from_bytes(&DATA) {
-                        *self.bp.borrow_mut() = Some(a);
-                    }
-                    ctx.request_repaint();
+            if let Some(data) = DATA.get() {
+                if let Ok(a) = BusperfApp::build_from_bytes(data) {
+                    *self.bp.borrow_mut() = Some(a);
                 }
+                ctx.request_repaint();
             }
             egui::CentralPanel::default().show(ctx, |ui| {
                 ui.add_space(ui.available_height() / 3.0);
@@ -72,13 +64,10 @@ impl eframe::App for Test {
                             wasm_bindgen_futures::spawn_local(async move {
                                 if let Some(file) = rfd::AsyncFileDialog::new().pick_file().await {
                                     let data = file.read().await;
-                                    unsafe {
-                                        DATA = data;
+                                    if let Ok(a) = BusperfApp::build_from_bytes(&data) {
+                                        *app.borrow_mut() = Some(a);
                                     }
-                                    // if let Ok(a) = BusperfApp::build_from_bytes(&data) {
-                                    //     *app.borrow_mut() = Some(a);
-                                    // }
-                                    // ctx.request_repaint();
+                                    ctx.request_repaint();
                                 };
                             });
                         }
@@ -88,6 +77,7 @@ impl eframe::App for Test {
         }
     }
 }
+
 fn main() {
     use eframe::wasm_bindgen::JsCast as _;
 
@@ -109,7 +99,11 @@ fn main() {
             .expect("the_canvas_id was not a HtmlCanvasElement");
 
         let start_result = eframe::WebRunner::new()
-            .start(canvas, web_options, Box::new(|_| Ok(Box::new(Test::new()))))
+            .start(
+                canvas,
+                web_options,
+                Box::new(|_| Ok(Box::new(BusperfWebApp::new()))),
+            )
             .await;
 
         // Remove the loading text and spinner:
