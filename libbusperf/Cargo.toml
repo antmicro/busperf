@@ -1,0 +1,12 @@
+[package]
+name = "libbusperf"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bincode = "2.0.1"
+blake3 = { version = "1.8.2", optional = true }
+cfg-if = "1.0.4"
+
+[features]
+file-hash = ["dep:blake3"]

@@ -1,0 +1,15 @@
+[package]
+name = "busperf_gui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+libbusperf = { path = "../libbusperf"}
+eframe = { version = "0.32.3", default-features = false, features = ["x11", "glow", "default_fonts", "wayland"] }
+egui_plot = "0.33.0"
+serde = { version = "1.0.228", optional = true }
+flate2 = "1.1.4"
+bincode = "2.0.1"
+
+[features]
+surfer = ["libbusperf/file-hash", "serde"]

@@ -425,14 +425,11 @@ name = "busperf"
 version = "0.1.0"
 dependencies = [
  "base64",
- "bincode",
- "blake3",
  "bpaf",
+ "busperf_gui",
  "cfg-if",
  "constcat",
  "csv",
- "eframe",
- "egui_plot",
  "flate2",
  "log",
  "num",
@@ -449,10 +446,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "busperf_gui"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "eframe",
+ "egui_plot",
+ "flate2",
+ "libbusperf",
+ "serde",
+]
+
+[[package]]
 name = "busperf_web"
 version = "0.1.0"
 dependencies = [
- "busperf",
+ "busperf_gui",
  "eframe",
  "log",
  "rfd",
@@ -1626,6 +1635,15 @@ name = "leb128"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "884e2677b40cc8c339eaefcb701c32ef1fd2493d71118dc0ca4b6a736c93bd67"
+
+[[package]]
+name = "libbusperf"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "blake3",
+ "cfg-if",
+]
 
 [[package]]
 name = "libc"
