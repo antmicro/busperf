@@ -1,7 +1,6 @@
 fn main() {
     #[cfg(feature = "generate-html")]
     {
-        println!("cargo:warning=Compiling for wasm");
         if !std::process::Command::new("cargo")
             .args([
                 "build",
