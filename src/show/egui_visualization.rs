@@ -391,7 +391,9 @@ fn estimate_size(statistic: &Statistic) -> f32 {
                 * 20.0
         }
         Statistic::Bucket(buckets_statistic) => buckets_statistic.display().len() as f32 * 8.0,
-        Statistic::Timeline(timeline_statistic) => timeline_statistic.display.len() as f32 * 10.0,
+        Statistic::Timeline(timeline_statistic) => {
+            (timeline_statistic.name.len() + timeline_statistic.display.len()) as f32 * 10.0
+        }
     }
 }
 
@@ -477,7 +479,7 @@ fn draw_values(ui: &mut Ui, statistics: &[Statistic]) {
                                                 vec2(10.0, 30.0),
                                                 Label::new(
                                                     egui::RichText::new(
-                                                        timeline_statistic.display.to_string(),
+                                                        format!("{}: {}", timeline_statistic.name, timeline_statistic.display),
                                                     )
                                                     .font(egui::FontId::proportional(16.0))
                                                     .color(get_color(stat_id)),
