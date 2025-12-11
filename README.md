@@ -109,7 +109,7 @@ Available options:
 
 ### GUI
 
-![gui example](screenshots/example.png)
+![gui example](docs/screenshots/example.png)
 
 On left panel there is a list for selection of any of the analyzer buses.
 On the main panel on top there is a overview of the statistics of selected

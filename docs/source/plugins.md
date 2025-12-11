@@ -43,6 +43,7 @@ the following methods:
 All types that are used on rust-python interface are made available in a `busperf` module, that is created at
 runtime and made accessible for the plugins. It defines the following types based on rust structs:
 
+(CycleType)=
 ### CycleType
 
 This enum represents state of single channel.
@@ -58,6 +59,7 @@ class CycleType:
     Unknown = <CycleType.Unknown>               # invalid/unknown state
 ~~~
 
+(SignalType)=
 ### SignalType
 
 This enum represents what data about signal(s) does the analyzer expect.
@@ -69,6 +71,7 @@ class SignalType:
     ReadyValid = <SignalType.ReadyValid>      # passes all time a transaction is performed on ready/valid channel
 ~~~
 
+(Transaction)=
 ### Transaction
 
 This type represents one transaction of the analyzed multichannel bus.
@@ -91,3 +94,4 @@ class Transaction:
         self.resp = resp               # value of the response
         self.next_start = next_start   # start time of next transaction
 ~~~
+

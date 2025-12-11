@@ -2,6 +2,28 @@ stages:
   - build
   - test
 
+build_docs:
+  stage: build
+  image: $CI_DOCS_DOCKER_IMAGE
+  before_get_sources:
+    - apt-get update
+    - apt-get install python3-venv python3-pip python3 -y
+  before_script:
+    - cd docs
+    - python3 -m venv .venv/
+    - source .venv/bin/activate
+    - pip3 install -r requirements.txt
+  script:
+    - cd docs
+    - source .venv/bin/activate
+    - make html latexpdf
+    - cp build/latex/*.pdf build/html/
+    - tar cf $CI_DOCS_ARCHIVE -C build/html/ .
+  artifacts:
+    paths:
+      - docs/build
+      - docs/$CI_DOCS_ARCHIVE
+
 image: debian
 
 web_test:
