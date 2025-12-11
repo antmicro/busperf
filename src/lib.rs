@@ -48,7 +48,7 @@ fn calculate_file_hash(filename: &str) -> Result<Hash, Box<dyn std::error::Error
 }
 pub type CyclesNum = i32;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Clone, bincode::Encode, bincode::Decode)]
 pub struct SignalPath {
     pub scope: Vec<String>,
     pub name: String,

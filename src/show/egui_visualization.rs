@@ -50,58 +50,6 @@ pub fn run_visualization(
     Ok(())
 }
 
-#[cfg(target_arch = "wasm32")]
-pub fn run_visualization(
-    usages: Vec<BusData>,
-    trace_path: WaveformFile,
-    time_unit: TimescaleUnit,
-) -> Result<(), Box<dyn Error>> {
-    use eframe::wasm_bindgen::JsCast as _;
-
-    // Redirect `log` message to `console.log` and friends:
-    eframe::WebLogger::init(log::LevelFilter::Debug).ok();
-
-    let web_options = eframe::WebOptions::default();
-
-    wasm_bindgen_futures::spawn_local(async move {
-        let document = web_sys::window()
-            .expect("No window")
-            .document()
-            .expect("No document");
-
-        let canvas = document
-            .get_element_by_id("the_canvas_id")
-            .expect("Failed to find the_canvas_id")
-            .dyn_into::<web_sys::HtmlCanvasElement>()
-            .expect("the_canvas_id was not a HtmlCanvasElement");
-
-        let start_result = eframe::WebRunner::new()
-            .start(
-                canvas,
-                web_options,
-                Box::new(move |_| Ok(Box::new(BusperfApp::new(usages, trace_path, time_unit)))),
-            )
-            .await;
-
-        // Remove the loading text and spinner:
-        if let Some(loading_text) = document.get_element_by_id("loading_text") {
-            match start_result {
-                Ok(_) => {
-                    loading_text.remove();
-                }
-                Err(e) => {
-                    loading_text.set_inner_html(
-                        "<p> The app has crashed. See the developer console for details. </p>",
-                    );
-                    panic!("Failed to start eframe: {e:?}");
-                }
-            }
-        }
-    });
-
-    Ok(())
-}
-
 #[derive(PartialEq)]
 enum PlotScale {
     Log,
@@ -317,16 +265,14 @@ impl BusperfApp {
                 ui.horizontal(|ui| {
                     ui.text_edit_singleline(&mut self.trace_path.path);
                     #[cfg(not(target_arch = "wasm32"))]
-                    if ui.button("Select").clicked() {
-                        let future = async { rfd::AsyncFileDialog::new().pick_file().await };
-                        let data = futures::executor::block_on(future);
-                        if let Some(handle) = data {
-                            if let Some(path) = handle.path().to_str() {
-                                self.trace_path.path = path.to_string();
-                                self.surfer.warning = String::new();
-                            } else {
-                                self.surfer.warning = String::from("Non UTF8 in file name");
-                            }
+                    if ui.button("Select").clicked()
+                        && let Some(pathbuf) = rfd::FileDialog::new().pick_file()
+                    {
+                        if let Some(path) = pathbuf.to_str() {
+                            self.trace_path.path = path.to_string();
+                            self.surfer.warning = String::new();
+                        } else {
+                            self.surfer.warning = String::from("Non UTF8 in file name");
                         }
                     }
                 });

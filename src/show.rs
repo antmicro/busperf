@@ -55,9 +55,12 @@ pub fn show_data(
             let usages = usages.iter().map(|u| &u.usage).collect::<Vec<_>>();
             text_output::generate_md_table(out, &usages, verbose, skipped_stats)
         }
+        #[cfg(not(target_arch = "wasm32"))]
         OutputType::Rendered => {
             egui_visualization::run_visualization(usages, trace, wellen::TimescaleUnit::PicoSeconds)
         }
+        #[cfg(target_arch = "wasm32")]
+        OutputType::Rendered => Ok(()),
         OutputType::Data => save_data(usages, trace, out),
         #[cfg(feature = "generate-html")]
         OutputType::Html => generate_html(usages, trace, out),
