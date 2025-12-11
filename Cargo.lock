@@ -450,11 +450,17 @@ name = "busperf_gui"
 version = "0.1.0"
 dependencies = [
  "bincode",
+ "blake3",
+ "cfg-if",
  "eframe",
  "egui_plot",
  "flate2",
  "libbusperf",
+ "num",
+ "owo-colors",
+ "rfd",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

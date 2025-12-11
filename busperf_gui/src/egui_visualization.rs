@@ -1,10 +1,9 @@
 use std::error::Error;
-use std::{cell::RefCell, collections::HashMap, f32, io::Read, str::FromStr};
+use std::{cell::RefCell, collections::HashMap, io::Read};
 
-use blake3::Hash;
 use eframe::{
     egui::{
-        self, Color32, FontId, Id, Label, Layout, Modal, Rgba, RichText, Stroke, Ui,
+        self, Color32, FontId, Id, Label, Layout, Rgba, RichText, Stroke, Ui,
         text::{LayoutJob, TextWrapping},
         vec2,
     },
@@ -14,43 +13,31 @@ use egui_plot::{
     Bar, BarChart, ClosestElem, Legend, Line, Plot, PlotItem, PlotPoint, PlotPoints, Polygon, Text,
     VLine, uniform_grid_spacer,
 };
-use wellen::TimescaleUnit;
 
-use super::WaveformFile;
-#[cfg(not(target_arch = "wasm32"))]
-use super::surfer_integration;
+#[derive(PartialEq, Clone, Copy)]
+pub struct TimescaleUnit(i32);
 
-use crate::{
-    CyclesNum,
-    bus_usage::{BusData, BusUsage, Statistic},
-    calculate_file_hash,
-};
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn run_visualization(
-    usages: Vec<BusData>,
-    trace_path: WaveformFile,
-    time_unit: TimescaleUnit,
-) -> Result<(), Box<dyn Error>> {
-    let options = eframe::NativeOptions::default();
-    eframe::run_native(
-        "busperf",
-        options,
-        Box::new(|_| Ok(Box::new(BusperfApp::new(usages, trace_path, time_unit)))),
-    )
-    .map_err(|e| {
-        use owo_colors::OwoColorize;
-        format!(
-            "{} {}",
-            "[Error] failed to run egui".bright_red(),
-            e.bright_red()
-        )
-    })?;
-    Ok(())
+impl TimescaleUnit {
+    pub fn new(u: i32) -> Self {
+        TimescaleUnit(u)
+    }
 }
 
+impl From<&TimescaleUnit> for i32 {
+    fn from(value: &TimescaleUnit) -> Self {
+        value.0
+    }
+}
+
+use crate::surfer_egui::{self, surfer_ui_buckets, SurferData};
+
+use libbusperf::{
+    CyclesNum,
+    bus_usage::{BusData, BusUsage, Statistic},
+};
+
 #[derive(PartialEq)]
-enum PlotScale {
+pub enum PlotScale {
     Log,
     Lin,
 }
@@ -63,9 +50,9 @@ enum PlotType {
 }
 
 #[derive(PartialEq)]
-struct BucketsPlot {
-    scale: PlotScale,
-    selected: Option<(CyclesNum, Id)>,
+pub struct BucketsPlot {
+    pub scale: PlotScale,
+    pub selected: Option<(CyclesNum, Id)>,
 }
 
 impl BucketsPlot {
@@ -78,11 +65,11 @@ impl BucketsPlot {
 }
 
 #[derive(PartialEq)]
-struct TimelinePlot {
-    timescale_unit: TimescaleUnit,
-    pointer: Option<PlotPoint>,
-    period_start: f64,
-    period_end: f64,
+pub struct TimelinePlot {
+    pub timescale_unit: TimescaleUnit,
+    pub pointer: Option<PlotPoint>,
+    pub period_start: f64,
+    pub period_end: f64,
 }
 
 impl TimelinePlot {
@@ -106,23 +93,14 @@ impl std::fmt::Display for PlotType {
     }
 }
 
-type ModalAction = Option<Box<dyn FnOnce(&str)>>;
-
-struct SurferConnectionUi {
-    wrong_checksum_modal: bool,
-    file_not_found_modal: bool,
-    modal_action: ModalAction,
-    warning: String,
-}
 
 pub struct BusperfApp {
     usages: Vec<BusData>,
     selected: usize,
-    trace_path: WaveformFile,
-    waveform_time_unit: wellen::TimescaleUnit,
+    waveform_time_unit: TimescaleUnit,
     left: PlotType,
     right: PlotType,
-    surfer: SurferConnectionUi,
+    surfer: SurferData,
 }
 
 impl BusperfApp {
@@ -137,16 +115,11 @@ impl BusperfApp {
             .map_err(|_| "invalid file data")?
             .0;
         let (waveform_path, hash, usages) = data;
-        let hash = Hash::from_str(&hash).map_err(|_| "invalid file: invalid hash")?;
-        let trace = WaveformFile {
-            path: waveform_path,
-            hash,
-            checked: true.into(),
-        };
-        Ok(BusperfApp::new(usages, trace, TimescaleUnit::PicoSeconds))
+        let surfer_data = SurferData::new(waveform_path, Some(hash))?;
+        Ok(BusperfApp::new(usages, surfer_data, TimescaleUnit(-9)))
     }
 
-    pub fn new(usages: Vec<BusData>, trace_path: WaveformFile, time_unit: TimescaleUnit) -> Self {
+    pub fn new(usages: Vec<BusData>, surfer: SurferData, time_unit: TimescaleUnit) -> Self {
         let right = if matches!(usages[0].usage, BusUsage::SingleChannel(_)) {
             PlotType::Pie
         } else {
@@ -155,34 +128,22 @@ impl BusperfApp {
         Self {
             usages,
             selected: 0,
-            trace_path,
             waveform_time_unit: time_unit,
             left: PlotType::Buckets(BucketsPlot::new(PlotScale::Log)),
             right,
-            surfer: SurferConnectionUi {
-                wrong_checksum_modal: false,
-                file_not_found_modal: false,
-                modal_action: None,
-                warning: String::new(),
-            },
+            surfer ,
         }
     }
 
     fn draw_statistics(&mut self, ui: &mut Ui, skipped_stats: &[String]) {
         let BusData {
             usage,
-            signals: _signals,
+            signals,
         } = &self.usages[self.selected];
         let statistics = usage.get_statistics(skipped_stats);
-        #[cfg(not(target_arch = "wasm32"))]
-        let signals = _signals.iter().map(|s| format!("{s}")).collect();
-        #[cfg(not(target_arch = "wasm32"))]
-        let surfer_info = SurferInfo {
-            trace_path: &self.trace_path,
-            signals: &signals,
-            bus_name: usage.get_name(),
-            ui: RefCell::new(&mut self.surfer),
-        };
+        let signals = signals.iter().map(|s| format!("{s}")).collect();
+        self.surfer.set_signals_and_name(signals, usage.get_name());
+
         draw_values(ui, &statistics);
         let size = ui.available_size();
         let id = self.selected;
@@ -193,113 +154,23 @@ impl BusperfApp {
                 ui,
                 &statistics,
                 id * 2,
-                #[cfg(not(target_arch = "wasm32"))]
-                &surfer_info,
                 &self.waveform_time_unit,
                 &mut self.left,
                 width,
+                &self.surfer
             );
             draw_plot(
                 ui,
                 &statistics,
                 id * 2 + 1,
-                #[cfg(not(target_arch = "wasm32"))]
-                &surfer_info,
                 &self.waveform_time_unit,
                 &mut self.right,
                 width,
+                &self.surfer,
             );
         });
-        if self.surfer.wrong_checksum_modal {
-            let modal = Modal::new(Id::new("WrongChecksum")).show(ui.ctx(), |ui| {
-                ui.heading("Mismatched file");
-                ui.label("This file's checksum is different from the original waveform's. This means that data was calculated for a different simulation.");
 
-                egui::Sides::new().show(ui, |_ui| {}, |ui| {
-                    if ui.button("Select different file").clicked() {
-                        #[cfg(not(target_arch = "wasm32"))]
-                        if let Some(path) = rfd::FileDialog::new().pick_file() {
-                            let Ok(path) = path
-                                .into_os_string()
-                                .into_string() else {
-                                return;
-                            };
-                            self.trace_path.path = path;
-                            if ensure_trace_matches(&self.trace_path, &mut self.surfer) {
-                                ui.close();
-                                if let Some(action) = self.surfer.modal_action.take() {
-                                    println!("opening {}", self.trace_path.path);
-                                    action(&self.trace_path.path);
-                                }
-                            } else {
-                                self.surfer.warning = String::from("Invalid file");
-                            }
-                        }else {
-                        ui.close();
-                        }
-                    }
-                    if ui.button("Cancel").clicked() {
-                        ui.close();
-                    }
-                    if ui.button("Open anyways").clicked() {
-                        ui.close();
-                        self.trace_path.checked.set(true);
-                        if let Some(action) = self.surfer.modal_action.take() {
-                            action(&self.trace_path.path);
-                        }
-                    }
-                })
-            });
-            if modal.should_close() {
-                self.surfer.wrong_checksum_modal = false;
-            }
-        }
-
-        if self.surfer.file_not_found_modal {
-            let modal = Modal::new(Id::new("FileNotFound")).show(ui.ctx(), |ui| {
-                ui.heading("File not found");
-                ui.label("Saved path is not valid.");
-                ui.add_space(10.0);
-                ui.label("Select waveform file to load in surfer.");
-                ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut self.trace_path.path);
-                    #[cfg(not(target_arch = "wasm32"))]
-                    if ui.button("Select").clicked()
-                        && let Some(pathbuf) = rfd::FileDialog::new().pick_file()
-                    {
-                        if let Some(path) = pathbuf.to_str() {
-                            self.trace_path.path = path.to_string();
-                            self.surfer.warning = String::new();
-                        } else {
-                            self.surfer.warning = String::from("Non UTF8 in file name");
-                        }
-                    }
-                });
-                if !self.surfer.warning.is_empty() {
-                    ui.colored_label(Color32::RED, &self.surfer.warning);
-                }
-
-                egui::Sides::new().show(
-                    ui,
-                    |_ui| {},
-                    |ui| {
-                        if ui.button("Ok").clicked() {
-                            if ensure_trace_matches(&self.trace_path, &mut self.surfer) {
-                                ui.close();
-                                if let Some(action) = self.surfer.modal_action.take() {
-                                    action(&self.trace_path.path);
-                                }
-                            } else {
-                                self.surfer.warning = String::from("Invalid file");
-                            }
-                        }
-                    },
-                );
-            });
-            if modal.should_close() {
-                self.surfer.file_not_found_modal = false;
-            }
-        }
+        self.surfer.ui(ui);
     }
 }
 
@@ -347,13 +218,13 @@ impl eframe::App for BusperfApp {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-struct SurferInfo<'a, 'b, 'c, 'd> {
-    trace_path: &'a WaveformFile,
-    signals: &'b Vec<String>,
-    bus_name: &'c str,
-    ui: RefCell<&'d mut SurferConnectionUi>,
-}
+// #[cfg(not(target_arch = "wasm32"))]
+// struct SurferInfo<'a, 'b, 'c, 'd> {
+//     trace_path: &'a WaveformFile,
+//     signals: &'b Vec<String>,
+//     bus_name: &'c str,
+//     ui: RefCell<&'d mut SurferConnectionUi>,
+// }
 
 thread_local! {
     static COLORS: RefCell<HashMap<usize, Color32>> = RefCell::new(HashMap::new());
@@ -511,10 +382,10 @@ fn draw_plot(
     ui: &mut Ui,
     statistics: &[Statistic],
     id: usize,
-    #[cfg(not(target_arch = "wasm32"))] surfer_info: &SurferInfo,
     waveform_time_unit: &TimescaleUnit,
     type_: &mut PlotType,
     width: f32,
+    surfer: &SurferData,
 ) {
     ui.vertical(|ui| {
         let salt = type_ as *mut PlotType as u32;
@@ -579,20 +450,18 @@ fn draw_plot(
                 ui,
                 statistics,
                 id,
-                #[cfg(not(target_arch = "wasm32"))]
-                surfer_info,
                 buckets,
                 width,
+                surfer,
             ),
             PlotType::Timeline(timeline) => draw_timeline(
                 ui,
                 statistics,
                 id,
-                #[cfg(not(target_arch = "wasm32"))]
-                surfer_info,
                 waveform_time_unit,
                 timeline,
                 width,
+                surfer,
             ),
         };
     });
@@ -635,11 +504,10 @@ fn draw_buckets(
     ui: &mut Ui,
     statistics: &[Statistic],
     id: usize,
-    #[cfg(not(target_arch = "wasm32"))] surfer_info: &SurferInfo,
     buckets: &mut BucketsPlot,
     width: f32,
+    surfer: &SurferData,
 ) {
-    let BucketsPlot { scale, selected } = buckets;
     let statistics = statistics.iter().enumerate().filter_map(|(i, s)| match s {
         Statistic::Percentage(_) => None,
         Statistic::Bucket(buckets_statistic) => Some((i, buckets_statistic)),
@@ -665,6 +533,7 @@ fn draw_buckets(
         })(input)
     };
     ui.vertical(|ui| {
+        let BucketsPlot { scale, selected } = buckets;
         ui.horizontal(|ui| {
             ui.label("Scale: ");
             ui.radio_value(scale, PlotScale::Log, "log");
@@ -681,7 +550,7 @@ fn draw_buckets(
         .legend(Legend::default())
         .show_x(false)
         .x_axis_label("Value")
-        .y_axis_label("Number of occurences")
+        .y_axis_label("Number of occurrences")
         .cursor_color(Color32::TRANSPARENT)
         .x_grid_spacer(grid_spacer)
         .y_grid_spacer(grid_spacer)
@@ -728,7 +597,7 @@ fn draw_buckets(
             }
             (plot_ui.pointer_coordinate(), barcharts)
         });
-        let (coords, _barcharts) = response.inner;
+        let (coords, barcharts) = response.inner;
         if response.response.secondary_clicked() {
             if let Some(id) = response.hovered_plot_item
                 && let Some(coords) = coords
@@ -739,67 +608,8 @@ fn draw_buckets(
             }
         }
 
-        #[cfg(not(target_arch = "wasm32"))]
-        response.response.context_menu(|ui| {
-            match selected {
-                Some((selected, id)) => {
-                    if ui.button("open in surfer").clicked() {
-                        let buckets_statistic = _barcharts[id];
-                        let data = match scale {
-                            PlotScale::Log => buckets_statistic.get_data_for_bucket(*selected),
-                            PlotScale::Lin => buckets_statistic.get_data_of_value(*selected),
-                        };
-                        let signals = surfer_info.signals.clone();
-                        let periods = data
-                            .iter()
-                            .map(|period| (period.start(), period.end()))
-                            .collect::<Vec<_>>();
-                        let suffix = format!("{} {}", buckets_statistic.name, surfer_info.bus_name);
-                        let color = buckets_statistic.color;
-                        let action = move |trace_path: &str| {
-                            let periods = periods;
-                            surfer_integration::open_and_mark_periods(
-                                trace_path, signals, &periods, &suffix, color,
-                            );
-                        };
-                        if ensure_trace_matches(
-                            surfer_info.trace_path,
-                            &mut surfer_info.ui.borrow_mut(),
-                        ) {
-                            action(&surfer_info.trace_path.path);
-                        } else {
-                            surfer_info.ui.borrow_mut().modal_action = Some(Box::new(action));
-                        }
-                    }
-                }
-                None => {
-                    // if the user clicks outside of barchart, we still create a button
-                    // that will immediately get destroyed to not break the UI layout
-                    let _ = ui.button("open in surfer");
-                    ui.close()
-                }
-            }
-        });
+        surfer_ui_buckets(&response.response, buckets, barcharts, surfer);
     });
-}
-
-fn ensure_trace_matches(trace: &WaveformFile, ui: &mut SurferConnectionUi) -> bool {
-    if trace.checked.get() {
-        return true;
-    }
-    let hash1 = trace.hash;
-    if let Ok(hash2) = calculate_file_hash(&trace.path) {
-        if hash1 == hash2 {
-            trace.checked.set(true);
-            true
-        } else {
-            ui.wrong_checksum_modal = true;
-            false
-        }
-    } else {
-        ui.file_not_found_modal = true;
-        false
-    }
 }
 
 fn waveform_to_plot_time(
@@ -807,23 +617,8 @@ fn waveform_to_plot_time(
     waveform_time_unit: &TimescaleUnit,
     plot_time_unit: &TimescaleUnit,
 ) -> f64 {
-    let diff = plot_time_unit.to_exponent().unwrap_or(0) as i32
-        - waveform_time_unit.to_exponent().unwrap_or(0) as i32;
-    if diff > 0 {
-        value / 10.0f64.powi(diff.abs())
-    } else {
-        value * 10.0f64.powi(diff.abs())
-    }
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn plot_to_waveform_time(
-    value: f64,
-    waveform_time_unit: &TimescaleUnit,
-    plot_time_unit: &TimescaleUnit,
-) -> f64 {
-    let diff = waveform_time_unit.to_exponent().unwrap_or(0) as i32
-        - plot_time_unit.to_exponent().unwrap_or(0) as i32;
+    let diff: i32 = i32::from(plot_time_unit)
+        - i32::from(waveform_time_unit);
     if diff > 0 {
         value / 10.0f64.powi(diff.abs())
     } else {
@@ -835,18 +630,12 @@ fn draw_timeline(
     ui: &mut Ui,
     statistics: &[Statistic],
     id: usize,
-    #[cfg(not(target_arch = "wasm32"))] surfer_info: &SurferInfo,
     waveform_time_unit: &TimescaleUnit,
     timeline: &mut TimelinePlot,
     width: f32,
+    surfer: &SurferData,
 ) {
-    let TimelinePlot {
-        timescale_unit: plot_time_unit,
-        pointer: coords,
-        period_start: _period_start,
-        period_end: _period_end,
-    } = timeline;
-    let _all_statistics = statistics;
+    let all_statistics = statistics;
     let mut statistics = statistics
         .iter()
         .enumerate()
@@ -863,13 +652,14 @@ fn draw_timeline(
         );
     }
     ui.vertical(|ui| {
+        let plot_time_unit = &mut timeline.timescale_unit;
         ui.horizontal(|ui| {
             ui.label("Time unit: ");
-            ui.radio_value(plot_time_unit, TimescaleUnit::Seconds, "s");
-            ui.radio_value(plot_time_unit, TimescaleUnit::MilliSeconds, "ms");
-            ui.radio_value(plot_time_unit, TimescaleUnit::MicroSeconds, "us");
-            ui.radio_value(plot_time_unit, TimescaleUnit::NanoSeconds, "ns");
-            ui.radio_value(plot_time_unit, TimescaleUnit::PicoSeconds, "ps");
+            ui.radio_value(plot_time_unit, TimescaleUnit(0), "s");
+            ui.radio_value(plot_time_unit, TimescaleUnit(-3), "ms");
+            ui.radio_value(plot_time_unit, TimescaleUnit(-6), "us");
+            ui.radio_value(plot_time_unit, TimescaleUnit(-9), "ns");
+            ui.radio_value(plot_time_unit, TimescaleUnit(-12), "ps");
         });
         Plot::new(("timeline", id))
             .legend(Legend::default())
@@ -895,7 +685,7 @@ fn draw_timeline(
                                             waveform_to_plot_time(
                                                 x,
                                                 waveform_time_unit,
-                                                plot_time_unit,
+                                                &timeline.timescale_unit,
                                             ),
                                             y,
                                         ]
@@ -907,128 +697,9 @@ fn draw_timeline(
                     );
                 }
                 if plot_ui.response().secondary_clicked() {
-                    *coords = plot_ui.pointer_coordinate();
+                    timeline.pointer = plot_ui.pointer_coordinate();
                 }
-                #[cfg(not(target_arch = "wasm32"))]
-                plot_ui.response().context_menu(|ui| {
-                    ui.menu_button("open in surfer", |ui| {
-                        if ui.button("mark this time").clicked()
-                            && ensure_trace_matches(
-                                surfer_info.trace_path,
-                                &mut surfer_info.ui.borrow_mut(),
-                            )
-                        {
-                            surfer_integration::open_at_time(
-                                &surfer_info.trace_path.path,
-                                surfer_info.signals.clone(),
-                                plot_to_waveform_time(
-                                    coords.expect("Should be set by right click").x,
-                                    waveform_time_unit,
-                                    plot_time_unit,
-                                ),
-                            );
-                        }
-                        ui.menu_button("mark statistic", |ui| {
-                            for s in _all_statistics {
-                                if let Statistic::Bucket(s) = s {
-                                    ui.menu_button(s.name, |ui| {
-                                        if ui.button("before this point").clicked() {
-                                            let time = coords.expect("Is set by right click").x;
-                                            let periods = s
-                                                .data
-                                                .iter()
-                                                .rev()
-                                                .filter(|period| (period.end() as f64) < time)
-                                                .map(|period| (period.start(), period.end()))
-                                                .take(10)
-                                                .collect::<Vec<_>>();
-                                            surfer_integration::open_and_mark_periods(
-                                                &surfer_info.trace_path.path,
-                                                surfer_info.signals.clone(),
-                                                &periods,
-                                                &format!("{} {}", s.name, surfer_info.bus_name),
-                                                s.color,
-                                            );
-                                            if let Some(&(start, _)) = periods.last() {
-                                                surfer_integration::zoom_to_range(
-                                                    start,
-                                                    time as u64,
-                                                );
-                                            }
-                                        }
-                                        if ui.button("after this point").clicked() {
-                                            let time = coords.expect("Is set by right click").x;
-                                            let periods = s
-                                                .data
-                                                .iter()
-                                                .filter(|period| period.start() as f64 > time)
-                                                .map(|period| (period.start(), period.end()))
-                                                .take(10)
-                                                .collect::<Vec<_>>();
-                                            surfer_integration::open_and_mark_periods(
-                                                &surfer_info.trace_path.path,
-                                                surfer_info.signals.clone(),
-                                                &periods,
-                                                &format!("{} {}", s.name, surfer_info.bus_name),
-                                                s.color,
-                                            );
-                                            if let Some(&(_, end)) = periods.last() {
-                                                surfer_integration::zoom_to_range(time as u64, end);
-                                            }
-                                        }
-                                        let menu = egui::containers::menu::SubMenuButton::new(
-                                            "custom period",
-                                        )
-                                        .config(
-                                            eframe::egui::containers::menu::MenuConfig::new()
-                                                .close_behavior(
-                                                    egui::PopupCloseBehavior::CloseOnClickOutside,
-                                                ),
-                                        );
-                                        menu.ui(ui, |ui| {
-                                            ui.add(egui::DragValue::new(_period_start).speed(0.1));
-                                            ui.add(egui::DragValue::new(_period_end).speed(0.1));
-                                            if ui.button("open").clicked() {
-                                                let period_start = plot_to_waveform_time(
-                                                    *_period_start,
-                                                    waveform_time_unit,
-                                                    plot_time_unit,
-                                                );
-                                                let period_end = plot_to_waveform_time(
-                                                    *_period_end,
-                                                    waveform_time_unit,
-                                                    plot_time_unit,
-                                                );
-                                                surfer_integration::open_and_mark_periods(
-                                                    &surfer_info.trace_path.path,
-                                                    surfer_info.signals.clone(),
-                                                    &s.data
-                                                        .iter()
-                                                        .filter(|period| {
-                                                            period.start() as f64 > period_start
-                                                                && (period.end() as f64)
-                                                                    < period_end
-                                                        })
-                                                        .map(|period| {
-                                                            (period.start(), period.end())
-                                                        })
-                                                        .collect::<Vec<_>>(),
-                                                    &format!("{} {}", s.name, surfer_info.bus_name),
-                                                    s.color,
-                                                );
-                                                surfer_integration::zoom_to_range(
-                                                    period_start as u64,
-                                                    period_end as u64,
-                                                );
-                                                ui.close();
-                                            }
-                                        });
-                                    });
-                                }
-                            }
-                        });
-                    });
-                });
+                surfer_egui::surfer_ui_timeline(plot_ui, surfer, waveform_time_unit, timeline, all_statistics);
             });
     });
 }

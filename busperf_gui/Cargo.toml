@@ -10,6 +10,12 @@ egui_plot = "0.33.0"
 serde = { version = "1.0.228", optional = true }
 flate2 = "1.1.4"
 bincode = "2.0.1"
+cfg-if = "1.0.4"
+blake3 = { version = "1.8.2", optional = true }
+rfd = { version = "0.15.4", optional = true }
+num = { version = "0.4.3", optional = true }
+serde_json = { version = "1.0.145", optional = true }
+owo-colors = { version = "4.2.3", optional = true }
 
 [features]
-surfer = ["libbusperf/file-hash", "serde"]
+surfer = ["libbusperf/file-hash", "serde", "dep:blake3", "dep:rfd", "dep:num", "dep:serde_json", "dep:owo-colors"]
