@@ -5,7 +5,6 @@ use blake3::Hash;
 use eframe::{
     egui::{
         self, Color32, FontId, Id, Label, Layout, Modal, Rgba, RichText, Stroke, Ui,
-        containers::menu::MenuConfig,
         text::{LayoutJob, TextWrapping},
         vec2,
     },
@@ -127,7 +126,7 @@ pub struct BusperfApp {
 }
 
 impl BusperfApp {
-    pub fn build_from_bytes(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn build_from_bytes(data: &[u8]) -> Result<Self, Box<dyn Error>> {
         let mut decoder = flate2::read::GzDecoder::new(data);
         let mut buf = Vec::new();
         decoder
@@ -844,10 +843,10 @@ fn draw_timeline(
     let TimelinePlot {
         timescale_unit: plot_time_unit,
         pointer: coords,
-        period_start,
-        period_end,
+        period_start: _period_start,
+        period_end: _period_end,
     } = timeline;
-    let all_statistics = statistics;
+    let _all_statistics = statistics;
     let mut statistics = statistics
         .iter()
         .enumerate()
@@ -930,7 +929,7 @@ fn draw_timeline(
                             );
                         }
                         ui.menu_button("mark statistic", |ui| {
-                            for s in all_statistics {
+                            for s in _all_statistics {
                                 if let Statistic::Bucket(s) = s {
                                     ui.menu_button(s.name, |ui| {
                                         if ui.button("before this point").clicked() {
@@ -980,20 +979,23 @@ fn draw_timeline(
                                         let menu = egui::containers::menu::SubMenuButton::new(
                                             "custom period",
                                         )
-                                        .config(MenuConfig::new().close_behavior(
-                                            egui::PopupCloseBehavior::CloseOnClickOutside,
-                                        ));
+                                        .config(
+                                            eframe::egui::containers::menu::MenuConfig::new()
+                                                .close_behavior(
+                                                    egui::PopupCloseBehavior::CloseOnClickOutside,
+                                                ),
+                                        );
                                         menu.ui(ui, |ui| {
-                                            ui.add(egui::DragValue::new(period_start).speed(0.1));
-                                            ui.add(egui::DragValue::new(period_end).speed(0.1));
+                                            ui.add(egui::DragValue::new(_period_start).speed(0.1));
+                                            ui.add(egui::DragValue::new(_period_end).speed(0.1));
                                             if ui.button("open").clicked() {
                                                 let period_start = plot_to_waveform_time(
-                                                    *period_start,
+                                                    *_period_start,
                                                     waveform_time_unit,
                                                     plot_time_unit,
                                                 );
                                                 let period_end = plot_to_waveform_time(
-                                                    *period_end,
+                                                    *_period_end,
                                                     waveform_time_unit,
                                                     plot_time_unit,
                                                 );

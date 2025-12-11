@@ -55,6 +55,8 @@ build:
     - apt install --yes curl gcc python3 python3-setuptools libpython3-dev git &> /dev/null
     - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &> /dev/null
     - source ~/.cargo/env
+    - rustup target add wasm32-unknown-unknown
+    - cargo install wasm-bindgen-cli --version 0.2.105
     - cargo install cargo-deny
     - git clone https://github.com/antmicro/tuttest.git
     - cd tuttest

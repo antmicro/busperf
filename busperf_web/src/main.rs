@@ -26,11 +26,11 @@ pub fn set_busperf_data(data: Vec<u8>) {
 
 impl eframe::App for BusperfWebApp {
     fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
-        if let Some(file) = ctx.input(|input| input.raw.dropped_files.first().map(|f| f.clone())) {
+        if let Some(file) = ctx.input(|input| input.raw.dropped_files.first().cloned()) {
             let name = &file.name;
             web_sys::console::log_1(&name.into());
             if let Some(data) = file.bytes
-                && let Ok(a) = BusperfApp::build_from_bytes(&*data)
+                && let Ok(a) = BusperfApp::build_from_bytes(&data)
             {
                 *self.bp.borrow_mut() = Some(a);
             }

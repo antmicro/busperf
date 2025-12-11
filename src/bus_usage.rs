@@ -662,6 +662,7 @@ impl MultiChannelBusUsage {
             .push(Period::new(resp_time, next, self.clock_period));
     }
 
+    #[cfg(feature = "analyze")]
     pub(crate) fn add_time(&mut self, time: RealTime) {
         self.time += time;
     }

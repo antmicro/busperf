@@ -4,6 +4,7 @@ fn main() {
         if !std::process::Command::new("cargo")
             .args([
                 "build",
+                "--release",
                 "--target-dir",
                 "../target_wasm",
                 "--target",
@@ -19,7 +20,7 @@ fn main() {
                     "web",
                     "--out-dir",
                     "target_wasm",
-                    "target_wasm/wasm32-unknown-unknown/debug/busperf_web.wasm",
+                    "target_wasm/wasm32-unknown-unknown/release/busperf_web.wasm",
                 ])
                 .status()
                 .unwrap()

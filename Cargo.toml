@@ -30,7 +30,7 @@ base64 = "0.22.1"
 cfg-if = "1.0.4"
 
 [features]
-default = ["help-colors", "analyze", "show", "python-plugins"]
+default = ["help-colors", "analyze", "show", "python-plugins", "generate-html"]
 help-colors = ["bpaf/bright-color"]
 python-plugins = ["dep:pyo3"]
 analyze = []
