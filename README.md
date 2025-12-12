@@ -16,6 +16,15 @@ Project documentation is available in `docs/` directory. Rustdoc can be generate
 $ cargo doc --no-deps --open
 ```
 
+Sphinx docs can be built with , output will be available in `build/html`
+```sh
+$ cd docs
+$ python3 -m venv .venv/
+$ source .venv/bin/activate
+$ pip3 install -r requirements.txt
+$ make html latexpdf
+```
+
 ### Install and run
 
 ```sh
