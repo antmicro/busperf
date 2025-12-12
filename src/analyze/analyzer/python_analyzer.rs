@@ -3,7 +3,7 @@ use std::error::Error;
 use super::private::AnalyzerInternal;
 use crate::analyze::{
     analyzer::axi_analyzer::ReadyValidTransactionIterator,
-    bus::{is_value_of_type, BusCommon, SignalPath, SignalPathFromYaml},
+    bus::{BusCommon, SignalPath, SignalPathFromYaml, is_value_of_type},
     plugins::load_python_plugin,
 };
 use libbusperf::bus_usage::{BusUsage, MultiChannelBusUsage, RealTime};

@@ -1,7 +1,7 @@
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use super::{bus_from_yaml, is_value_of_type, BusDescription, SignalPath, ValueType};
+use super::{BusDescription, SignalPath, ValueType, bus_from_yaml, is_value_of_type};
 use libbusperf::CycleType;
 
 #[derive(Debug)]

@@ -29,7 +29,7 @@ impl From<&TimescaleUnit> for i32 {
     }
 }
 
-use crate::surfer_egui::{self, surfer_ui_buckets, SurferData};
+use crate::surfer_egui::{self, SurferData, surfer_ui_buckets};
 
 use libbusperf::{
     CyclesNum,
@@ -93,7 +93,6 @@ impl std::fmt::Display for PlotType {
     }
 }
 
-
 pub struct BusperfApp {
     usages: Vec<BusData>,
     selected: usize,
@@ -131,15 +130,12 @@ impl BusperfApp {
             waveform_time_unit: time_unit,
             left: PlotType::Buckets(BucketsPlot::new(PlotScale::Log)),
             right,
-            surfer ,
+            surfer,
         }
     }
 
     fn draw_statistics(&mut self, ui: &mut Ui, skipped_stats: &[String]) {
-        let BusData {
-            usage,
-            signals,
-        } = &self.usages[self.selected];
+        let BusData { usage, signals } = &self.usages[self.selected];
         let statistics = usage.get_statistics(skipped_stats);
         let signals = signals.iter().map(|s| format!("{s}")).collect();
         self.surfer.set_signals_and_name(signals, usage.get_name());
@@ -157,7 +153,7 @@ impl BusperfApp {
                 &self.waveform_time_unit,
                 &mut self.left,
                 width,
-                &self.surfer
+                &self.surfer,
             );
             draw_plot(
                 ui,
@@ -446,14 +442,7 @@ fn draw_plot(
             });
         match type_ {
             PlotType::Pie => draw_percentage(ui, statistics, width, type_),
-            PlotType::Buckets(buckets) => draw_buckets(
-                ui,
-                statistics,
-                id,
-                buckets,
-                width,
-                surfer,
-            ),
+            PlotType::Buckets(buckets) => draw_buckets(ui, statistics, id, buckets, width, surfer),
             PlotType::Timeline(timeline) => draw_timeline(
                 ui,
                 statistics,
@@ -617,8 +606,7 @@ fn waveform_to_plot_time(
     waveform_time_unit: &TimescaleUnit,
     plot_time_unit: &TimescaleUnit,
 ) -> f64 {
-    let diff: i32 = i32::from(plot_time_unit)
-        - i32::from(waveform_time_unit);
+    let diff: i32 = i32::from(plot_time_unit) - i32::from(waveform_time_unit);
     if diff > 0 {
         value / 10.0f64.powi(diff.abs())
     } else {
@@ -699,7 +687,13 @@ fn draw_timeline(
                 if plot_ui.response().secondary_clicked() {
                     timeline.pointer = plot_ui.pointer_coordinate();
                 }
-                surfer_egui::surfer_ui_timeline(plot_ui, surfer, waveform_time_unit, timeline, all_statistics);
+                surfer_egui::surfer_ui_timeline(
+                    plot_ui,
+                    surfer,
+                    waveform_time_unit,
+                    timeline,
+                    all_statistics,
+                );
             });
     });
 }

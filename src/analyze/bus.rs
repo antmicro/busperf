@@ -18,40 +18,40 @@ use libbusperf::{CycleType, CyclesNum, bus_usage::RealTime};
 
 pub use libbusperf::SignalPath;
 
-pub struct SignalPathFromYaml{}
+pub struct SignalPathFromYaml {}
 
 impl SignalPathFromYaml {
-pub fn from_yaml_with_prefix(
-    scope: &[String],
-    yaml: Yaml,
-) -> Result<SignalPath, Box<dyn std::error::Error>> {
-    SignalPathFromYaml::from_yaml_ref_with_prefix(scope, &yaml)
-}
-
-pub fn from_yaml_ref_with_prefix(
-    scope: &[String],
-    yaml: &Yaml,
-) -> Result<SignalPath, Box<dyn std::error::Error>> {
-    match yaml {
-        Yaml::String(name) => Ok(SignalPath {
-            scope: scope.to_vec(),
-            name: name.to_owned(),
-        }),
-        Yaml::Array(yaml_scope) => {
-            let mut yaml_scope = yaml_scope
-                .iter()
-                .map(|y| y.as_str().map(|y| y.to_owned()))
-                .collect::<Option<Vec<_>>>()
-                .ok_or("Signal scope should be a valid string")?;
-            let name = yaml_scope.pop().ok_or("No signal name")?;
-            let mut scope = scope.to_vec();
-            scope.append(&mut yaml_scope);
-            Ok(SignalPath { scope, name })
-        }
-        Yaml::BadValue => Err("not found")?,
-        _ => Err("invalid value")?,
+    pub fn from_yaml_with_prefix(
+        scope: &[String],
+        yaml: Yaml,
+    ) -> Result<SignalPath, Box<dyn std::error::Error>> {
+        SignalPathFromYaml::from_yaml_ref_with_prefix(scope, &yaml)
     }
-}
+
+    pub fn from_yaml_ref_with_prefix(
+        scope: &[String],
+        yaml: &Yaml,
+    ) -> Result<SignalPath, Box<dyn std::error::Error>> {
+        match yaml {
+            Yaml::String(name) => Ok(SignalPath {
+                scope: scope.to_vec(),
+                name: name.to_owned(),
+            }),
+            Yaml::Array(yaml_scope) => {
+                let mut yaml_scope = yaml_scope
+                    .iter()
+                    .map(|y| y.as_str().map(|y| y.to_owned()))
+                    .collect::<Option<Vec<_>>>()
+                    .ok_or("Signal scope should be a valid string")?;
+                let name = yaml_scope.pop().ok_or("No signal name")?;
+                let mut scope = scope.to_vec();
+                scope.append(&mut yaml_scope);
+                Ok(SignalPath { scope, name })
+            }
+            Yaml::BadValue => Err("not found")?,
+            _ => Err("invalid value")?,
+        }
+    }
 }
 
 macro_rules! bus_from_yaml {

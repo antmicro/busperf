@@ -35,9 +35,9 @@ impl eframe::App for BusperfWebApp {
                 match BusperfApp::build_from_bytes(&data) {
                     Ok(a) => *self.bp.borrow_mut() = Some(a),
                     Err(e) => {
-                     *self.error.borrow_mut() = e.to_string();
-                     *self.bp.borrow_mut() = None;   
-                    },
+                        *self.error.borrow_mut() = e.to_string();
+                        *self.bp.borrow_mut() = None;
+                    }
                 }
             }
         }
@@ -61,7 +61,9 @@ impl eframe::App for BusperfWebApp {
                         ui.label(egui::RichText::new("Select or drop a busperf file").size(25.0));
                         ui.add_space(50.0);
                         if !self.error.borrow().is_empty() {
-                            ui.label(egui::RichText::new(&*self.error.borrow()).color(Color32::RED));
+                            ui.label(
+                                egui::RichText::new(&*self.error.borrow()).color(Color32::RED),
+                            );
                         }
                         if ui
                             .add_sized([100.0, 60.0], |ui: &mut Ui| {

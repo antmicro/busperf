@@ -8,10 +8,11 @@ use yaml_rust2::Yaml;
 #[cfg(feature = "python-plugins")]
 use crate::analyze::bus::BusCommon;
 use crate::analyze::{
+    SimulationData,
     analyzer::axi_analyzer::{AXIRdAnalyzer, AXIWrAnalyzer},
-    load_signals, SimulationData,
+    load_signals,
 };
-use libbusperf::{bus_usage::BusUsage, CyclesNum};
+use libbusperf::{CyclesNum, bus_usage::BusUsage};
 
 mod axi_analyzer;
 mod default_analyzer;

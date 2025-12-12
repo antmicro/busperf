@@ -167,11 +167,7 @@ impl SingleChannelBusUsage {
     }
     /// Creates SingleChannelBusUsage with all statistics initialized to 0.
     /// To fill it with data use add_cycle() method for every cycle in the simulation. Later call end() to finish calculations.
-    pub fn new(
-        name: &str,
-        max_burst_delay: CyclesNum,
-        clk_to_time: u64,
-    ) -> SingleChannelBusUsage {
+    pub fn new(name: &str, max_burst_delay: CyclesNum, clk_to_time: u64) -> SingleChannelBusUsage {
         SingleChannelBusUsage {
             bus_name: name.to_owned(),
             busy: 0,

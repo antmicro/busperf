@@ -5,12 +5,12 @@ use libbusperf::bus_usage::{BusUsage, Statistic};
 fn generate_tabled<O>(header: &Vec<String>, data: &Vec<Vec<String>>, style: O) -> tabled::Table
 where
     O: tabled::settings::TableOption<
-        tabled::grid::records::vec_records::VecRecords<
-            tabled::grid::records::vec_records::Text<String>,
+            tabled::grid::records::vec_records::VecRecords<
+                tabled::grid::records::vec_records::Text<String>,
+            >,
+            tabled::grid::config::ColoredConfig,
+            tabled::grid::dimension::CompleteDimension,
         >,
-        tabled::grid::config::ColoredConfig,
-        tabled::grid::dimension::CompleteDimension,
-    >,
 {
     let mut builder = tabled::builder::Builder::new();
     builder.push_record(header);

@@ -1,8 +1,8 @@
-use std::{error::Error, io::Write};
 use crate::{
     analyze::{SimulationData, analyzer::Analyzer},
     show::OutputType,
 };
+use std::{error::Error, io::Write};
 
 pub mod analyze;
 pub mod show;

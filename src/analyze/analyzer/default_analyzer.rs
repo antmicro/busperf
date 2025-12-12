@@ -3,15 +3,12 @@ use std::error::Error;
 use constcat::concat_slices;
 use wellen::{SignalValue, TimeTable};
 
-use libbusperf::{CycleType,
-    CyclesNum};
-use libbusperf::bus_usage::{BusUsage, SingleChannelBusUsage};
-use crate::{
-    analyze::{
-        analyzer::private::AnalyzerInternal,
-        bus::{BusCommon, BusDescription, BusDescriptionBuilder, SignalPath, is_value_of_type},
-    },
+use crate::analyze::{
+    analyzer::private::AnalyzerInternal,
+    bus::{BusCommon, BusDescription, BusDescriptionBuilder, SignalPath, is_value_of_type},
 };
+use libbusperf::bus_usage::{BusUsage, SingleChannelBusUsage};
+use libbusperf::{CycleType, CyclesNum};
 
 use super::Analyzer;
 

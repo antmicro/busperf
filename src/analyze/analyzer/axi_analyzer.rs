@@ -7,19 +7,15 @@ use std::{
 use constcat::concat_slices;
 use wellen::{Signal, SignalValue, TimeTable, TimeTableIdx};
 
-use libbusperf::bus_usage::{BusUsage, MultiChannelBusUsage};
 use crate::analyze::bus::SignalPathFromYaml;
-use libbusperf::
-    CyclesNum
-    ;
-        use crate::
-    analyze::{
-        analyzer::private::AnalyzerInternal,
-        bus::{
-            BusCommon, BusDescription, SignalPath, ValueType, axi::AXIBus, get_value,
-            is_value_of_type,
-        },
+use crate::analyze::{
+    analyzer::private::AnalyzerInternal,
+    bus::{
+        BusCommon, BusDescription, SignalPath, ValueType, axi::AXIBus, get_value, is_value_of_type,
+    },
 };
+use libbusperf::CyclesNum;
+use libbusperf::bus_usage::{BusUsage, MultiChannelBusUsage};
 
 use super::Analyzer;
 
@@ -133,12 +129,17 @@ impl AXIRdAnalyzer {
             .into_string()
             .ok_or("Name of bus should be a valid string")?;
         let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
-        let r_resp =
-            SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["resp"])?;
+        let r_resp = SignalPathFromYaml::from_yaml_ref_with_prefix(
+            common.module_scope(),
+            &dict["r"]["resp"],
+        )?;
         let full = match (
             SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["id"]),
             SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), &dict["ar"]["id"]),
-            SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["last"]),
+            SignalPathFromYaml::from_yaml_ref_with_prefix(
+                common.module_scope(),
+                &dict["r"]["last"],
+            ),
         ) {
             (Ok(r_id), Ok(ar_id), Ok(r_last)) => Some(AXIFullRd {
                 r_id,
@@ -471,12 +472,18 @@ impl AXIWrAnalyzer {
             .into_string()
             .ok_or("Name of bus should be a valid string")?;
         let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
-        let b_resp =
-            SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), &dict["b"]["resp"])?;
-        let w_last =
-            SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), &dict["w"]["last"]);
-        let aw_id = SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), &dict["aw"]["id"]);
-        let b_id = SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), &dict["b"]["id"]);
+        let b_resp = SignalPathFromYaml::from_yaml_ref_with_prefix(
+            common.module_scope(),
+            &dict["b"]["resp"],
+        )?;
+        let w_last = SignalPathFromYaml::from_yaml_ref_with_prefix(
+            common.module_scope(),
+            &dict["w"]["last"],
+        );
+        let aw_id =
+            SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), &dict["aw"]["id"]);
+        let b_id =
+            SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), &dict["b"]["id"]);
         let full = match (aw_id, w_last, b_id) {
             (Ok(aw_id), Ok(w_last), Ok(b_id)) => Some(AXIFullWr {
                 aw_id,

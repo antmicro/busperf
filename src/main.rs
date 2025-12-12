@@ -1,4 +1,4 @@
-use bpaf::{construct, long, positional, short, OptionParser, Parser};
+use bpaf::{OptionParser, Parser, construct, long, positional, short};
 use busperf::show::OutputType;
 use cfg_if::cfg_if;
 use owo_colors::OwoColorize;
