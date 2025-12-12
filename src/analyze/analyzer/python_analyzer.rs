@@ -1,14 +1,12 @@
 use std::error::Error;
 
 use super::private::AnalyzerInternal;
-use crate::{
-    analyze::{
-        analyzer::axi_analyzer::ReadyValidTransactionIterator,
-        bus::{BusCommon, SignalPath, is_value_of_type},
-        plugins::load_python_plugin,
-    },
-    bus_usage::{BusUsage, MultiChannelBusUsage, RealTime},
+use crate::analyze::{
+    analyzer::axi_analyzer::ReadyValidTransactionIterator,
+    bus::{is_value_of_type, BusCommon, SignalPath, SignalPathFromYaml},
+    plugins::load_python_plugin,
 };
+use libbusperf::bus_usage::{BusUsage, MultiChannelBusUsage, RealTime};
 use owo_colors::OwoColorize;
 
 use super::Analyzer;
@@ -126,7 +124,10 @@ impl PythonAnalyzer {
                 let name = path.join(".");
                 let signal: Result<SignalInfo, Box<dyn std::error::Error>> = match type_ {
                     SignalType::Signal | SignalType::RisingSignal => {
-                        match SignalPath::from_yaml_ref_with_prefix(common.module_scope(), i) {
+                        match SignalPathFromYaml::from_yaml_ref_with_prefix(
+                            common.module_scope(),
+                            i,
+                        ) {
                             Ok(path) => {
                                 used_yaml.push(name);
                                 Ok((*type_, vec![path]))
@@ -137,12 +138,12 @@ impl PythonAnalyzer {
                     SignalType::ReadyValid => {
                         used_yaml.push(name.clone() + ".ready");
                         used_yaml.push(name.clone() + ".valid");
-                        let r = SignalPath::from_yaml_ref_with_prefix(
+                        let r = SignalPathFromYaml::from_yaml_ref_with_prefix(
                             common.module_scope(),
                             &i["ready"],
                         )
                         .map_err(|_| format!("Yaml is missing ready signal for {name}",))?;
-                        let v = SignalPath::from_yaml_ref_with_prefix(
+                        let v = SignalPathFromYaml::from_yaml_ref_with_prefix(
                             common.module_scope(),
                             &i["valid"],
                         )

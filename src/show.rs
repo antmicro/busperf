@@ -1,15 +1,13 @@
 use blake3::Hash;
+use busperf_gui::egui_visualization::TimescaleUnit;
 use flate2::Compression;
 use std::error::Error;
 use std::io::Read;
-use std::str::FromStr;
 use std::{cell::Cell, io::Write};
 
-use crate::bus_usage::BusData;
-use crate::calculate_file_hash;
+use libbusperf::bus_usage::BusData;
+use libbusperf::calculate_file_hash;
 
-pub mod egui_visualization;
-mod surfer_integration;
 mod text_output;
 
 /// Type of visualization of data.
@@ -36,7 +34,8 @@ pub struct WaveformFile {
 
 pub fn show_data(
     usages: Vec<BusData>,
-    trace: WaveformFile,
+    trace_path: String,
+    hash: Option<String>,
     type_: OutputType,
     out: &mut impl Write,
     verbose: bool,
@@ -55,15 +54,12 @@ pub fn show_data(
             let usages = usages.iter().map(|u| &u.usage).collect::<Vec<_>>();
             text_output::generate_md_table(out, &usages, verbose, skipped_stats)
         }
-        #[cfg(not(target_arch = "wasm32"))]
         OutputType::Rendered => {
-            egui_visualization::run_visualization(usages, trace, wellen::TimescaleUnit::PicoSeconds)
+            busperf_gui::run_egui(usages, trace_path, hash, TimescaleUnit::new(-9))
         }
-        #[cfg(target_arch = "wasm32")]
-        OutputType::Rendered => Ok(()),
-        OutputType::Data => save_data(usages, trace, out),
+        OutputType::Data => save_data(usages, trace_path, out),
         #[cfg(feature = "generate-html")]
-        OutputType::Html => generate_html(usages, trace, out),
+        OutputType::Html => generate_html(usages, trace_path, out),
     }
 }
 
@@ -80,15 +76,10 @@ pub fn visualization_from_file(
     let (data, _): ((String, String, Vec<BusData>), _) =
         bincode::decode_from_slice(&buf, config).map_err(|_| "Invalid file data")?;
     let (waveform_path, hash, usages) = data;
-    let hash = Hash::from_str(&hash).map_err(|_| "Invalid file: bad hash value")?;
-    let trace = WaveformFile {
-        path: waveform_path,
-        hash,
-        checked: false.into(),
-    };
     show_data(
         usages,
-        trace,
+        waveform_path,
+        Some(hash),
         output_type,
         &mut std::io::stdout(),
         verbose,
@@ -100,12 +91,12 @@ pub fn visualization_from_file(
 #[inline]
 fn prepare_data(
     usages: Vec<BusData>,
-    trace: WaveformFile,
+    trace: String,
     out: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
-    let hash = calculate_file_hash(&trace.path)
+    let hash = calculate_file_hash(&trace)
         .map_err(|e| format!("[ERROR] failed to calculate trace hash: {e}"))?;
-    let data = (trace.path, hash.to_string(), usages);
+    let data = (trace, hash.to_string(), usages);
     let config = bincode::config::standard();
     let data = bincode::encode_to_vec(data, config).map_err(|_| "Serialization failed")?;
     let mut encoder = flate2::write::GzEncoder::new(out, Compression::default());
@@ -117,7 +108,7 @@ fn prepare_data(
 
 fn save_data(
     usages: Vec<BusData>,
-    trace: WaveformFile,
+    trace: String,
     out: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
     prepare_data(usages, trace, out)
@@ -126,7 +117,7 @@ fn save_data(
 #[cfg(feature = "generate-html")]
 fn generate_html(
     usages: Vec<BusData>,
-    trace: WaveformFile,
+    trace: String,
     out: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
     use base64::prelude::*;

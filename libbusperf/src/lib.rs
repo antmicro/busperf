@@ -53,23 +53,6 @@ pub fn calculate_file_hash(filename: &str) -> Result<blake3::Hash, Box<dyn std::
 
 cfg_if::cfg_if! {
     if #[cfg(feature = "file-hash")] {
-        use blake3::Hash;
-        pub struct WaveformFile {
-            pub path: String,
-            pub hash: Hash,
-            pub checked: std::cell::Cell<bool>,
-        }
-
-        impl WaveformFile {
-            pub fn new(path: String, hash: String) -> Result<WaveformFile, Box<dyn std::error::Error>> {
-                use std::str::FromStr;
-                Ok(WaveformFile {
-                    path,
-                    hash: Hash::from_str(&hash).map_err(|_| "invalid file: invalid hash")?,
-                    checked: true.into(),
-                })
-            }
-        }
     } else {
         pub struct WaveformFile(());
     }

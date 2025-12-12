@@ -2,7 +2,7 @@ use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
 use super::{BusDescription, SignalPath, ValueType, bus_from_yaml, get_value};
-use crate::CycleType;
+use libbusperf::CycleType;
 
 #[derive(Debug)]
 pub struct AHBBus {
@@ -22,7 +22,7 @@ impl BusDescription for AHBBus {
         vec![&self.htrans, &self.hready]
     }
 
-    fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> crate::CycleType {
+    fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> CycleType {
         let htrans = signals[0];
         let hready = signals[1];
         if let SignalValue::Binary(htrans_v, 2) = htrans

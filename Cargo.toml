@@ -14,25 +14,25 @@ pyo3 = { version = "0.25.1", default-features = false, features = ["auto-initial
 tabled = { version = "0.20.0", default-features = false, features = ["std"] }
 wellen = "0.17.1"
 yaml-rust2 = "0.10.3"
-busperf_gui = { path = "busperf_gui", features = ["surfer"]}
+libbusperf = { path = "libbusperf", features = ["file-hash"] }
+busperf_gui = { path = "busperf_gui", features = ["surfer"], optional = true}
 serde = "1.0.228"
-serde_json = "1.0.145"
-num = "0.4.3"
 bpaf = { version = "0.9.20", features = ["autocomplete"] }
 flate2 = "1.1.4"
 rfd = "0.15.4"
 constcat = "0.6.1"
 owo-colors = "4.2.3"
-base64 = "0.22.1"
+base64 = { version = "0.22.1", optional = true }
 cfg-if = "1.0.4"
+bincode = "2.0.1"
+blake3 = "1.8.2"
 
 [features]
-default = ["help-colors", "analyze", "show", "python-plugins", "generate-html"]
+default = ["help-colors", "gui", "python-plugins", "generate-html"]
 help-colors = ["bpaf/bright-color"]
 python-plugins = ["dep:pyo3"]
-analyze = []
-show = []
-generate-html = []
+gui = ["dep:busperf_gui"]
+generate-html = ["dep:base64"]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen-futures = "0.4.50"

@@ -1,16 +1,16 @@
 use std::{collections::BTreeMap, error::Error, io::Write};
 
-use crate::bus_usage::BusUsage;
+use libbusperf::bus_usage::{BusUsage, Statistic};
 
 fn generate_tabled<O>(header: &Vec<String>, data: &Vec<Vec<String>>, style: O) -> tabled::Table
 where
     O: tabled::settings::TableOption<
-            tabled::grid::records::vec_records::VecRecords<
-                tabled::grid::records::vec_records::Text<String>,
-            >,
-            tabled::grid::config::ColoredConfig,
-            tabled::grid::dimension::CompleteDimension,
+        tabled::grid::records::vec_records::VecRecords<
+            tabled::grid::records::vec_records::Text<String>,
         >,
+        tabled::grid::config::ColoredConfig,
+        tabled::grid::dimension::CompleteDimension,
+    >,
 {
     let mut builder = tabled::builder::Builder::new();
     builder.push_record(header);
@@ -33,15 +33,13 @@ fn get_header(usages: &[&BusUsage], skipped_stats: &[String]) -> Vec<String> {
         .collect::<Vec<_>>();
     for stat in &stats[0] {
         match stat {
-            crate::bus_usage::Statistic::Percentage(percentage_statistic) => percentage_statistic
+            Statistic::Percentage(percentage_statistic) => percentage_statistic
                 .data_labels
                 .iter()
                 .map(|(_, l)| l)
                 .for_each(|l| header.push((*l).to_owned())),
-            crate::bus_usage::Statistic::Bucket(buckets_statistic) => {
-                header.push(buckets_statistic.name.to_owned())
-            }
-            crate::bus_usage::Statistic::Timeline(timeline_statistic) => {
+            Statistic::Bucket(buckets_statistic) => header.push(buckets_statistic.name.to_owned()),
+            Statistic::Timeline(timeline_statistic) => {
                 header.push(timeline_statistic.name.to_owned())
             }
         }
@@ -56,12 +54,12 @@ fn get_data(usages: &[&BusUsage], verbose: bool, skipped_stats: &[String]) -> Ve
             let mut v = vec![u.get_name().to_owned()];
             for s in u.get_statistics(skipped_stats).iter() {
                 match s {
-                    crate::bus_usage::Statistic::Percentage(percentage_statistic) => {
+                    Statistic::Percentage(percentage_statistic) => {
                         for (d, _) in percentage_statistic.data_labels.iter() {
                             v.push(d.to_string());
                         }
                     }
-                    crate::bus_usage::Statistic::Bucket(buckets_statistic) => {
+                    Statistic::Bucket(buckets_statistic) => {
                         if verbose {
                             v.push(format!("{:?}", buckets_statistic.data));
                         } else {
@@ -102,7 +100,7 @@ fn get_data(usages: &[&BusUsage], verbose: bool, skipped_stats: &[String]) -> Ve
                             }
                         }
                     }
-                    crate::bus_usage::Statistic::Timeline(timeline_statistic) => {
+                    Statistic::Timeline(timeline_statistic) => {
                         v.push(timeline_statistic.display.clone());
                     }
                 }

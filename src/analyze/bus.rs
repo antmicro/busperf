@@ -14,50 +14,53 @@ use custom_python::PythonCustomBus;
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use crate::{CycleType, CyclesNum, bus_usage::RealTime};
+use libbusperf::{CycleType, CyclesNum, bus_usage::RealTime};
 
-pub use crate::SignalPath;
+pub use libbusperf::SignalPath;
 
-impl SignalPath {
-    pub fn from_yaml_with_prefix(
-        scope: &[String],
-        yaml: Yaml,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        SignalPath::from_yaml_ref_with_prefix(scope, &yaml)
-    }
+pub struct SignalPathFromYaml{}
 
-    pub fn from_yaml_ref_with_prefix(
-        scope: &[String],
-        yaml: &Yaml,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        match yaml {
-            Yaml::String(name) => Ok(SignalPath {
-                scope: scope.to_vec(),
-                name: name.to_owned(),
-            }),
-            Yaml::Array(yaml_scope) => {
-                let mut yaml_scope = yaml_scope
-                    .iter()
-                    .map(|y| y.as_str().map(|y| y.to_owned()))
-                    .collect::<Option<Vec<_>>>()
-                    .ok_or("Signal scope should be a valid string")?;
-                let name = yaml_scope.pop().ok_or("No signal name")?;
-                let mut scope = scope.to_vec();
-                scope.append(&mut yaml_scope);
-                Ok(SignalPath { scope, name })
-            }
-            Yaml::BadValue => Err("not found")?,
-            _ => Err("invalid value")?,
+impl SignalPathFromYaml {
+pub fn from_yaml_with_prefix(
+    scope: &[String],
+    yaml: Yaml,
+) -> Result<SignalPath, Box<dyn std::error::Error>> {
+    SignalPathFromYaml::from_yaml_ref_with_prefix(scope, &yaml)
+}
+
+pub fn from_yaml_ref_with_prefix(
+    scope: &[String],
+    yaml: &Yaml,
+) -> Result<SignalPath, Box<dyn std::error::Error>> {
+    match yaml {
+        Yaml::String(name) => Ok(SignalPath {
+            scope: scope.to_vec(),
+            name: name.to_owned(),
+        }),
+        Yaml::Array(yaml_scope) => {
+            let mut yaml_scope = yaml_scope
+                .iter()
+                .map(|y| y.as_str().map(|y| y.to_owned()))
+                .collect::<Option<Vec<_>>>()
+                .ok_or("Signal scope should be a valid string")?;
+            let name = yaml_scope.pop().ok_or("No signal name")?;
+            let mut scope = scope.to_vec();
+            scope.append(&mut yaml_scope);
+            Ok(SignalPath { scope, name })
         }
+        Yaml::BadValue => Err("not found")?,
+        _ => Err("invalid value")?,
     }
+}
 }
 
 macro_rules! bus_from_yaml {
     ( $bus_type:tt, $($signal_name:ident),* ) => {
         pub fn from_yaml(yaml: Yaml, bus_scope: &[String]) -> Result<Self, Box<dyn std::error::Error>> {
             let mut yaml = yaml.into_hash().ok_or("Bus yaml should not be empty")?;
+            use crate::analyze::bus::SignalPathFromYaml;
             $(
-            let $signal_name = SignalPath::from_yaml_with_prefix(
+            let $signal_name = SignalPathFromYaml::from_yaml_with_prefix(
                 bus_scope,
                 yaml.remove(&Yaml::from_str(stringify!($signal_name)))
                     .ok_or(concat!(stringify!($bus_type), " bus requires ", stringify!($signal_name), " signal"))?,
@@ -161,9 +164,9 @@ impl BusCommon {
             Yaml::BadValue => (),
             _ => Err("clk_rst_if should be a mapping containing clock, reset, and reset_type")?,
         }
-        let clk = SignalPath::from_yaml_ref_with_prefix(&scope, &i["clock"])
+        let clk = SignalPathFromYaml::from_yaml_ref_with_prefix(&scope, &i["clock"])
             .map_err(|e| format!("clock signal definition {e}"))?;
-        let rst = SignalPath::from_yaml_ref_with_prefix(&scope, &i["reset"])
+        let rst = SignalPathFromYaml::from_yaml_ref_with_prefix(&scope, &i["reset"])
             .map_err(|e| format!("reset signal definition {e}"))?;
         let rst_type = i["reset_type"]
             .as_str()

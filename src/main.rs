@@ -1,4 +1,4 @@
-use bpaf::{OptionParser, Parser, construct, long, positional, short};
+use bpaf::{construct, long, positional, short, OptionParser, Parser};
 use busperf::show::OutputType;
 use cfg_if::cfg_if;
 use owo_colors::OwoColorize;
@@ -258,7 +258,7 @@ fn main() {
                 args.output_type,
                 &mut out,
                 &mut data,
-                &args.files.simulation_trace,
+                args.files.simulation_trace,
                 args.verbose,
                 &skipped_stats,
             ) {

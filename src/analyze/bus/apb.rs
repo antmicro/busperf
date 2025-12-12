@@ -1,5 +1,5 @@
 use super::{BusDescription, SignalPath, ValueType, bus_from_yaml, get_value};
-use crate::CycleType;
+use libbusperf::CycleType;
 
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
@@ -26,7 +26,7 @@ impl BusDescription for APBBus {
         vec![&self.psel, &self.penable, &self.pready]
     }
 
-    fn interpret_cycle(&self, signals: &[SignalValue<'_>], _time: u32) -> crate::CycleType {
+    fn interpret_cycle(&self, signals: &[SignalValue<'_>], _time: u32) -> CycleType {
         let psel = signals[0];
         let penable = signals[1];
         let pready = signals[2];
@@ -38,10 +38,10 @@ impl BusDescription for APBBus {
             use ValueType::V0;
             use ValueType::V1;
             match (psel, penable, pready) {
-                (V0, _, _) => crate::CycleType::Free,
-                (V1, V0, _) => crate::CycleType::Busy,
-                (V1, V1, V0) => crate::CycleType::Backpressure,
-                (V1, V1, V1) => crate::CycleType::Busy,
+                (V0, _, _) => CycleType::Free,
+                (V1, V0, _) => CycleType::Busy,
+                (V1, V1, V0) => CycleType::Backpressure,
+                (V1, V1, V1) => CycleType::Busy,
                 (_, _, _) => CycleType::Unknown,
             }
         } else {

@@ -3,7 +3,7 @@ use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
 use super::{BusDescription, SignalPath, ValueType, bus_from_yaml, get_value};
-use crate::CycleType;
+use libbusperf::CycleType;
 
 #[derive(Debug)]
 pub struct CreditValidBus {
@@ -28,7 +28,7 @@ impl BusDescription for CreditValidBus {
         vec![&self.credit, &self.valid]
     }
 
-    fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> crate::CycleType {
+    fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> CycleType {
         let credit = signals[0];
         let valid = signals[1];
         if let Some(credit_v) = get_value(credit)

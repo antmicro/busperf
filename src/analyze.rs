@@ -11,7 +11,7 @@ use wellen::{
 };
 use yaml_rust2::YamlLoader;
 
-use crate::CyclesNum;
+use libbusperf::CyclesNum;
 use analyzer::{Analyzer, AnalyzerBuilder};
 use bus::SignalPath;
 

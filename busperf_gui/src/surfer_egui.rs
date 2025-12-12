@@ -105,7 +105,7 @@ cfg_if! {
                                         return;
                                     };
                                     self.trace_path.path = path;
-                                    if ensure_trace_matches(&self.trace_path, &mut *self.surfer.borrow_mut()) {
+                                    if ensure_trace_matches(&self.trace_path, &mut self.surfer.borrow_mut()) {
                                         ui.close();
                                         if let Some(action) = self.surfer.borrow_mut().modal_action.take() {
                                             println!("opening {}", self.trace_path.path);

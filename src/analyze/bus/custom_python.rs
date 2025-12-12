@@ -1,5 +1,4 @@
-use crate::CycleType;
-use crate::analyze::bus::SignalPath;
+use crate::analyze::bus::{SignalPath, SignalPathFromYaml};
 use crate::analyze::plugins::load_python_plugin;
 
 use super::BusDescription;
@@ -14,6 +13,32 @@ use yaml_rust2::Yaml;
 pub struct PythonCustomBus {
     obj: Py<PyAny>,
     signals: Vec<SignalPath>,
+}
+
+#[pyclass]
+#[derive(Clone, Copy)]
+pub enum CycleType {
+    Busy,
+    Free,
+    NoTransaction,
+    Backpressure,
+    NoData,
+    Reset,
+    Unknown,
+}
+
+impl From<CycleType> for libbusperf::CycleType {
+    fn from(value: CycleType) -> Self {
+        match value {
+            CycleType::Busy => libbusperf::CycleType::Busy,
+            CycleType::Free => libbusperf::CycleType::Free,
+            CycleType::NoTransaction => libbusperf::CycleType::NoTransaction,
+            CycleType::Backpressure => libbusperf::CycleType::Backpressure,
+            CycleType::NoData => libbusperf::CycleType::NoData,
+            CycleType::Reset => libbusperf::CycleType::Reset,
+            CycleType::Unknown => libbusperf::CycleType::Unknown,
+        }
+    }
 }
 
 impl PythonCustomBus {
@@ -42,7 +67,7 @@ impl PythonCustomBus {
         })?;
         let signals = signals
             .iter()
-            .map(|s| SignalPath::from_yaml_ref_with_prefix(bus_scope, &i[s.as_str()]))
+            .map(|s| SignalPathFromYaml::from_yaml_ref_with_prefix(bus_scope, &i[s.as_str()]))
             .collect::<Result<_, _>>()?;
         Ok(PythonCustomBus { obj, signals })
     }
@@ -53,7 +78,7 @@ impl BusDescription for PythonCustomBus {
         self.signals.iter().collect()
     }
 
-    fn interpret_cycle(&self, signals: &[SignalValue<'_>], _time: u32) -> crate::CycleType {
+    fn interpret_cycle(&self, signals: &[SignalValue<'_>], _time: u32) -> libbusperf::CycleType {
         let signals: Vec<String> = match signals
             .iter()
             .map(|s| {
@@ -65,7 +90,7 @@ impl BusDescription for PythonCustomBus {
             Ok(signals) => signals,
             Err(e) => {
                 eprintln!("{e}");
-                return crate::CycleType::Unknown;
+                return libbusperf::CycleType::Unknown;
             }
         };
 
@@ -84,7 +109,8 @@ impl BusDescription for PythonCustomBus {
                 "[ERROR] Python returned bad result".bright_red(),
                 e.bright_red()
             );
-            crate::CycleType::Unknown
+            CycleType::Unknown
         })
+        .into()
     }
 }

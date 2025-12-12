@@ -1,8 +1,8 @@
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use super::{BusDescription, SignalPath, ValueType, bus_from_yaml, is_value_of_type};
-use crate::CycleType;
+use super::{bus_from_yaml, is_value_of_type, BusDescription, SignalPath, ValueType};
+use libbusperf::CycleType;
 
 #[derive(Debug)]
 pub struct AXIBus {

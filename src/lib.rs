@@ -1,21 +1,13 @@
-#[cfg(all(feature = "analyze", feature = "show"))]
 use std::{error::Error, io::Write};
-
-#[cfg(all(feature = "analyze", feature = "show"))]
 use crate::{
     analyze::{SimulationData, analyzer::Analyzer},
     show::OutputType,
 };
 
-#[cfg(feature = "analyze")]
 pub mod analyze;
-
-#[cfg(feature = "show")]
 pub mod show;
+use libbusperf::bus_usage::BusData;
 
-pub mod bus_usage;
-
-#[cfg(all(feature = "analyze", feature = "show"))]
 /// Run visualization.
 ///
 /// If any analyzer has not yet been run it will be run. Then visualization of type `type_` will be run.
@@ -24,14 +16,11 @@ pub fn run_visualization(
     type_: OutputType,
     out: &mut impl Write,
     simulation_data: &mut SimulationData,
-    trace_path: &str,
+    trace_path: String,
     verbose: bool,
     skipped_stats: &[String],
 ) -> Result<(), Box<dyn Error>> {
-    use crate::{
-        bus_usage::BusData,
-        show::{WaveformFile, show_data},
-    };
+    use crate::show::show_data;
 
     let usages = analyzers
         .iter_mut()
@@ -54,11 +43,6 @@ pub fn run_visualization(
         })
         .collect();
 
-    let trace = WaveformFile {
-        path: trace_path.to_owned(),
-        hash: [0; 32].into(),
-        checked: true.into(),
-    };
-    show_data(usages, trace, type_, out, verbose, skipped_stats)?;
+    show_data(usages, trace_path, None, type_, out, verbose, skipped_stats)?;
     Ok(())
 }
