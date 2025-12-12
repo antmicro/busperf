@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-busperf_gui = { path = "../busperf_gui" }
+busperf_gui = { path = "../busperf_gui", default-features = false }
 eframe = { version = "0.32.3", default-features = false, features = ["default_fonts", "glow"] }
 rfd = "0.15.4"
 wasm-bindgen-futures = "0.4.50"

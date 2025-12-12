@@ -1,16 +1,18 @@
 use std::{cell::RefCell, rc::Rc, sync::OnceLock};
 
-use busperf::show::egui_visualization::BusperfApp;
-use eframe::egui::{self, Ui};
+use busperf_gui::egui_visualization::BusperfApp;
+use eframe::egui::{self, Color32, Ui};
 
 struct BusperfWebApp {
     bp: Rc<RefCell<Option<BusperfApp>>>,
+    error: Rc<RefCell<String>>,
 }
 
 impl BusperfWebApp {
     fn new() -> Self {
         Self {
             bp: Rc::new(RefCell::new(None)),
+            error: Rc::new(RefCell::new(String::new())),
         }
     }
 }
@@ -29,18 +31,23 @@ impl eframe::App for BusperfWebApp {
         if let Some(file) = ctx.input(|input| input.raw.dropped_files.first().cloned()) {
             let name = &file.name;
             web_sys::console::log_1(&name.into());
-            if let Some(data) = file.bytes
-                && let Ok(a) = BusperfApp::build_from_bytes(&data)
-            {
-                *self.bp.borrow_mut() = Some(a);
+            if let Some(data) = file.bytes {
+                match BusperfApp::build_from_bytes(&data) {
+                    Ok(a) => *self.bp.borrow_mut() = Some(a),
+                    Err(e) => {
+                     *self.error.borrow_mut() = e.to_string();
+                     *self.bp.borrow_mut() = None;   
+                    },
+                }
             }
         }
         if let Some(app) = &mut *self.bp.borrow_mut() {
             app.update(ctx, frame);
         } else {
             if let Some(data) = DATA.get() {
-                if let Ok(a) = BusperfApp::build_from_bytes(data) {
-                    *self.bp.borrow_mut() = Some(a);
+                match BusperfApp::build_from_bytes(data) {
+                    Ok(a) => *self.bp.borrow_mut() = Some(a),
+                    Err(e) => *self.error.borrow_mut() = e.to_string(),
                 }
                 ctx.request_repaint();
             }
@@ -53,6 +60,9 @@ impl eframe::App for BusperfWebApp {
                     |ui| {
                         ui.label(egui::RichText::new("Select or drop a busperf file").size(25.0));
                         ui.add_space(50.0);
+                        if !self.error.borrow().is_empty() {
+                            ui.label(egui::RichText::new(&*self.error.borrow()).color(Color32::RED));
+                        }
                         if ui
                             .add_sized([100.0, 60.0], |ui: &mut Ui| {
                                 ui.button(egui::RichText::new("Select").size(20.0))
@@ -61,11 +71,13 @@ impl eframe::App for BusperfWebApp {
                         {
                             let ctx = ctx.clone();
                             let app = self.bp.clone();
+                            let error = self.error.clone();
                             wasm_bindgen_futures::spawn_local(async move {
                                 if let Some(file) = rfd::AsyncFileDialog::new().pick_file().await {
                                     let data = file.read().await;
-                                    if let Ok(a) = BusperfApp::build_from_bytes(&data) {
-                                        *app.borrow_mut() = Some(a);
+                                    match BusperfApp::build_from_bytes(&data) {
+                                        Ok(a) => *app.borrow_mut() = Some(a),
+                                        Err(e) => *error.borrow_mut() = e.to_string(),
                                     }
                                     ctx.request_repaint();
                                 };
