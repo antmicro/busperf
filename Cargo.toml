@@ -16,10 +16,8 @@ wellen = "0.17.1"
 yaml-rust2 = "0.10.3"
 libbusperf = { path = "libbusperf", features = ["file-hash"] }
 busperf_gui = { path = "busperf_gui", features = ["surfer"], optional = true}
-serde = "1.0.228"
 bpaf = { version = "0.9.20", features = ["autocomplete"] }
 flate2 = "1.1.4"
-rfd = "0.15.4"
 constcat = "0.6.1"
 owo-colors = "4.2.3"
 base64 = { version = "0.22.1", optional = true }
@@ -33,8 +31,3 @@ help-colors = ["bpaf/bright-color"]
 python-plugins = ["dep:pyo3"]
 gui = ["dep:busperf_gui"]
 generate-html = ["dep:base64"]
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm-bindgen-futures = "0.4.50"
-web-sys = "0.3.70"  
-log = "0.4.27"
