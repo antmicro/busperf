@@ -132,7 +132,8 @@ impl AXIRdAnalyzer {
         let r_resp = SignalPathFromYaml::from_yaml_ref_with_prefix(
             common.module_scope(),
             &dict["r"]["resp"],
-        )?;
+        )
+        .map_err(|e| format!("signal r.resp {e}"))?;
         let full = match (
             SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), &dict["r"]["id"]),
             SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), &dict["ar"]["id"]),
@@ -475,7 +476,8 @@ impl AXIWrAnalyzer {
         let b_resp = SignalPathFromYaml::from_yaml_ref_with_prefix(
             common.module_scope(),
             &dict["b"]["resp"],
-        )?;
+        )
+        .map_err(|e| format!("signal b.resp {e}"))?;
         let w_last = SignalPathFromYaml::from_yaml_ref_with_prefix(
             common.module_scope(),
             &dict["w"]["last"],
