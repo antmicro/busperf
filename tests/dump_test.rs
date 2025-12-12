@@ -1,8 +1,5 @@
-use busperf::{
-    analyze::*,
-    bus_usage::{BusUsage, Period, SingleChannelBusUsage},
-    *,
-};
+use busperf::analyze::*;
+use libbusperf::bus_usage::{self, BusUsage, Period, SingleChannelBusUsage};
 
 // helper function to check if analyzer returns expected result
 fn test(trace: &str, yaml: &str, max_burst_delay: i32, correct: &[BusUsage]) {
