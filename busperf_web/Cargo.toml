@@ -2,6 +2,7 @@
 name = "busperf_web"
 version = "0.1.0"
 edition = "2024"
+license = "Apache-2.0"
 
 [dependencies]
 busperf_gui = { path = "../busperf_gui", default-features = false }
