@@ -1,6 +1,7 @@
 # Analyzers
 
-Busperf provides analyzers for some common buses. Their list and description is provided here.
+Busperf provides analyzers for common buses, including AHB, APB and AXI.
+This chapter provides a list and descriptions of the currently available analyzers.
 
 ## Single channel buses
 
