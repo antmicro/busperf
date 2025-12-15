@@ -1,5 +1,7 @@
 # YAML bus description
 
+This chapter provides examples of YAML bus descriptions for different types of buses.
+
 ## Single channel bus
 
 Example `.yaml` for `tests/test_dumps/dump.vcd`:
@@ -15,7 +17,7 @@ interfaces:
     handshake: "ReadyValid"
     ready: "a_ready"
     valid: "a_valid"
- 
+
   "b_":
     scope: "some_module"
     clock: "clk_i"
@@ -29,9 +31,9 @@ interfaces:
 ```
 
 - "a_", "b_": names of buses
-- reset_type: "low" or "high"
-- handshake: possible values: "ReadyValid", "CreditValid", "AHB", "APB", Custom"
-- custom_handshake: if handshake is set to "Custom" a name of python plugin should be provided
+- reset_type: `low` or `high`
+- handshake: possible values: `ReadyValid`, `CreditValid`, `AHB`, `APB`, `Custom`
+- custom_handshake: if handshake is set to `Custom`, a name of a Python plugin should be provided
 
 Scopes can also be nested. Example `.yaml` for `tests/test_dumps/nested_scopes.vcd`:
 
@@ -40,7 +42,7 @@ scopes:
   base: &base_scope
     - top
     - tb
-  
+
 interfaces:
   "a_":
     scope: [*base_scope, "$rootio"]
@@ -51,7 +53,7 @@ interfaces:
     handshake: "ReadyValid"
     ready: "a_ready"
     valid: "a_valid"
- 
+
   "b_":
     scope: [*base_scope, "some_module"]
     clock: "clk_i"
@@ -65,7 +67,7 @@ interfaces:
 
 ## Multi channel bus
 
-Example `.yaml` for multi channel bus
+Example `.yaml` for a multi channel bus:
 
 ```
 interfaces:
@@ -112,5 +114,5 @@ interfaces:
       id:    ["s_axi_rd", "bid"]
 ```
 
-For a multi channel bus an analyzer has to be specified alongside with signals required by that analyzer.
-- custom_analyzer: possible values: "AXIRdAnalyzer", "AXIWrAnalyzer", "\<name of custom python analyzer\>"
+For multi channel buses, you need to specify the analyzer, along with signals required by that analyzer.
+- custom_analyzer: possible values: `AXIRdAnalyzer`, `AXIWrAnalyzer`, `\<name of custom python analyzer\>`
