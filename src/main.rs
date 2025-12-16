@@ -136,7 +136,7 @@ impl AnalyzeArgs {
         cfg_if! {
             if #[cfg(feature = "generate-html")] {
                 let html = long("html")
-                    .help("Generate HTML with embeded busperf_web (requires setting -o)")
+                    .help("Generate HTML with embedded busperf_web (requires setting -o)")
                     .req_flag(OutputType::Html);
                 let output_type = construct!([gui, csv, md, text, data, html]);
             } else {
