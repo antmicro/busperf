@@ -10,7 +10,8 @@ For each described bus, Busperf will calculate and display several statistics.
 - `no transaction`: transaction is not performed
 - `backpressure`: [backpressure](https://en.wikipedia.org/wiki/Back_pressure)
 - `no data`: receiver ready but no data is available to transfer
-- `delays between transaction`: delays in clock cycles between transactions
+- `reset`: clock cycles with reset active
+- `transaction delays`: delays in clock cycles between transactions
 - `burst lengths`: lengths of bursts including delays during burst
 
 Table matching state of the bus with Busperf statistic name:
