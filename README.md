@@ -11,7 +11,7 @@ Additionally, the tool supports Python plugins for analyzing custom bus protocol
 
 ### Docs
 
-User documentation is available at TODO add link when publicly available. Developer's rustdoc can be generated with:
+Developer's rustdoc can be generated with:
 ```sh
 $ cargo doc --no-deps --open
 ```
@@ -69,8 +69,8 @@ Available commands:
 
 **busperf analyze**
 ```
-Usage: busperf analyze (--gui | --csv | --md | --text) [-o=OUT] [--skip=SKIPPED_STATS]
-[-s=FILENAME] [-m=BURST] [-w=WINDOW] [-x=X_RATE] [-y=Y_RATE] [-v] [-p=PATH] TRACE BUS_CONFIG
+Usage: busperf analyze (--gui | --csv | --md | --text | --save | --html) [-o=OUT] [--skip=
+SKIPPED_STATS] [-m=BURST] [-w=WINDOW] [-x=X_RATE] [-y=Y_RATE] [-v] [-p=PATH] TRACE BUS_CONFIG
 
 Available positional items:
     TRACE                     vcd/fst file with simulation trace
