@@ -1,19 +1,19 @@
 # Output
 
-For each described bus busperf will calculate and display:
+For each described bus, Busperf will calculate and display several statistics.
 
 ## Single channel
 
-- `bus_name`: name of bus
+- `bus_name`: name of the bus
 - `busy`: number of clock cycles performing transaction
 - `free`: bus is not used
 - `no transaction`: transaction is not performed
 - `backpressure`: [backpressure](https://en.wikipedia.org/wiki/Back_pressure)
-- `no data`: receiver ready but no data is avaible to tranfer
+- `no data`: receiver ready but no data is available to transfer
 - `delays between transaction`: delays in clock cycles between transactions
 - `burst lengths`: lengths of bursts including delays during burst
 
-Table matching state of the bus with busperf statistic name:
+Table matching state of the bus with Busperf statistic name:
 
 | busperf        | busy                  | free               | no transaction     | backpressure      | no data         | unknown        |
 |----------------|-----------------------|--------------------|--------------------|-------------------|-----------------|----------------|
@@ -23,12 +23,13 @@ Table matching state of the bus with busperf statistic name:
 | apb            | setup or access phase | !psel              | not used           | access && !pready | not used        | other          |
 
 ## Multi channel
-- `Cmd to completion`: Number of clock cycles from issuing a command to receving a reponse.
-- `Cmd to first data`: Number of clock cycles from issuing a command to first data being transfered.
-- `Last data to completion`: Number of clock cycles from last data being transfered to transaction end.
-- `Transaction delays`: Delays between transactions in clock cycles
-- `Error rate`: Percentage of transactions that resulted in error.
-- `Bandwidth`: Averaged bandwidth in transactions per clock cycle.
+
+- `Cmd to completion`: number of clock cycles from issuing a command to receiving a response
+- `Cmd to first data`: number of clock cycles from issuing a command to first data being transferred
+- `Last data to completion`: number of clock cycles from last data being transferred to transaction end
+- `Transaction delays`: delays between transactions in clock cycles
+- `Error rate`: percentage of transactions that resulted in error
+- `Bandwidth`: averaged bandwidth in transactions per clock cycle
 
 ## Examples
 
