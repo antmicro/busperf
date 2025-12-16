@@ -1,5 +1,4 @@
 use blake3::Hash;
-use busperf_gui::egui_visualization::TimescaleUnit;
 use flate2::Compression;
 use std::error::Error;
 use std::io::Read;
@@ -18,6 +17,7 @@ pub enum OutputType {
     Csv,
     Md,
     /// GUI
+    #[cfg(feature = "gui")]
     Rendered,
     /// Busperf data - binary format
     Data,
@@ -35,7 +35,7 @@ pub struct WaveformFile {
 pub fn show_data(
     usages: Vec<BusData>,
     trace_path: String,
-    hash: Option<String>,
+    _hash: Option<String>,
     type_: OutputType,
     out: &mut impl Write,
     verbose: bool,
@@ -54,8 +54,10 @@ pub fn show_data(
             let usages = usages.iter().map(|u| &u.usage).collect::<Vec<_>>();
             text_output::generate_md_table(out, &usages, verbose, skipped_stats)
         }
+        #[cfg(feature = "gui")]
         OutputType::Rendered => {
-            busperf_gui::run_egui(usages, trace_path, hash, TimescaleUnit::new(-9))
+            use busperf_gui::egui_visualization::TimescaleUnit;
+            busperf_gui::run_egui(usages, trace_path, _hash, TimescaleUnit::new(-9))
         }
         OutputType::Data => save_data(usages, trace_path, out),
         #[cfg(feature = "generate-html")]

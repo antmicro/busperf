@@ -66,6 +66,7 @@ build:
     - rustup target add wasm32-unknown-unknown
     - cargo install wasm-bindgen-cli --version 0.2.105
     - cargo install cargo-deny
+    - cargo install cargo-hack
     - git clone https://github.com/antmicro/tuttest.git
     - cd tuttest
     - python3 setup.py build &> /dev/null
@@ -76,6 +77,7 @@ build:
     - cargo fmt --check
     - cargo-deny check
     - cargo clippy -- -Dwarnings
+    - cargo hack check --feature-powerset
     - cargo test
     - cargo test --release
   artifacts:

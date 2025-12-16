@@ -247,7 +247,7 @@ impl BusDescriptionBuilder {
     pub fn build(
         yaml: Yaml,
         scope: &[String],
-        plugins_path: &str,
+        _plugins_path: &str,
     ) -> Result<Box<dyn BusDescription>, Box<dyn std::error::Error>> {
         let i = yaml;
 
@@ -272,7 +272,7 @@ impl BusDescriptionBuilder {
                         handshake,
                         &i,
                         scope,
-                        plugins_path,
+                        _plugins_path,
                     )?))
                 }
                 #[cfg(not(feature = "python-plugins"))]

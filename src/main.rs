@@ -36,14 +36,11 @@ impl Args {
     }
 }
 
-struct ShowArgs {
-    file: String,
-    output_type: OutputType,
-    verbose: bool,
-}
+struct OutputTypeParser {}
 
-impl ShowArgs {
-    pub fn parse() -> impl Parser<Args> {
+impl OutputTypeParser {
+    pub fn parse() -> impl Parser<OutputType> {
+        #[cfg(feature = "gui")]
         let gui = long("gui").help("Run GUI").req_flag(OutputType::Rendered);
         let csv = long("csv")
             .help("Format output as csv")
@@ -54,7 +51,37 @@ impl ShowArgs {
         let text = long("text")
             .help("Format output as table")
             .req_flag(OutputType::Pretty);
-        let output_type = construct!([gui, csv, md, text]);
+        let data = long("save")
+            .help("Save data in busperf format (requires setting -o)")
+            .req_flag(OutputType::Data);
+        #[cfg(feature = "generate-html")]
+        let html = long("html")
+            .help("Generate HTML with embedded busperf_web (requires setting -o)")
+            .req_flag(OutputType::Html);
+
+        cfg_if! {
+            if #[cfg(all(feature = "gui", feature = "generate-html"))] {
+                construct!([gui, csv, md, text, data, html])
+            } else if #[cfg(feature = "gui")] {
+                construct!([gui, csv, md, text, data])
+            } else if #[cfg(feature = "generate-html")] {
+                construct!([csv, md, text, data, html])
+            } else {
+                construct!([csv, md, text, data])
+            }
+        }
+    }
+}
+
+struct ShowArgs {
+    file: String,
+    output_type: OutputType,
+    verbose: bool,
+}
+
+impl ShowArgs {
+    pub fn parse() -> impl Parser<Args> {
+        let output_type = OutputTypeParser::parse();
         let verbose = short('v').long("verbose").switch();
         let file = positional("FILENAME").help("File to load statistics from");
 
@@ -119,30 +146,7 @@ impl AnalyzeArgs {
             .argument::<String>("SKIPPED_STATS")
             .optional();
 
-        let gui = long("gui").help("Run GUI").req_flag(OutputType::Rendered);
-        let csv = long("csv")
-            .help("Format output as csv")
-            .req_flag(OutputType::Csv);
-        let md = long("md")
-            .help("Format output as md table")
-            .req_flag(OutputType::Md);
-        let text = long("text")
-            .help("Format output as table")
-            .req_flag(OutputType::Pretty);
-
-        let data = long("save")
-            .help("Save data in busperf format (requires setting -o)")
-            .req_flag(OutputType::Data);
-        cfg_if! {
-            if #[cfg(feature = "generate-html")] {
-                let html = long("html")
-                    .help("Generate HTML with embedded busperf_web (requires setting -o)")
-                    .req_flag(OutputType::Html);
-                let output_type = construct!([gui, csv, md, text, data, html]);
-            } else {
-                let output_type = construct!([gui, csv, md, text, data]);
-            }
-        }
+        let output_type = OutputTypeParser::parse();
 
         let window_length = short('w')
             .long("window")
