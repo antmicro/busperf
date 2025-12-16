@@ -1,6 +1,7 @@
 stages:
   - build
   - test
+  - deploy_docs
 
 build_docs:
   stage: build
@@ -18,11 +19,23 @@ build_docs:
     - source .venv/bin/activate
     - make html latexpdf
     - cp build/latex/*.pdf build/html/
-    - tar cf $CI_DOCS_ARCHIVE -C build/html/ .
+    - tar cf ../$CI_DOCS_ARCHIVE -C build/html/ .
   artifacts:
     paths:
-      - docs/build
-      - docs/$CI_DOCS_ARCHIVE
+      - $CI_DOCS_ARCHIVE
+
+deploy_docs:
+  variables:
+    GIT_STRATEGY: none
+  dependencies:
+    - build_docs
+  stage: deploy_docs
+  image: debian:trixie
+  tags: ['docs']
+  script: echo 'Deploying docs'
+  artifacts:
+    paths:
+      - $CI_DOCS_ARCHIVE
 
 image: debian
 
