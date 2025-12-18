@@ -124,6 +124,9 @@ impl Surfer {
 
     fn connect(&mut self) {
         self.stream = connect_or_start_surfer();
+        if self.stream.is_none() {
+            return;
+        }
         if let Some(response) = self.send_message(&WcpCSMessage::greeting {
             version: String::from("0"),
             commands: vec![],
@@ -243,23 +246,26 @@ fn connect_or_start_surfer() -> Option<TcpStream> {
 }
 
 pub fn open_at_time(trace_path: &str, signals: Vec<String>, time: f64) {
-    let mut surfer = CONNECTION
-        .get_or_init(|| Mutex::new(Surfer::new(trace_path)))
-        .lock()
-        .expect("Connection mutex got poisoned");
-    surfer.load_signals(signals);
-    if surfer.commands.contains(&String::from("add_markers")) {
-        surfer.send_message(&WcpCSMessage::command(WcpCommand::add_markers {
-            markers: vec![MarkerInfo {
-                time: BigInt::from_f64(time).expect("Should be valid"),
-                name: Some("marker".into()),
-                move_focus: true,
-            }],
-        }));
-        surfer.loaded_signals.push("Marker".to_string());
-    } else {
-        eprintln!("[Info] Surfer version does not support adding markers. Skipping");
-    }
+    let trace_path = trace_path.to_string();
+    std::thread::spawn(move || {
+        let mut surfer = CONNECTION
+            .get_or_init(|| Mutex::new(Surfer::new(&trace_path)))
+            .lock()
+            .expect("Connection mutex got poisoned");
+        surfer.load_signals(signals);
+        if surfer.commands.contains(&String::from("add_markers")) {
+            surfer.send_message(&WcpCSMessage::command(WcpCommand::add_markers {
+                markers: vec![MarkerInfo {
+                    time: BigInt::from_f64(time).expect("Should be valid"),
+                    name: Some("marker".into()),
+                    move_focus: true,
+                }],
+            }));
+            surfer.loaded_signals.push("Marker".to_string());
+        } else {
+            eprintln!("[Info] Surfer version does not support adding markers. Skipping");
+        }
+    });
 }
 
 pub fn open_and_mark_periods(
@@ -269,63 +275,70 @@ pub fn open_and_mark_periods(
     suffix: &str,
     color: &str,
 ) {
-    let mut surfer = CONNECTION
-        .get_or_init(|| Mutex::new(Surfer::new(trace_path)))
-        .lock()
-        .expect("Connection mutex got poisoned");
-    surfer.load_signals(signals);
-    if surfer.commands.contains(&String::from("add_markers")) {
-        let mut markers = Vec::with_capacity(periods.len() * 2);
-        for (i, (start, end)) in periods.iter().enumerate() {
-            let name = format!("start {i} {suffix}");
-            markers.push(MarkerInfo {
-                time: BigInt::from_u64(*start).expect("Should be valid"),
-                name: Some(name),
-                move_focus: false,
-            });
-            let name = format!("end {i} {suffix}");
-            markers.push(MarkerInfo {
-                time: BigInt::from_u64(*end).expect("Should be valid"),
-                name: Some(name),
-                move_focus: false,
-            });
-        }
-        let markers_len = markers.len();
-        if let Some(response) =
-            surfer.send_message(&WcpCSMessage::command(WcpCommand::add_markers { markers }))
-        {
-            if let WcpSCMessage::response(proto::WcpResponse::add_markers { ids }) = response {
-                let ids_len = ids.len();
-                if markers_len != ids_len {
-                    eprintln!("[WARN] Cannot add more markers in surfer");
-                }
-                for id in ids {
-                    surfer.loaded_signals.push(format!("marker {}", id.0));
-                    if surfer
-                        .send_message_without_response(&WcpCSMessage::command(
-                            WcpCommand::set_item_color {
-                                id,
-                                color: String::from(color),
-                            },
-                        ))
-                        .is_err()
-                    {
-                        eprintln!("{}", "[Error] Failed to send add markers".bright_red());
-                    }
-                }
-                if ids_len > 0 && surfer.await_reponse().is_err() {
-                    eprintln!(
-                        "{}",
-                        "[Error] No response from surfer for add markers".bright_red()
-                    );
-                }
-            } else if let WcpSCMessage::error { message, .. } = response {
-                eprintln!("[WARN] Received error from surfer {message}");
+    let trace_path = trace_path.to_string();
+    let suffix = suffix.to_string();
+    let color = color.to_string();
+    let periods = periods.to_vec();
+    std::thread::spawn(move || {
+        let mut surfer = CONNECTION
+            .get_or_init(|| Mutex::new(Surfer::new(&trace_path)))
+            .lock()
+            .expect("Connection mutex got poisoned");
+        surfer.load_signals(signals);
+        if surfer.commands.contains(&String::from("add_markers")) {
+            let mut markers = Vec::with_capacity(periods.len() * 2);
+            for (i, (start, end)) in periods.iter().enumerate() {
+                let name = format!("start {i} {suffix}");
+                markers.push(MarkerInfo {
+                    time: BigInt::from_u64(*start).expect("Should be valid"),
+                    name: Some(name),
+                    move_focus: false,
+                });
+                let name = format!("end {i} {suffix}");
+                markers.push(MarkerInfo {
+                    time: BigInt::from_u64(*end).expect("Should be valid"),
+                    name: Some(name),
+                    move_focus: false,
+                });
             }
+            let markers_len = markers.len();
+            if let Some(response) =
+                surfer.send_message(&WcpCSMessage::command(WcpCommand::add_markers { markers }))
+            {
+                if let WcpSCMessage::response(proto::WcpResponse::add_markers { ids }) = response {
+                    let ids_len = ids.len();
+                    if markers_len != ids_len {
+                        eprintln!("[WARN] Cannot add more markers in surfer");
+                    }
+                    let color = &color;
+                    for id in ids {
+                        surfer.loaded_signals.push(format!("marker {}", id.0));
+                        if surfer
+                            .send_message_without_response(&WcpCSMessage::command(
+                                WcpCommand::set_item_color {
+                                    id,
+                                    color: String::from(color),
+                                },
+                            ))
+                            .is_err()
+                        {
+                            eprintln!("{}", "[Error] Failed to send add markers".bright_red());
+                        }
+                    }
+                    if ids_len > 0 && surfer.await_reponse().is_err() {
+                        eprintln!(
+                            "{}",
+                            "[Error] No response from surfer for add markers".bright_red()
+                        );
+                    }
+                } else if let WcpSCMessage::error { message, .. } = response {
+                    eprintln!("[WARN] Received error from surfer {message}");
+                }
+            }
+        } else {
+            eprintln!("[Info] Surfer version does not support adding markers. Skipping");
         }
-    } else {
-        eprintln!("[Info] Surfer version does not support adding markers. Skipping");
-    }
+    });
 }
 
 pub fn zoom_to_range(start: u64, end: u64) {
