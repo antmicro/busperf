@@ -305,7 +305,6 @@ fn draw_values(ui: &mut Ui, statistics: &[Statistic]) {
                                                         )
                                                         .context_menu(
                                                             |ui| {
-                                                                println!("FOO");
                                                                 egui::widgets::color_picker::color_picker_color32(
                                                                     ui,
                                                                     &mut color,
