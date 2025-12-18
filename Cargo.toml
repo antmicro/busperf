@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["", "busperf_web", "libbusperf", "busperf_gui"]
+members = ["busperf_web", "libbusperf", "busperf_gui"]
 
 [package]
 name = "busperf"

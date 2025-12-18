@@ -38,15 +38,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aho-corasick"
-version = "1.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddd31a130427c27518df266943a5308ed92d4b226cc639f5a8f1002816174301"
-dependencies = [
- "memchr",
-]
-
-[[package]]
 name = "android-activity"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -437,7 +428,7 @@ dependencies = [
  "owo-colors",
  "pyo3",
  "tabled",
- "wellen 0.17.1",
+ "wellen",
  "yaml-rust2",
 ]
 
@@ -1181,19 +1172,7 @@ version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db49202e746e752746ed40ba8ba5398e3f434f5729a2e84df847c3fd235b9aa7"
 dependencies = [
- "lz4_flex 0.11.5",
- "miniz_oxide",
- "num_enum",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "fst-reader"
-version = "0.14.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ba322cabcf2feb3340be7107a2aa20ecfba78d51d846be58e97f3bb1272db8e"
-dependencies = [
- "lz4_flex 0.12.0",
+ "lz4_flex",
  "miniz_oxide",
  "num_enum",
  "thiserror 2.0.17",
@@ -1724,15 +1703,6 @@ name = "lz4_flex"
 version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08ab2867e3eeeca90e844d1940eab391c9dc5228783db2ed999acbc0a9ed375a"
-dependencies = [
- "twox-hash",
-]
-
-[[package]]
-name = "lz4_flex"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab6473172471198271ff72e9379150e9dfd70d8e533e0752a27e515b48dd375e"
 dependencies = [
  "twox-hash",
 ]
@@ -2613,35 +2583,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "regex"
-version = "1.12.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843bc0191f75f3e22651ae5f1e72939ab2f72a4bc30fa80a066bd66edefc24d4"
-dependencies = [
- "aho-corasick",
- "memchr",
- "regex-automata",
- "regex-syntax",
-]
-
-[[package]]
-name = "regex-automata"
-version = "0.4.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5276caf25ac86c8d810222b3dbb938e512c55c6831a10f3e6ed1c93b84041f1c"
-dependencies = [
- "aho-corasick",
- "memchr",
- "regex-syntax",
-]
-
-[[package]]
-name = "regex-syntax"
-version = "0.8.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
-
-[[package]]
 name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3246,15 +3187,6 @@ dependencies = [
 ]
 
 [[package]]
-name = ""
-version = "0.1.0"
-dependencies = [
- "regex",
- "wellen 0.18.5",
- "yaml-rust2",
-]
-
-[[package]]
 name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3526,27 +3458,9 @@ version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7b4eaca13a9d846c2dd67f7c488d0688f3d9e87d4404d0bb0f54b5dd72c3bfc"
 dependencies = [
- "fst-reader 0.13.2",
+ "fst-reader",
  "leb128",
- "lz4_flex 0.11.5",
- "memmap2",
- "miniz_oxide",
- "num_enum",
- "rayon",
- "rustc-hash 2.1.1",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "wellen"
-version = "0.18.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0feaa332e5089f9e606211e04bc0af4a191bd732a890e93ea1f65cfb50c9507f"
-dependencies = [
- "fst-reader 0.14.2",
- "indexmap",
- "leb128",
- "lz4_flex 0.11.5",
+ "lz4_flex",
  "memmap2",
  "miniz_oxide",
  "num_enum",
