@@ -9,6 +9,15 @@ Additionally, the tool supports Python plugins for analyzing custom bus protocol
 
 ## Usage
 
+### Prerequisities
+
+You need `cargo` with additional target `wasm32-unknown-unknown` and `wasm-bindgen-cli` installed (for generating wasm used in html output).
+
+```sh
+$ rustup target add wasm32-unknown-unknown
+$ cargo install -f wasm-bindgen-cli --version 0.2.105
+```
+
 ### Docs
 
 Developer's rustdoc can be generated with:

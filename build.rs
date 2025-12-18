@@ -1,7 +1,7 @@
 fn main() {
     #[cfg(feature = "generate-html")]
     {
-        if !std::process::Command::new("cargo")
+        match std::process::Command::new("cargo")
             .args([
                 "build",
                 "--release",
@@ -11,22 +11,42 @@ fn main() {
                 "wasm32-unknown-unknown",
             ])
             .current_dir("busperf_web")
-            .status()
-            .unwrap()
-            .success()
-            || !std::process::Command::new("wasm-bindgen")
-                .args([
-                    "--target",
-                    "web",
-                    "--out-dir",
-                    "target_wasm",
-                    "target_wasm/wasm32-unknown-unknown/release/busperf_web.wasm",
-                ])
-                .status()
-                .unwrap()
-                .success()
+            .output()
         {
-            panic!("Failed to compile wasm target");
+            Ok(output) => {
+                if !output.status.success() {
+                    panic!(
+                        "WASM compile failed\n{}",
+                        String::from_utf8(output.stderr).unwrap()
+                    );
+                }
+            }
+            Err(e) => {
+                panic!("Cargo could not be run {e}")
+            }
         }
+        match std::process::Command::new("wasm-bindgen")
+            .args([
+                "--target",
+                "web",
+                "--out-dir",
+                "target_wasm",
+                "target_wasm/wasm32-unknown-unknown/release/busperf_web.wasm",
+            ])
+            .output()
+        {
+            Ok(output) => {
+                if !output.status.success() {
+                    panic!(
+                        "Wasm bindgen failed: {}",
+                        String::from_utf8(output.stderr).unwrap()
+                    );
+                }
+            }
+            Err(e) => {
+                panic!("Failed to run wasm bindgen: {e}");
+            }
+        }
+        println!("cargo::rerun-if-changed=target_wasm")
     }
 }
