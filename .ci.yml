@@ -39,19 +39,12 @@ deploy_docs:
 
 image: debian
 
-web_test:
+trunk_build:
   stage: build
   before_script:
-    - apt update -qq &> /dev/null
-    - apt install --yes curl gcc wget &> /dev/null
-    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &> /dev/null
-    - source ~/.cargo/env
-    - wget -qO- https://github.com/trunk-rs/trunk/releases/download/v0.21.13/trunk-x86_64-unknown-linux-gnu.tar.gz | tar -xzf-
-    - rustup target add wasm32-unknown-unknown
+    - ci/trunk_build_deps.sh
   script:
-    - source ~/.cargo/env
-    - cd busperf_web
-    - ../trunk build
+    - ci/trunk_build.sh
   artifacts:
     paths:
       - dist/
@@ -59,74 +52,29 @@ web_test:
 build:
   stage: build
   before_script:
-    - apt update -qq &> /dev/null
-    - apt install --yes curl gcc python3 python3-setuptools libpython3-dev git &> /dev/null
-    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &> /dev/null
-    - source ~/.cargo/env
-    - rustup target add wasm32-unknown-unknown
-    - cargo install wasm-bindgen-cli --version 0.2.105
-    - cargo install cargo-deny
-    - cargo install cargo-hack
-    - git clone https://github.com/antmicro/tuttest.git
-    - cd tuttest
-    - python3 setup.py build &> /dev/null
-    - python3 setup.py install &> /dev/null
-    - cd ..
+    - ci/build_deps.sh
   script:
-    - source ~/.cargo/env
-    - cargo fmt --check
-    - cargo-deny check
-    - cargo clippy -- -Dwarnings
-    - cargo hack check --feature-powerset
-    - cargo test
-    - cargo test --release
+    - ci/build.sh
   artifacts:
     paths:
       - target/debug/busperf
       - target/release/busperf
       - plugins/
 
-test:
+cargo_tests:
   stage: test
   before_script:
-    - apt update -qq &> /dev/null
-    - apt install --yes verilator git python3 python3-venv libpython3-dev python3-more-itertools make &> /dev/null
-    - git clone https://github.com/fpganinja/taxi.git
-    - python3 -m venv env
-    - source ./env/bin/activate
-    - pip install cocotb==2.0.0 &> /dev/null
-    - pip install cocotb-bus==0.2.1 &> /dev/null
-    - pip install cocotbext-axi==0.1.26 &> /dev/null
-    - pip install cocotb-test==0.2.6 &> /dev/null
-    - export WAVES=1
-    - cd taxi/src/axi/tb/
-    - cd taxi_axi_ram/
-    - make &> /dev/null &
-    - cd ..
-    - cd taxi_axi_fifo/
-    - make &> /dev/null &
-    - cd ..
-    - cd taxi_axil_ram/
-    - make &> /dev/null &
-    - cd ..
-    - cd taxi_axil_register/
-    - make &> /dev/null &
-    - cd ..
-    - wait
-    - cd ../../../../
+    - ci/cargo_tests_deps.sh
   script:
-    - target/debug/busperf analyze taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/axi_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
-    - target/release/busperf analyze taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/axi_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
-    - target/debug/busperf analyze taxi/src/axi/tb/taxi_axi_fifo/dump.fst tests/taxi_descriptions/axi_fifo.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
-    - target/release/busperf analyze taxi/src/axi/tb/taxi_axi_fifo/dump.fst tests/taxi_descriptions/axi_fifo.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
-    - target/debug/busperf analyze taxi/src/axi/tb/taxi_axil_ram/dump.fst tests/taxi_descriptions/axil_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
-    - target/release/busperf analyze taxi/src/axi/tb/taxi_axil_ram/dump.fst tests/taxi_descriptions/axil_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
-    - target/debug/busperf analyze taxi/src/axi/tb/taxi_axil_register/dump.fst tests/taxi_descriptions/axil_register.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
-    - target/release/busperf analyze taxi/src/axi/tb/taxi_axil_register/dump.fst tests/taxi_descriptions/axil_register.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
-    - target/debug/busperf analyze taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/axi_intervals_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
-    - target/release/busperf analyze taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/axi_intervals_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
-    - target/debug/busperf analyze taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/python_axi_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
-    - target/release/busperf analyze taxi/src/axi/tb/taxi_axi_ram/dump.fst tests/taxi_descriptions/python_axi_ram.yaml --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
+    - ci/cargo_tests.sh
+
+taxi_tests:
+  stage: test
+  before_script:
+    - ci/taxi_tests_deps.sh
+    - ci/taxi_tests_generate_traces.sh
+  script:
+    - ci/taxi_tests.sh
   artifacts:
     when: on_failure
     paths:
