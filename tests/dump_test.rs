@@ -300,7 +300,7 @@ fn axi_test() {
 fn python_axi() {
     test_basic(
         "tests/test_dumps/axi.vcd",
-        "tests/taxi_descriptions/python_axi_ram.yaml",
+        "tests/taxi_descriptions/axi_ram_python.yaml",
         1,
     );
 }
