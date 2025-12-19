@@ -3,9 +3,11 @@ name = "busperf_gui"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
+description = "GUI library for Busperf"
+repository = "https://github.com/antmicro/busperf/tree/main/busperf_gui"
 
 [dependencies]
-libbusperf = { path = "../libbusperf"}
+libbusperf = { path = "../libbusperf", version = "0.1.0"}
 eframe = { version = "0.32.3", default-features = false, features = ["x11", "glow", "default_fonts", "wayland"] }
 egui_plot = "0.33.0"
 serde = { version = "1.0.228", optional = true }

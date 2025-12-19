@@ -3,6 +3,8 @@ name = "libbusperf"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
+description = "Base library for Busperf"
+repository = "https://github.com/antmicro/busperf/tree/main/libbusperf"
 
 [dependencies]
 bincode = "2.0.1"

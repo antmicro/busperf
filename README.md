@@ -9,15 +9,6 @@ Additionally, the tool supports Python plugins for analyzing custom bus protocol
 
 ## Usage
 
-### Prerequisities
-
-You need `cargo` with additional target `wasm32-unknown-unknown` and `wasm-bindgen-cli` installed (for generating wasm used in html output).
-
-```sh
-$ rustup target add wasm32-unknown-unknown
-$ cargo install -f wasm-bindgen-cli --version 0.2.105
-```
-
 ### Docs
 
 Developer's rustdoc can be generated with:
@@ -43,6 +34,22 @@ $ cargo run -r -- --help
 Debug mode:
 ```sh
 $ cargo run -- --help
+```
+
+### Build with `generate-html` feature
+
+To allow Busperf to generate html with embedded viewer and analysis data you need to enable optional `generate-html` feature.
+For that you need `cargo` with additional target `wasm32-unknown-unknown` and `wasm-bindgen-cli` installed.
+
+```sh
+$ rustup target add wasm32-unknown-unknown
+$ cargo install -f wasm-bindgen-cli --version 0.2.105
+```
+
+Then you can build with cargo. Keep in mind that Busperf's build script can take some time, because it has to compile the viewer.
+
+```sh
+$ cargo build --features generate-html
 ```
 
 ### Build Busperf viewer for WASM
@@ -78,8 +85,8 @@ Available commands:
 
 **busperf analyze**
 ```
-Usage: busperf analyze (--gui | --csv | --md | --text | --save | --html) [-o=OUT] [--skip=
-SKIPPED_STATS] [-m=BURST] [-w=WINDOW] [-x=X_RATE] [-y=Y_RATE] [-v] [-p=PATH] TRACE BUS_CONFIG
+Usage: busperf analyze (--gui | --csv | --md | --text | --save) [-o=OUT] [--skip=SKIPPED_STATS]
+[-m=BURST] [-w=WINDOW] [-x=X_RATE] [-y=Y_RATE] [-v] [-p=PATH] TRACE BUS_CONFIG
 
 Available positional items:
     TRACE                     vcd/fst file with simulation trace
@@ -91,7 +98,6 @@ Available options:
         --md                  Format output as md table
         --text                Format output as table
         --save                Save data in busperf format (requires setting -o)
-        --html                Generate HTML with embedded busperf_web (requires setting -o)
     -o, --output=OUT          Output filename
         --skip=SKIPPED_STATS  Stats to skip separated by a comma.
     -m, --max_burst_delay=BURST  Max delay during a burst [default: 0]
@@ -143,12 +149,6 @@ Below, there are two plot areas, for each you can select what type of statistics
 cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml --text
 ```
 
-- Generate an html with embedded data and viewer app
-<!-- name="example-html" -->
-```sh
-cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml --html -o index.html
-```
-
 - Print all statistics and set max burst delay to 1
 <!-- name="example-test-verbose" -->
 ```sh
@@ -176,5 +176,5 @@ cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o out
 - Clean files generated from examples
 <!-- name="example-clean" -->
 ```sh
-rm out stat.csv index.html
+rm out stat.csv
 ```
