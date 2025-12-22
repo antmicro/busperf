@@ -1,0 +1,71 @@
+name: build-and-test
+run-name: Check formatting, build, test
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: ci/build_deps.sh
+      - name: Build
+        run: ci/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            target/debug/busperf
+            target/release/busperf
+            plugins/
+
+  trunk_build:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: ci/trunk_build_deps.sh
+      - name: Build
+        run: ci/trunk_build.sh
+
+  cargo_tests:
+    runs-on: "ubuntu-latest"
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: ci/cargo_tests_deps.sh
+      - name: Run cargo tests
+        run: ci/cargo_tests.sh
+
+  taxi_tests:
+    runs-on: "ubuntu-latest"
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+      - name: Set artifacts permissions
+        run: |
+          chmod +x ./target/debug/busperf
+          chmod +x ./target/release/busperf
+      - name: Install deps
+        run: ci/taxi_tests_deps.sh
+      - name: Install verilator
+        run: |
+          apt-get install --yes git help2man perl python3 make autoconf g++ flex bison ccache libgoogle-perftools-dev numactl perl-doc
+          git clone https://github.com/verilator/verilator
+          cd verilator
+          autoconf
+          ./configure
+          make  -j `nproc`
+          make install
+          cd ..
+      - name: Generate traces for tests
+        run: ci/taxi_tests_generate_traces.sh
+      - name: taxi_tests
+        run: ci/taxi_tests.sh
+
