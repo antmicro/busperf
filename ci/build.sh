@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 . ~/.cargo/env
 
 # Pre build checks

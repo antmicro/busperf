@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 for TEST in $(ls tests/taxi_descriptions)
 do
     # Each test case starts with name of used simulation trace

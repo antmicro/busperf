@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Build dependencies
 apt update -qq
 apt install -qqy curl gcc python3 libpython3-dev

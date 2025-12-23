@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 git clone https://github.com/fpganinja/taxi.git
 python3 -m venv env
 . ./env/bin/activate

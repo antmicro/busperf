@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 apt update -qq
 apt install -qqy curl gcc wget
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &> /dev/null

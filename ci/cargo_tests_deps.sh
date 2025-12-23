@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Cargo
 apt update -qq
 apt install -qqy curl gcc python3 python3-setuptools libpython3-dev python3-more-itertools git
