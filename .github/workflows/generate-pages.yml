@@ -1,0 +1,40 @@
+name: generate-pages
+run-name: Generate and deploy docs to github pages
+
+jobs:
+  docs_build:
+    runs-on: "ubuntu-latest"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install python3-venv python3-pip python3 texlive-full -y
+      - name: Create venv
+        run: |
+          pushd docs
+          python3 -m venv .venv/
+          source .venv/bin/activate
+          pip3 install -r requirements.txt
+          popd
+      - name: Build docs
+        run: |
+          cd docs
+          source .venv/bin/activate
+          make html latexpdf
+          cp build/latex/*.pdf build/html/
+      - uses: actions/configure-pages@v5
+      - name: Upload docs artifacts
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/build/html/
+
+  docs_deploy:
+    runs-on: "ubuntu-latest"
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: docs_build
+    steps:
+      - name: Deploy to github pages
+        uses: actions/deploy-pages@v4
