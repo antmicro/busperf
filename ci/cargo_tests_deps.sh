@@ -13,6 +13,6 @@ cargo install wasm-bindgen-cli --version 0.2.105
 # tuttest
 git clone https://github.com/antmicro/tuttest.git
 pushd tuttest
-python3 setup.py build &> /dev/null
-python3 setup.py install &> /dev/null
+$APT_PREFIX python3 setup.py build &> /dev/null
+$APT_PREFIX python3 setup.py install &> /dev/null
 popd
