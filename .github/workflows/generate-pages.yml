@@ -1,5 +1,9 @@
 name: generate-pages
 run-name: Generate and deploy docs to github pages
+on:
+  push:
+    branches:
+      - 'main'
 
 jobs:
   docs_build:
