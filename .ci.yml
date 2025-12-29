@@ -3,6 +3,9 @@ stages:
   - test
   - deploy_docs
 
+variables:
+  APT_PREFIX: ""
+
 build_docs:
   stage: build
   image: $CI_DOCS_DOCKER_IMAGE

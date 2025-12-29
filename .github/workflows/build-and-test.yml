@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+
+env:
+  APT_PREFIX: "sudo"
+
 jobs:
   build:
     runs-on: "ubuntu-latest"
