@@ -67,7 +67,7 @@ jobs:
           autoconf
           ./configure
           make  -j `nproc`
-          make install
+          sudo make install
           cd ..
       - name: Generate traces for tests
         run: ci/taxi_tests_generate_traces.sh
