@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "Web app for Busperf"
-repository = "https://github.com/antmicro/busperfi/tree/main/busperf_web"
+repository = "https://github.com/antmicro/busperf/tree/main/busperf_web"
 
 [dependencies]
 busperf_gui = { path = "../busperf_gui", version = "0.1.0", default-features = false }
