@@ -1,6 +1,12 @@
 # Busperf
 
-Copyright (c) 2025 [Antmicro](https://www.antmicro.com)
+Copyright (c) 2025-2026 [Antmicro](https://www.antmicro.com)
+
+<picture>
+    <source media="(prefers-color-scheme: dark)"  srcset="docs/img/logo-readme-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/logo-readme-light.png">
+    <img src="docs/img/logo-readme-light.png">
+</picture>
 
 Busperf helps analyze bus performance and identify throughput bottlenecks based on simulation traces.
 It ingests VCD/FST files with an accompanying bus description in YAML, then generates both visual and textual statistics on bus activity.
