@@ -25,7 +25,7 @@ pub enum CycleType {
 
 pub type CyclesNum = i32;
 
-#[derive(Debug, Clone, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Clone, bitcode::Encode, bitcode::Decode)]
 pub struct SignalPath {
     pub scope: Vec<String>,
     pub name: String,

@@ -12,7 +12,7 @@ eframe = { version = "0.32.3", default-features = false, features = ["x11", "glo
 egui_plot = "0.33.0"
 serde = { version = "1.0.228", optional = true }
 flate2 = "1.1.4"
-bincode = "2.0.1"
+bitcode = "0.6.9"
 cfg-if = "1.0.4"
 blake3 = { version = "1.8.2", optional = true }
 rfd = { version = "0.15.4", optional = true }

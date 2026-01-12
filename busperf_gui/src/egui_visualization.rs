@@ -109,10 +109,8 @@ impl BusperfApp {
         decoder
             .read_to_end(&mut buf)
             .map_err(|_| "invalid file: failed decompression")?;
-        let config = bincode::config::standard();
-        let data: (String, String, Vec<BusData>) = bincode::decode_from_slice(&buf, config)
-            .map_err(|_| "invalid file data")?
-            .0;
+        let data: (String, String, Vec<BusData>) =
+            bitcode::decode(&buf).map_err(|_| "invalid file data")?;
         let (waveform_path, hash, usages) = data;
         let surfer_data = SurferData::new(waveform_path, Some(hash))?;
         Ok(BusperfApp::new(usages, surfer_data, TimescaleUnit(-9)))

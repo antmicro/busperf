@@ -2,7 +2,7 @@ use crate::CycleType;
 use crate::{CyclesNum, SignalPath};
 use std::collections::HashMap;
 
-#[derive(bincode::Encode, bincode::Decode)]
+#[derive(bitcode::Encode, bitcode::Decode)]
 pub struct BusData {
     pub usage: BusUsage,
     pub signals: Vec<SignalPath>,
@@ -15,7 +15,7 @@ impl BusData {
 }
 
 /// Enum that contains all bus usage types.
-#[derive(PartialEq, Debug, Clone, bincode::Encode, bincode::Decode)]
+#[derive(PartialEq, Debug, Clone, bitcode::Encode, bitcode::Decode)]
 pub enum BusUsage {
     SingleChannel(SingleChannelBusUsage),
     MultiChannel(MultiChannelBusUsage),
@@ -103,7 +103,7 @@ impl TimelineStatistic {
 
 /// Stores in what state is the bus currently
 #[doc(hidden)]
-#[derive(PartialEq, Debug, Clone, bincode::Encode, bincode::Decode)]
+#[derive(PartialEq, Debug, Clone, bitcode::Encode, bitcode::Decode)]
 pub enum CurrentlyCalculating {
     None,
     Burst,
@@ -113,7 +113,7 @@ pub enum CurrentlyCalculating {
 }
 
 /// Contains statistics for a single channel bus.
-#[derive(PartialEq, Debug, Clone, bincode::Encode, bincode::Decode)]
+#[derive(PartialEq, Debug, Clone, bitcode::Encode, bitcode::Decode)]
 pub struct SingleChannelBusUsage {
     pub bus_name: String,
     busy: CyclesNum,
@@ -429,7 +429,7 @@ pub type RealTime = u64;
 type SignedRealTime = i64;
 
 /// Contains waveform times of start and end of some period and its duration in clock cycles.
-#[derive(PartialEq, Debug, Clone, Copy, bincode::Encode, bincode::Decode)]
+#[derive(PartialEq, Debug, Clone, Copy, bitcode::Encode, bitcode::Decode)]
 pub struct Period {
     start: RealTime,
     end: RealTime,
@@ -483,7 +483,7 @@ impl Period {
 }
 
 /// Contains statistics for a multichannel bus.
-#[derive(PartialEq, Debug, Clone, bincode::Encode, bincode::Decode)]
+#[derive(PartialEq, Debug, Clone, bitcode::Encode, bitcode::Decode)]
 pub struct MultiChannelBusUsage {
     pub bus_name: String,
     cmd_to_completion: Vec<Period>,

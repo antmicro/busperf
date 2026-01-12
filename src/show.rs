@@ -74,9 +74,8 @@ pub fn visualization_from_file(
     let mut decoder = flate2::read::GzDecoder::new(&*data);
     let mut buf = Vec::new();
     decoder.read_to_end(&mut buf).map_err(|_| "Invalid file")?;
-    let config = bincode::config::standard();
-    let (data, _): ((String, String, Vec<BusData>), _) =
-        bincode::decode_from_slice(&buf, config).map_err(|_| "Invalid file data")?;
+    let data: (String, String, Vec<BusData>) =
+        bitcode::decode(&buf).map_err(|_| "Invalid file data")?;
     let (waveform_path, hash, usages) = data;
     show_data(
         usages,
@@ -99,8 +98,7 @@ fn prepare_data(
     let hash = calculate_file_hash(&trace)
         .map_err(|e| format!("[ERROR] failed to calculate trace hash: {e}"))?;
     let data = (trace, hash.to_string(), usages);
-    let config = bincode::config::standard();
-    let data = bincode::encode_to_vec(data, config).map_err(|_| "Serialization failed")?;
+    let data = bitcode::encode(&data);
     let mut encoder = flate2::write::GzEncoder::new(out, Compression::default());
     encoder
         .write_all(&data)
