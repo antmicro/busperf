@@ -1,1 +1,2 @@
+myst-parser==4.0.1
 https://github.com/antmicro/antmicro-sphinx-utils/archive/main.zip
