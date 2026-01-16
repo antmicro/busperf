@@ -6,7 +6,7 @@ license = "Apache-2.0"
 description = "Web app for Busperf"
 repository = "https://github.com/antmicro/busperf/tree/main/busperf_web"
 
-[dependencies]
+[target.'cfg(target_arch = "wasm32")'.dependencies]
 busperf_gui = { path = "../busperf_gui", version = "0.1.0", default-features = false }
 eframe = { version = "0.32.3", default-features = false, features = ["default_fonts", "glow"] }
 rfd = "0.15.4"
@@ -14,3 +14,13 @@ wasm-bindgen-futures = "0.4.50"
 wasm-bindgen = "0.2.105"
 web-sys = "0.3.70"  
 log = "0.4.27"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+base64 = { version = "0.22.1" }
+libbusperf = { path = "../libbusperf", version = "0.1.0", features = ["file-hash"] }
+
+[build-dependencies]
+wasm-bindgen-cli-support = "0.2.105"
+
+[features]
+build_wasm = []

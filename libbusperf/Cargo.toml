@@ -10,6 +10,7 @@ repository = "https://github.com/antmicro/busperf/tree/main/libbusperf"
 bitcode = "0.6.9"
 blake3 = { version = "1.8.2", optional = true }
 cfg-if = "1.0.4"
+flate2 =  { version = "1.1.4", optional = true }
 
 [features]
-file-hash = ["dep:blake3"]
+file-hash = ["dep:blake3", "dep:flate2"]

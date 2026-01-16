@@ -1,11 +1,10 @@
 use blake3::Hash;
-use flate2::Compression;
 use std::error::Error;
 use std::io::Read;
 use std::{cell::Cell, io::Write};
 
 use libbusperf::bus_usage::BusData;
-use libbusperf::calculate_file_hash;
+use libbusperf::prepare_data;
 
 mod text_output;
 
@@ -61,7 +60,7 @@ pub fn show_data(
         }
         OutputType::Data => save_data(usages, trace_path, out),
         #[cfg(feature = "generate-html")]
-        OutputType::Html => generate_html(usages, trace_path, out),
+        OutputType::Html => busperf_web::generate_html(usages, trace_path, out),
     }
 }
 
@@ -89,55 +88,10 @@ pub fn visualization_from_file(
     Ok(())
 }
 
-#[inline]
-fn prepare_data(
-    usages: Vec<BusData>,
-    trace: String,
-    out: &mut impl Write,
-) -> Result<(), Box<dyn Error>> {
-    let hash = calculate_file_hash(&trace)
-        .map_err(|e| format!("[ERROR] failed to calculate trace hash: {e}"))?;
-    let data = (trace, hash.to_string(), usages);
-    let data = bitcode::encode(&data);
-    let mut encoder = flate2::write::GzEncoder::new(out, Compression::default());
-    encoder
-        .write_all(&data)
-        .map_err(|e| format!("Write to file failed {e}"))?;
-    Ok(())
-}
-
 fn save_data(
     usages: Vec<BusData>,
     trace: String,
     out: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
     prepare_data(usages, trace, out)
-}
-
-#[cfg(feature = "generate-html")]
-fn generate_html(
-    usages: Vec<BusData>,
-    trace: String,
-    out: &mut impl Write,
-) -> Result<(), Box<dyn Error>> {
-    use base64::prelude::*;
-
-    let mut busperf_data = Vec::new();
-    prepare_data(usages, trace, &mut busperf_data)?;
-
-    let busperf_data = BASE64_STANDARD.encode(busperf_data);
-
-    let js = include_str!("../target_wasm/busperf_web.js");
-
-    let wasm = include_bytes!("../target_wasm/busperf_web_bg.wasm");
-    let wasm = BASE64_STANDARD.encode(wasm);
-
-    let html = String::from(include_str!("../template.html"));
-    let html = html.replace("JAVASCRIPT_HERE", js);
-    let html = html.replace("WASM_HERE", &wasm);
-    let html = html.replace("DATA_HERE", &busperf_data);
-
-    out.write_all(html.as_bytes())
-        .map_err(|e| format!("Failed to write {e}"))?;
-    Ok(())
 }
