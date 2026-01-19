@@ -20,7 +20,7 @@ base64 = { version = "0.22.1" }
 libbusperf = { path = "../libbusperf", version = "0.1.0", features = ["file-hash"] }
 
 [build-dependencies]
-wasm-bindgen-cli-support = "0.2.105"
+wasm-bindgen-cli-support = "0.2.105, <0.2.106"
 
 [features]
 build_wasm = []
