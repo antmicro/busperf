@@ -149,16 +149,20 @@ impl Control for Fsm {
                 let transitions = state
                     .transitions
                     .iter()
-                    .map(|(trigger_name, to_state)| {
+                    .enumerate()
+                    .map(|(order, (trigger_name, to_state))| {
                         Ok(done_triggers[trigger_name]
                             .as_ref()?
                             .iter()
-                            .map(move |time| (time, to_state)))
+                            .map(move |time| (time, to_state, order)))
                     })
                     .collect::<Result<Vec<_>, &Box<dyn Error>>>()?;
                 let transitions = transitions
                     .into_iter()
-                    .kmerge_by(|(time1, _), (time2, _)| time1 < time2)
+                    .kmerge_by(|(time1, _, order1), (time2, _, order2)| {
+                        time1 < time2 || (time1 == time2 && order1 < order2)
+                    })
+                    .map(|(time, to, _)| (time, to))
                     .collect::<Vec<_>>()
                     .into_iter()
                     .peekable();
