@@ -355,6 +355,25 @@ fn channel_and_signal_triggers() {
         &Period::literal(8790000, 8830000, 4),
     ];
     assert_eq!(calculated, ok);
+
+    let BusData {
+        usage: BusUsage::MultiChannel(usage),
+        ..
+    } = results[3].as_ref().unwrap()
+    else {
+        panic!("invalid usage outputted")
+    };
+    let calculated = usage.get_transactions_start_end().iter().collect_vec();
+    let ok = [
+        &Period::literal(560000, 580000, 2),
+        &Period::literal(1790000, 1820000, 3),
+        &Period::literal(3110000, 3140000, 3),
+        &Period::literal(4510000, 4540000, 3),
+        &Period::literal(5980000, 6010000, 3),
+        &Period::literal(7520000, 7560000, 4),
+        &Period::literal(9130000, 9170000, 4),
+    ];
+    assert_eq!(calculated, ok);
 }
 
 #[test]
@@ -384,6 +403,21 @@ fn transaction_triggers() {
         .map(|(d, _)| d as u64)
         .collect_vec();
     let ok = [126, 0, 869, 0, 0, 0];
+    assert_eq!(calculated, ok);
+    let BusData {
+        usage: BusUsage::SingleChannel(usage),
+        ..
+    } = results[3].as_ref().unwrap()
+    else {
+        panic!("invalid usage outputted")
+    };
+    let calculated = usage
+        .get_cycles()
+        .data_labels
+        .into_iter()
+        .map(|(d, _)| d as u64)
+        .collect_vec();
+    let ok = [308, 158, 0, 0, 539, 0];
     assert_eq!(calculated, ok);
 }
 
