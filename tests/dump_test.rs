@@ -421,6 +421,36 @@ fn transaction_triggers() {
     assert_eq!(calculated, ok);
 }
 
+#[test]
+fn time_and_fsm_triggers() {
+    let mut data = load_simulation_trace("tests/test_dumps/axi.vcd", false).unwrap();
+    let descs = load_bus_analyzers(
+        "tests/test_dumps/time_and_fsm_triggers.yaml",
+        0,
+        10000,
+        0.0001,
+        0.00001,
+        "tests/dummy_plugins",
+    )
+    .unwrap();
+    let results = analyze_all(descs, &mut data, false);
+    let BusData {
+        usage: BusUsage::MultiChannel(usage),
+        ..
+    } = results[0].as_ref().unwrap()
+    else {
+        panic!("invalid usage outputted")
+    };
+    let calculated = usage.get_transactions_start_end().iter().collect_vec();
+    let ok = [
+        &Period::literal(170000, 200000, 3),
+        &Period::literal(320000, 340000, 2),
+        &Period::literal(600000, 630000, 3),
+        &Period::literal(760000, 790000, 3),
+    ];
+    assert_eq!(calculated, ok);
+}
+
 // functions returning correct usages for tests
 
 fn correct_test() -> BusUsage {
