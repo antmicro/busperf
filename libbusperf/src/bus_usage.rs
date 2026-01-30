@@ -151,7 +151,7 @@ impl SingleChannelBusUsage {
             }),
         ])
     }
-    fn get_cycles(&self) -> PercentageStatistic {
+    pub fn get_cycles(&self) -> PercentageStatistic {
         PercentageStatistic {
             data_labels: vec![
                 (self.busy as f32, "Busy"),
