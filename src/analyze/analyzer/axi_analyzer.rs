@@ -897,7 +897,7 @@ impl AXIWrAnalyzer {
             }
 
             while let Some(&resp_time) = b.peek()
-                && resp_time < next_transaction
+                && resp_time <= next_transaction
             {
                 if resp_time > next_rst {
                     unfinished.push_str(
