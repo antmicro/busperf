@@ -82,12 +82,6 @@ impl BusDescription for AXIRdDescription {
             let mut signals = s.common.into_signals();
             signals.append(&mut ar_signals);
             signals.append(&mut r_signals);
-            signals.push(s.r_resp);
-            if let Some(full) = s.full {
-                signals.push(full.ar_id);
-                signals.push(full.r_id);
-                signals.push(full.r_last);
-            }
 
             signals
         } else {
@@ -196,12 +190,6 @@ impl BusDescription for AXIWrDescription {
             signals.append(&mut aw_signals);
             signals.append(&mut w_signals);
             signals.append(&mut b_signals);
-            signals.push(s.b_resp);
-            if let Some(full) = s.full {
-                signals.push(full.aw_id);
-                signals.push(full.w_last);
-                signals.push(full.b_id);
-            }
 
             signals
         } else {
