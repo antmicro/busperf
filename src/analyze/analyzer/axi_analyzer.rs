@@ -120,8 +120,8 @@ pub struct AXIWrDescription {
 }
 
 macro_rules! channel_triggers {
-    ($description:expr, $linked_hash_map:expr, $channel_name:ident) => {
-        match &$linked_hash_map[&Yaml::String(String::from(stringify!($channel_name)))] {
+    ($description:expr, $hash:expr, $channel_name:ident) => {
+        match &$hash[stringify!($channel_name)] {
             Yaml::Hash(yaml) => yaml
                 .iter()
                 .map(|(n, yaml)| {
@@ -143,6 +143,27 @@ macro_rules! channel_triggers {
                 .into_iter(),
             Yaml::BadValue => vec![].into_iter(),
             _ => return Err("invalid channel trigger".into()),
+        }
+    };
+}
+
+macro_rules! transaction_triggers {
+    ($description:expr, $hash:expr) => {
+        match &$hash["_"] {
+            Yaml::Hash(yaml) => yaml
+                .iter()
+                .map(|(type_, n)| {
+                    let name = format!(
+                        "interfaces.{}.{}",
+                        $description.name(),
+                        n.as_str().ok_or("invalid name")?
+                    );
+                    Ok(TransactionTrigger::from_yaml(name, type_))
+                })
+                .collect::<Result<Vec<_>, Box<dyn Error>>>()?
+                .into_iter(),
+            Yaml::BadValue => vec![].into_iter(),
+            _ => return Err("invalid trigger syntax".into()),
         }
     };
 }
@@ -324,25 +345,11 @@ impl AXIRdAnalyzer {
         let sink = TriggerSink::build_from_yaml(&yaml)?;
         let required = sink.required();
         let provided = match &yaml["triggers"] {
-            Yaml::Hash(linked_hash_map) => {
-                let ar_triggers = channel_triggers!(description, linked_hash_map, ar);
-                let r_triggers = channel_triggers!(description, linked_hash_map, r);
+            Yaml::Hash(_linked_hash_map) => {
+                let ar_triggers = channel_triggers!(description, &yaml["triggers"], ar);
+                let r_triggers = channel_triggers!(description, &yaml["triggers"], r);
+                let transaction_triggers = transaction_triggers!(description, &yaml["triggers"]);
 
-                let yaml = &linked_hash_map[&Yaml::String(String::from("_"))]
-                    .as_hash()
-                    .unwrap_or_else(|| panic!("{linked_hash_map:?}"));
-                let transaction_triggers = yaml
-                    .iter()
-                    .map(|(type_, n)| {
-                        let name = format!(
-                            "interfaces.{}.{}",
-                            description.name(),
-                            n.as_str().ok_or("invalid name")?
-                        );
-                        Ok(TransactionTrigger::from_yaml(name, type_))
-                    })
-                    .collect::<Result<Vec<_>, Box<dyn Error>>>()?
-                    .into_iter();
                 ar_triggers
                     .chain(r_triggers)
                     .chain(transaction_triggers)
@@ -719,9 +726,9 @@ impl AXIWrAnalyzer {
         let required = sink.required();
         let provided = match &yaml["triggers"] {
             Yaml::Hash(linked_hash_map) => {
-                let aw_triggers = channel_triggers!(description, linked_hash_map, aw);
-                let w_triggers = channel_triggers!(description, linked_hash_map, w);
-                let b_triggers = channel_triggers!(description, linked_hash_map, b);
+                let aw_triggers = channel_triggers!(description, &yaml["triggers"], aw);
+                let w_triggers = channel_triggers!(description, &yaml["triggers"], w);
+                let b_triggers = channel_triggers!(description, &yaml["triggers"], b);
 
                 let yaml = &linked_hash_map[&Yaml::String(String::from("_"))]
                     .as_hash()
