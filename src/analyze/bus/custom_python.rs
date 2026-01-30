@@ -1,7 +1,12 @@
-use crate::analyze::bus::{SignalPath, SignalPathFromYaml};
+use std::rc::Rc;
+
+use crate::analyze::bus::{
+    BusCommon, BusDescription, COMMON_YAML, ExtraSignals, SignalPath, SignalPathFromYaml,
+    bus_description,
+};
 use crate::analyze::plugins::load_python_plugin;
 
-use super::BusDescription;
+use super::LockstepAnalyzer;
 use owo_colors::OwoColorize;
 use pyo3::{
     prelude::*,
@@ -11,8 +16,9 @@ use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
 pub struct PythonCustomBus {
+    common: Rc<BusCommon>,
     obj: Py<PyAny>,
-    signals: Vec<SignalPath>,
+    extra_signals: ExtraSignals,
 }
 
 #[pyclass]
@@ -44,10 +50,12 @@ impl From<CycleType> for libbusperf::CycleType {
 impl PythonCustomBus {
     pub fn from_yaml(
         class_name: &str,
+        name: String,
         i: &Yaml,
         bus_scope: &[String],
         plugins_path: &str,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        let common = Rc::new(BusCommon::from_yaml(name, i)?);
         Python::with_gil(|py| -> PyResult<()> {
             let module = match py.import("sys")?.getattr("modules")?.get_item("busperf") {
                 Ok(module) => module.extract()?,
@@ -65,19 +73,40 @@ impl PythonCustomBus {
                 .call0(py)?
                 .extract::<Vec<String>>(py)
         })?;
-        let signals = signals
+
+        let handled = COMMON_YAML
+            .iter()
+            .copied()
+            .chain(signals.iter().map(|s| s.as_str()))
+            .collect::<Vec<_>>();
+        let mut unhandled_signals = Vec::new();
+        for (name, yaml) in i.as_hash().expect("already checked") {
+            let name = name.as_str().ok_or("invalid signal name")?;
+            if !handled.contains(&name) {
+                unhandled_signals.push((
+                    name.to_owned(),
+                    SignalPathFromYaml::from_yaml_ref_with_prefix(&common.module_scope, yaml)?,
+                ));
+            }
+        }
+
+        let paths: Vec<SignalPath> = signals
             .iter()
             .map(|s| SignalPathFromYaml::from_yaml_ref_with_prefix(bus_scope, &i[s.as_str()]))
             .collect::<Result<_, _>>()?;
-        Ok(PythonCustomBus { obj, signals })
+        let mut extra_signals: Vec<_> = signals.into_iter().zip(paths).collect();
+        extra_signals.append(&mut unhandled_signals);
+        Ok(PythonCustomBus {
+            common,
+            obj,
+            extra_signals,
+        })
     }
 }
 
-impl BusDescription for PythonCustomBus {
-    fn signals(&self) -> Vec<&SignalPath> {
-        self.signals.iter().collect()
-    }
+bus_description!(PythonCustomBus,);
 
+impl LockstepAnalyzer for PythonCustomBus {
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], _time: u32) -> libbusperf::CycleType {
         let signals: Vec<String> = match signals
             .iter()

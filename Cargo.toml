@@ -26,6 +26,8 @@ cfg-if = "1.0.4"
 bitcode = "0.6.9"
 blake3 = "1.8.2"
 busperf_web = { path = "busperf_web", version = "0.1.0", optional = true, features = ["build_wasm"] }
+hashbrown = "0.16.1"
+itertools = "0.14.0"
 
 [features]
 default = ["help-colors", "gui", "python-plugins", "generate-html"]

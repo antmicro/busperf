@@ -7,8 +7,10 @@ interfaces:
     clock: "clk"
     reset: "reset"
     reset_type: "low"
-    intervals:
-      - [10, 20]
+    start_triggers:
+      - time: 10
+    end_triggers:
+      - time: 20
 
     handshake: "ReadyValid"
     ready: "ready"

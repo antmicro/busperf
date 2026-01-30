@@ -13,6 +13,9 @@ pub fn run_egui(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let options = eframe::NativeOptions::default();
     let surfer_data = surfer_egui::SurferData::new(trace_path, hash)?;
+    if usages.is_empty() {
+        Err("No results to show")?;
+    }
     eframe::run_native(
         "busperf",
         options,

@@ -8,11 +8,7 @@ pub mod bus_usage;
 /// | ahb            | seq / no seq          | idle               | not used           | hready            | trans=BUSY      | other          |
 /// | credit valid   | credit>0 && valid     | credit>0 && !valid | credit=0 && !valid | not used          | not used        | other          |
 /// | apb            | setup or access phase | !psel              | not used           | access && !pready | not used        | other          |
-// #[cfg(feature = "python-plugins")]
-// use pyo3::prelude::*;
-// #[cfg(feature = "python-plugins")]
-// #[pyclass]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum CycleType {
     Busy,
     Free,

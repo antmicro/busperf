@@ -2,20 +2,28 @@ use std::{
     collections::{HashMap, VecDeque},
     error::Error,
     iter::Peekable,
+    rc::Rc,
 };
 
 use constcat::concat_slices;
 use wellen::{Signal, SignalValue, TimeTable, TimeTableIdx};
+use yaml_rust2::Yaml;
 
-use crate::analyze::bus::SignalPathFromYaml;
 use crate::analyze::{
-    analyzer::private::AnalyzerInternal,
+    AnalyzersConfig, RisingSignalIterator,
     bus::{
-        BusCommon, BusDescription, SignalPath, ValueType, axi::AXIBus, get_value, is_value_of_type,
+        BusDescription, COMMON_YAML, LockstepAnalyzer, SignalPathFromYaml, axi::ReadyValidAnalyzer,
+    },
+    trigger::{
+        TriggerName, TriggerSink, TriggerSource, channel_trigger::ChannelTrigger,
+        transaction_trigger::TransactionTrigger,
     },
 };
-use libbusperf::CyclesNum;
-use libbusperf::bus_usage::{BusUsage, MultiChannelBusUsage};
+use crate::analyze::{
+    analyzer::private::AnalyzerInternal,
+    bus::{BusCommon, SignalPath, ValueType, axi::AXIBus, get_value, is_value_of_type},
+};
+use libbusperf::bus_usage::{BusUsage, MultiChannelBusUsage, RealTime};
 
 use super::Analyzer;
 
@@ -25,17 +33,80 @@ struct AXIFullRd {
     r_last: SignalPath,
 }
 
-pub struct AXIRdAnalyzer {
-    common: BusCommon,
-    ar: AXIBus,
-    r: AXIBus,
+struct AXIRdDescription {
+    common: Rc<BusCommon>,
+    ar: Rc<AXIBus>,
+    r: Rc<AXIBus>,
     r_resp: SignalPath,
     /// full is optional, if it's None we assume AXI-Lite
     full: Option<AXIFullRd>,
-    result: Option<BusUsage>,
+}
+
+impl BusDescription for AXIRdDescription {
+    fn get_signals(&self) -> Vec<&SignalPath> {
+        let mut signals = vec![self.common.clk_path(), self.common.rst_path()];
+        signals.append(&mut self.ar.get_unique_signals());
+        signals.append(&mut self.r.get_unique_signals());
+        signals.push(&self.r_resp);
+        if let Some(full) = &self.full {
+            signals.push(&full.ar_id);
+            signals.push(&full.r_id);
+            signals.push(&full.r_last);
+        }
+
+        signals
+    }
+
+    fn name(&self) -> &str {
+        self.common.bus_name()
+    }
+
+    fn get_by_name(&self, _name: &str) -> Option<&SignalPath> {
+        // Unused, channel triggers use get_by_name from AXIBus
+        None
+    }
+
+    fn get_unique_signals(&self) -> Vec<&SignalPath> {
+        self.get_signals()
+    }
+
+    fn common(&self) -> &BusCommon {
+        &self.common
+    }
+
+    /// PANICS when not a last existing Rc
+    fn into_signals(self: Rc<Self>) -> Vec<SignalPath> {
+        if let Some(s) = Rc::into_inner(self) {
+            let mut ar_signals = s.ar.into_signals();
+            let mut r_signals = s.r.into_signals();
+            let mut signals = s.common.into_signals();
+            signals.append(&mut ar_signals);
+            signals.append(&mut r_signals);
+            signals.push(s.r_resp);
+            if let Some(full) = s.full {
+                signals.push(full.ar_id);
+                signals.push(full.r_id);
+                signals.push(full.r_last);
+            }
+
+            signals
+        } else {
+            unreachable!(
+                "all triggers should be analyzed and therefore dropped before this function is called"
+            );
+        }
+    }
+}
+
+pub struct AXIRdAnalyzer {
+    description: Rc<AXIRdDescription>,
     window_length: u32,
     x_rate: f32,
     y_rate: f32,
+
+    required: Vec<TriggerName>,
+    sink: TriggerSink,
+    provided: Vec<Box<dyn TriggerSource>>,
 }
 
 struct AXIFullWr {
@@ -44,29 +115,123 @@ struct AXIFullWr {
     b_id: SignalPath,
 }
 
-pub struct AXIWrAnalyzer {
-    common: BusCommon,
-    aw: AXIBus,
-    w: AXIBus,
-    b: AXIBus,
+pub struct AXIWrDescription {
+    common: Rc<BusCommon>,
+    aw: Rc<AXIBus>,
+    w: Rc<AXIBus>,
+    b: Rc<AXIBus>,
     b_resp: SignalPath,
     /// full is optional, if it's None we assume AXI-Lite
     full: Option<AXIFullWr>,
-    result: Option<BusUsage>,
+}
+
+macro_rules! channel_triggers {
+    ($description:expr, $linked_hash_map:expr, $channel_name:ident) => {
+        match &$linked_hash_map[&Yaml::String(String::from(stringify!($channel_name)))] {
+            Yaml::Hash(yaml) => yaml
+                .iter()
+                .map(|(n, yaml)| {
+                    let name = format!(
+                        "interfaces.{}.{}.{}",
+                        $description.name(),
+                        stringify!($channel_name),
+                        n.as_str().unwrap()
+                    );
+                    ChannelTrigger::from_yaml(
+                        name,
+                        yaml,
+                        &(Rc::clone(&$description.$channel_name) as Rc<dyn BusDescription>),
+                        &(Rc::new(ReadyValidAnalyzer) as Rc<dyn LockstepAnalyzer>),
+                        $description.common.clk_path(),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .into_iter(),
+            Yaml::BadValue => vec![].into_iter(),
+            _ => return Err("invalid channel trigger".into()),
+        }
+    };
+}
+
+impl BusDescription for AXIWrDescription {
+    fn name(&self) -> &str {
+        self.common.bus_name()
+    }
+
+    fn common(&self) -> &BusCommon {
+        &self.common
+    }
+
+    fn get_signals(&self) -> Vec<&SignalPath> {
+        let mut signals = vec![self.common.clk_path(), self.common.rst_path()];
+        signals.append(&mut self.aw.get_unique_signals());
+        signals.append(&mut self.w.get_unique_signals());
+        signals.append(&mut self.b.get_unique_signals());
+        signals.push(&self.b_resp);
+        if let Some(full) = &self.full {
+            signals.push(&full.aw_id);
+            signals.push(&full.w_last);
+            signals.push(&full.b_id);
+        }
+
+        signals
+    }
+
+    fn get_unique_signals(&self) -> Vec<&SignalPath> {
+        self.get_signals()
+    }
+
+    fn get_by_name(&self, _name: &str) -> Option<&SignalPath> {
+        // Unused, triggers on channel with use get_by_name from AXIBus
+        None
+    }
+
+    /// PANICS when not a last existing Rc
+    fn into_signals(self: Rc<Self>) -> Vec<SignalPath> {
+        if let Some(s) = Rc::into_inner(self) {
+            let mut aw_signals = s.aw.into_signals();
+            let mut w_signals = s.w.into_signals();
+            let mut b_signals = s.b.into_signals();
+            let mut signals = s.common.into_signals();
+            signals.append(&mut aw_signals);
+            signals.append(&mut w_signals);
+            signals.append(&mut b_signals);
+            signals.push(s.b_resp);
+            if let Some(full) = s.full {
+                signals.push(full.aw_id);
+                signals.push(full.w_last);
+                signals.push(full.b_id);
+            }
+
+            signals
+        } else {
+            unreachable!(
+                "all triggers should be analyzed and therefore dropped before this function is called"
+            );
+        }
+    }
+}
+
+pub struct AXIWrAnalyzer {
+    description: Rc<AXIWrDescription>,
     window_length: u32,
     x_rate: f32,
     y_rate: f32,
+
+    required: Vec<TriggerName>,
+    sink: TriggerSink,
+    provided: Vec<Box<dyn TriggerSource>>,
 }
 
-const AXI_RD_YAML: &[&str] = concat_slices!([&str]: super::COMMON_YAML, &[
-    "ar.id", "ar.ready", "ar.valid",
-    "r.id", "r.ready", "r.valid", "r.resp", "r.last",
+const AXI_RD_YAML: &[&str] = concat_slices!([&str]: COMMON_YAML, &[
+    "ar", "ar.id", "ar.ready", "ar.valid",
+    "r", "r.id", "r.ready", "r.valid", "r.resp", "r.last",
 ]);
 
-const AXI_WR_YAML: &[&str] = concat_slices!([&str]: super::COMMON_YAML, &[
-    "aw.id", "aw.ready", "aw.valid",
-    "w.ready", "w.valid", "w.last",
-    "b.ready", "b.valid", "b.resp", "b.id"
+const AXI_WR_YAML: &[&str] = concat_slices!([&str]: COMMON_YAML, &[
+    "aw", "aw.id", "aw.ready", "aw.valid",
+    "w", "w.ready", "w.valid", "w.last",
+    "b", "b.ready", "b.valid", "b.resp", "b.id"
 ]);
 
 // Count how many clock cycles was reset active
@@ -116,19 +281,11 @@ impl Transaction {
     }
 }
 
-impl AXIRdAnalyzer {
-    pub fn build_from_yaml(
-        yaml: (yaml_rust2::Yaml, yaml_rust2::Yaml),
-        default_max_burst_delay: CyclesNum,
-        window_length: u32,
-        x_rate: f32,
-        y_rate: f32,
-    ) -> Result<Self, Box<dyn Error>> {
-        let (name, dict) = yaml;
-        let name = name
-            .into_string()
-            .ok_or("Name of bus should be a valid string")?;
-        let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
+impl AXIRdDescription {
+    fn build_from_yaml(name: String, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
+        let common = Rc::new(BusCommon::from_yaml(name, yaml)?);
+
+        let dict = yaml;
         let r_resp = SignalPathFromYaml::from_yaml_ref_with_prefix(
             common.module_scope(),
             &dict["r"]["resp"],
@@ -150,29 +307,71 @@ impl AXIRdAnalyzer {
             (Err(_), Err(_), Err(_)) => None,
             _ => Err("For AXI full all ar_id, r_id and r_last must be defined")?,
         };
-        let mut dict = dict
-            .into_hash()
-            .ok_or("Channels description should not be empty")?;
-        let ar = AXIBus::from_yaml(
-            dict.remove(&yaml_rust2::Yaml::from_str(stringify!(ar)))
-                .ok_or("AXI analyzer should have all channels defined")?,
-            common.module_scope(),
-        )?;
-        let r = AXIBus::from_yaml(
-            dict.remove(&yaml_rust2::Yaml::from_str(stringify!(r)))
-                .ok_or("AXI analyzer should have all channels defined")?,
-            common.module_scope(),
-        )?;
+        let ar = Rc::new(
+            AXIBus::from_yaml_with_common(Rc::clone(&common), &dict["ar"])
+                .map_err(|_| "AXI analyzer should have all channels defined")?,
+        );
+        let r = Rc::new(
+            AXIBus::from_yaml_with_common(Rc::clone(&common), &dict["r"])
+                .map_err(|_| "AXI analyzer should have all channels defined")?,
+        );
+
         Ok(Self {
             common,
             ar,
             r,
             r_resp,
             full,
-            result: None,
-            window_length,
-            x_rate,
-            y_rate,
+        })
+    }
+}
+
+impl AXIRdAnalyzer {
+    pub fn build_from_yaml(
+        name: String,
+        yaml: yaml_rust2::Yaml,
+        config: &AnalyzersConfig,
+    ) -> Result<Self, Box<dyn Error>> {
+        let description = Rc::new(AXIRdDescription::build_from_yaml(name, &yaml)?);
+        let sink = TriggerSink::build_from_yaml(&yaml)?;
+        let required = sink.required();
+        let provided = match &yaml["triggers"] {
+            Yaml::Hash(linked_hash_map) => {
+                let ar_triggers = channel_triggers!(description, linked_hash_map, ar);
+                let r_triggers = channel_triggers!(description, linked_hash_map, r);
+
+                let yaml = &linked_hash_map[&Yaml::String(String::from("_"))]
+                    .as_hash()
+                    .unwrap_or_else(|| panic!("{linked_hash_map:?}"));
+                let transaction_triggers = yaml
+                    .iter()
+                    .map(|(type_, n)| {
+                        let name = format!(
+                            "interfaces.{}.{}",
+                            description.name(),
+                            n.as_str().ok_or("invalid name")?
+                        );
+                        Ok(TransactionTrigger::from_yaml(name, type_))
+                    })
+                    .collect::<Result<Vec<_>, Box<dyn Error>>>()?
+                    .into_iter();
+                ar_triggers
+                    .chain(r_triggers)
+                    .chain(transaction_triggers)
+                    .collect::<Result<_, _>>()
+            }
+            Yaml::BadValue => Ok(vec![]),
+            other => Err(format!("invalid trigger definition {:?}", other))?,
+        }?;
+
+        Ok(Self {
+            description,
+            window_length: config.window_length,
+            x_rate: config.x_rate,
+            y_rate: config.y_rate,
+            required,
+            sink,
+            provided,
         })
     }
 
@@ -262,7 +461,7 @@ impl AXIRdAnalyzer {
             }
             let ar_id = get_id_value(ar_id, time)
                 .ok_or(format!("arid is invalid at {}", time_table[time as usize]))?;
-            let next_transaction = *ar.peek().unwrap_or(last_time);
+            let next_transaction = *ar.peek().unwrap_or(&(last_time + 1));
             if let Some(transactions) = counting.get_mut(&ar_id) {
                 transactions.push_back(Transaction::new(time, next_transaction));
             } else {
@@ -321,9 +520,13 @@ impl AXIRdAnalyzer {
                     let t = t_vec
                         .pop_front()
                         .expect("Already checked that transaction exists");
-                    let [time, last_data, first_data, next_transaction] =
-                        [t.start, read, t.first_data.expect("Should be set"), t.next]
-                            .map(|i| time_table[i as usize]);
+                    let [time, last_data, first_data, next_transaction] = [
+                        t.start,
+                        read,
+                        t.first_data.expect("Should be set"),
+                        t.next.min(*last_time),
+                    ]
+                    .map(|i| time_table[i as usize]);
                     usage.add_transaction(
                         time,
                         last_data,
@@ -359,24 +562,23 @@ impl AXIRdAnalyzer {
 
 impl AnalyzerInternal for AXIRdAnalyzer {
     fn get_signals(&self) -> Vec<&SignalPath> {
-        let mut signals = vec![self.common.clk_path(), self.common.rst_path()];
-        signals.append(&mut self.ar.signals());
-        signals.append(&mut self.r.signals());
-        signals.push(&self.r_resp);
-        if let Some(full) = &self.full {
-            signals.push(&full.ar_id);
-            signals.push(&full.r_id);
-            signals.push(&full.r_last);
-        }
+        self.description.get_signals()
+    }
 
-        signals
+    fn requires(&self) -> Vec<&str> {
+        self.required.iter().map(|s| s.as_str()).collect()
+    }
+
+    fn provides(&self) -> Vec<&str> {
+        self.provided.iter().map(|p| p.name()).collect()
     }
 
     fn calculate(
         &mut self,
-        loaded: Vec<&(wellen::SignalRef, Signal)>,
+        loaded: &[&(wellen::SignalRef, Signal)],
+        intervals: &[[RealTime; 2]],
         time_table: &TimeTable,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<BusUsage, Box<dyn std::error::Error + 'static>> {
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let (_, _arready) = &loaded[2];
@@ -387,24 +589,18 @@ impl AnalyzerInternal for AXIRdAnalyzer {
 
         let mut reset = 0;
 
-        let last_time = clk.time_indices().last().ok_or("clock has no values")?;
         let clock_period = *time_table.get(2).ok_or(
             "trace is too short (less than 3 time indices), cannot calculate clock period",
         )?;
 
         let mut usage = MultiChannelBusUsage::new(
-            self.common.bus_name(),
+            self.description.name(),
             self.window_length,
             clock_period,
             self.x_rate,
             self.y_rate,
         );
 
-        let intervals = if self.common.intervals().is_empty() {
-            vec![[0, time_table[*last_time as usize]]]
-        } else {
-            self.common.intervals().clone()
-        };
         for [start, end] in intervals.iter() {
             let start_idx = time_table
                 .iter()
@@ -415,7 +611,12 @@ impl AnalyzerInternal for AXIRdAnalyzer {
                 .rposition(|time| time <= end)
                 .ok_or("Invalid interval set")? as u32;
 
-            reset += count_reset(rst, self.common.rst_active_value(), start_idx, end_idx);
+            reset += count_reset(
+                rst,
+                self.description.common.rst_active_value(),
+                start_idx,
+                end_idx,
+            );
             let mut ar =
                 ReadyValidTransactionIterator::new(clk, _arready, arvalid, end_idx).peekable();
             while ar.next_if(|t| *t < start_idx).is_some() {}
@@ -423,7 +624,7 @@ impl AnalyzerInternal for AXIRdAnalyzer {
                 ReadyValidTransactionIterator::new(clk, _rready, rvalid, end_idx).peekable();
             while r.next_if(|t| *t < start_idx).is_some() {}
             let rst = RisingSignalIterator::new(rst);
-            match self.full {
+            match self.description.full {
                 Some(_) => {
                     let (_, ar_id) = &loaded[7];
                     let (_, r_id) = &loaded[8];
@@ -441,38 +642,37 @@ impl AnalyzerInternal for AXIRdAnalyzer {
         }
 
         usage.end(reset, intervals);
-        self.result = Some(BusUsage::MultiChannel(usage));
-        Ok(())
+        Ok(BusUsage::MultiChannel(usage))
     }
 
     fn bus_name(&self) -> &str {
-        self.common.bus_name()
+        self.description.common.bus_name()
+    }
+
+    fn sink(&self) -> &TriggerSink {
+        &self.sink
+    }
+
+    fn consume(self: Box<Self>) -> (String, Rc<dyn BusDescription>, Vec<Box<dyn TriggerSource>>) {
+        (
+            self.description.name().to_owned(),
+            self.description,
+            self.provided,
+        )
     }
 }
 
 impl Analyzer for AXIRdAnalyzer {
-    fn get_results(&self) -> Option<&BusUsage> {
-        self.result.as_ref()
-    }
-
     fn required_yaml_definitions(&self) -> Vec<&str> {
         Vec::from(AXI_RD_YAML)
     }
 }
 
-impl AXIWrAnalyzer {
-    pub fn build_from_yaml(
-        yaml: (yaml_rust2::Yaml, yaml_rust2::Yaml),
-        default_max_burst_delay: CyclesNum,
-        window_length: u32,
-        x_rate: f32,
-        y_rate: f32,
-    ) -> Result<Self, Box<dyn Error>> {
-        let (name, dict) = yaml;
-        let name = name
-            .into_string()
-            .ok_or("Name of bus should be a valid string")?;
-        let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
+impl AXIWrDescription {
+    fn build_from_yaml(name: String, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
+        let common = Rc::new(BusCommon::from_yaml(name, yaml)?);
+
+        let dict = yaml;
         let b_resp = SignalPathFromYaml::from_yaml_ref_with_prefix(
             common.module_scope(),
             &dict["b"]["resp"],
@@ -495,24 +695,20 @@ impl AXIWrAnalyzer {
             (Err(_), Err(_), Err(_)) => None,
             (_, _, _) => Err("For AXI full all aw_id, w_last and b_id must be defined")?,
         };
-        let mut dict = dict
-            .into_hash()
-            .ok_or("Channels description should not be empty")?;
-        let aw = AXIBus::from_yaml(
-            dict.remove(&yaml_rust2::Yaml::from_str(stringify!(aw)))
-                .ok_or("AXI analyzer should have all channels defined")?,
-            common.module_scope(),
-        )?;
-        let w = AXIBus::from_yaml(
-            dict.remove(&yaml_rust2::Yaml::from_str(stringify!(w)))
-                .ok_or("AXI analyzer should have all channels defined")?,
-            common.module_scope(),
-        )?;
-        let b = AXIBus::from_yaml(
-            dict.remove(&yaml_rust2::Yaml::from_str(stringify!(b)))
-                .ok_or("AXI analyzer should have all channels defined")?,
-            common.module_scope(),
-        )?;
+
+        let aw = Rc::new(AXIBus::from_yaml_with_common(
+            Rc::clone(&common),
+            &dict["aw"],
+        )?);
+        let w = Rc::new(AXIBus::from_yaml_with_common(
+            Rc::clone(&common),
+            &dict["w"],
+        )?);
+        let b = Rc::new(AXIBus::from_yaml_with_common(
+            Rc::clone(&common),
+            &dict["b"],
+        )?);
+
         Ok(Self {
             common,
             aw,
@@ -520,10 +716,57 @@ impl AXIWrAnalyzer {
             b,
             b_resp,
             full,
-            result: None,
-            window_length,
-            x_rate,
-            y_rate,
+        })
+    }
+}
+
+impl AXIWrAnalyzer {
+    pub fn build_from_yaml(
+        name: String,
+        yaml: yaml_rust2::Yaml,
+        config: &AnalyzersConfig,
+    ) -> Result<Self, Box<dyn Error>> {
+        let description = Rc::new(AXIWrDescription::build_from_yaml(name, &yaml)?);
+        let sink = TriggerSink::build_from_yaml(&yaml)?;
+        let required = sink.required();
+        let provided = match &yaml["triggers"] {
+            Yaml::Hash(linked_hash_map) => {
+                let aw_triggers = channel_triggers!(description, linked_hash_map, aw);
+                let w_triggers = channel_triggers!(description, linked_hash_map, w);
+                let b_triggers = channel_triggers!(description, linked_hash_map, b);
+
+                let yaml = &linked_hash_map[&Yaml::String(String::from("_"))]
+                    .as_hash()
+                    .unwrap_or_else(|| panic!("{linked_hash_map:?}"));
+                let transaction_triggers = yaml
+                    .iter()
+                    .map(|(type_, n)| {
+                        let name = format!(
+                            "interfaces.{}.{}",
+                            description.name(),
+                            n.as_str().ok_or("invalid name")?
+                        );
+                        Ok(TransactionTrigger::from_yaml(name, type_))
+                    })
+                    .collect::<Result<Vec<_>, Box<dyn Error>>>()?
+                    .into_iter();
+                aw_triggers
+                    .chain(w_triggers)
+                    .chain(b_triggers)
+                    .chain(transaction_triggers)
+                    .collect::<Result<_, _>>()
+            }
+            Yaml::BadValue => Ok(vec![]),
+            other => Err(format!("invalid trigger definition {:?}", other))?,
+        }?;
+        Ok(Self {
+            description,
+            window_length: config.window_length,
+            x_rate: config.x_rate,
+            y_rate: config.y_rate,
+            required,
+            sink,
+            provided,
         })
     }
 
@@ -742,30 +985,40 @@ impl AXIWrAnalyzer {
 }
 
 impl AnalyzerInternal for AXIWrAnalyzer {
-    fn get_signals(&self) -> Vec<&SignalPath> {
-        let mut signals = vec![self.common.clk_path(), self.common.rst_path()];
-        signals.append(&mut self.aw.signals());
-        signals.append(&mut self.w.signals());
-        signals.append(&mut self.b.signals());
-        signals.push(&self.b_resp);
-        if let Some(full) = &self.full {
-            signals.push(&full.aw_id);
-            signals.push(&full.w_last);
-            signals.push(&full.b_id);
-        }
-
-        signals
+    fn bus_name(&self) -> &str {
+        self.description.name()
     }
 
-    fn bus_name(&self) -> &str {
-        self.common.bus_name()
+    fn requires(&self) -> Vec<&str> {
+        self.required.iter().map(|n| n.as_str()).collect()
+    }
+
+    fn provides(&self) -> Vec<&str> {
+        self.provided.iter().map(|t| t.name()).collect()
+    }
+
+    fn sink(&self) -> &TriggerSink {
+        &self.sink
+    }
+
+    fn get_signals(&self) -> Vec<&SignalPath> {
+        self.description.get_signals()
+    }
+
+    fn consume(self: Box<Self>) -> (String, Rc<dyn BusDescription>, Vec<Box<dyn TriggerSource>>) {
+        (
+            self.description.name().to_owned(),
+            self.description,
+            self.provided,
+        )
     }
 
     fn calculate(
         &mut self,
-        loaded: Vec<&(wellen::SignalRef, Signal)>,
+        loaded: &[&(wellen::SignalRef, Signal)],
+        intervals: &[[RealTime; 2]],
         time_table: &TimeTable,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<BusUsage, Box<dyn std::error::Error + 'static>> {
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let (_, awready) = &loaded[2];
@@ -777,21 +1030,12 @@ impl AnalyzerInternal for AXIWrAnalyzer {
         let (_, b_resp) = &loaded[8];
 
         let mut reset = 0;
-        let last_time = clk
-            .time_indices()
-            .last()
-            .ok_or("Clock should have values")?;
         let clock_period = *time_table.get(2).ok_or(
             "trace is too short (less than 3 time indices), cannot calculate clock period",
         )?;
-        let intervals = if self.common.intervals().is_empty() {
-            vec![[0, time_table[*last_time as usize]]]
-        } else {
-            self.common.intervals().clone()
-        };
 
         let mut usage = MultiChannelBusUsage::new(
-            self.common.bus_name(),
+            self.description.name(),
             self.window_length,
             clock_period,
             self.x_rate,
@@ -808,7 +1052,12 @@ impl AnalyzerInternal for AXIWrAnalyzer {
                 .rposition(|time| time <= end)
                 .ok_or("Invalid interval set")? as u32;
 
-            reset += count_reset(rst, self.common.rst_active_value(), start_idx, end_idx);
+            reset += count_reset(
+                rst,
+                self.description.common.rst_active_value(),
+                start_idx,
+                end_idx,
+            );
 
             let mut aw =
                 ReadyValidTransactionIterator::new(clk, awready, awvalid, end_idx).peekable();
@@ -819,7 +1068,7 @@ impl AnalyzerInternal for AXIWrAnalyzer {
             while b.next_if(|t| *t < start_idx).is_some() {}
             let rst = RisingSignalIterator::new(rst);
 
-            match self.full {
+            match self.description.full {
                 Some(_) => {
                     let (_, aw_id) = &loaded[9];
                     let (_, w_last) = &loaded[10];
@@ -837,75 +1086,13 @@ impl AnalyzerInternal for AXIWrAnalyzer {
         }
 
         usage.end(reset, intervals);
-        self.result = Some(BusUsage::MultiChannel(usage));
-        Ok(())
+        Ok(BusUsage::MultiChannel(usage))
     }
 }
 
 impl Analyzer for AXIWrAnalyzer {
-    fn get_results(&self) -> Option<&BusUsage> {
-        self.result.as_ref()
-    }
-
     fn required_yaml_definitions(&self) -> Vec<&str> {
         Vec::from(AXI_WR_YAML)
-    }
-}
-
-struct RisingSignalIterator<'a> {
-    signal: Peekable<Box<dyn Iterator<Item = (u32, SignalValue<'a>)> + 'a>>,
-    peeked: Option<TimeTableIdx>,
-}
-
-impl<'a> RisingSignalIterator<'a> {
-    fn new(signal: &'a Signal) -> Self {
-        let signal: Box<dyn Iterator<Item = _>> = Box::new(signal.iter_changes());
-        let signal = signal.peekable();
-        Self {
-            signal,
-            peeked: None,
-        }
-    }
-
-    fn find_non_consuming<P>(&mut self, mut predicate: P) -> Option<TimeTableIdx>
-    where
-        P: FnMut(&TimeTableIdx) -> bool,
-    {
-        loop {
-            if let Some(t) = self.next() {
-                if predicate(&t) {
-                    self.peeked = Some(t);
-                    break Some(t);
-                }
-            } else {
-                break None;
-            }
-        }
-    }
-}
-
-impl<'a> Iterator for RisingSignalIterator<'a> {
-    type Item = TimeTableIdx;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(t) = self.peeked {
-            self.peeked = None;
-            Some(t)
-        } else {
-            loop {
-                match self.signal.next() {
-                    Some((_, value)) => {
-                        if matches!(get_value(value), Some(ValueType::V0))
-                            && let Some((time, next_value)) = self.signal.next()
-                            && matches!(get_value(next_value), Some(ValueType::V1))
-                        {
-                            return Some(time);
-                        }
-                    }
-                    None => return None,
-                }
-            }
-        }
     }
 }
 

@@ -1,33 +1,42 @@
-use std::cell::Cell;
+use std::{cell::Cell, rc::Rc};
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use super::{BusDescription, SignalPath, ValueType, bus_from_yaml, get_value};
+use crate::analyze::bus::{BusCommon, BusDescription, ExtraSignals, bus_description};
+
+use super::{LockstepAnalyzer, SignalPath, ValueType, bus_from_yaml, get_value};
 use libbusperf::CycleType;
 
 #[derive(Debug)]
 pub struct CreditValidBus {
+    common: Rc<BusCommon>,
     credit: SignalPath,
     valid: SignalPath,
     credits: Cell<u32>,
+    extra_signals: ExtraSignals,
 }
 
 impl CreditValidBus {
     bus_from_yaml!(CreditValidBus, credit, valid);
-    pub fn new(credit: SignalPath, valid: SignalPath) -> Self {
+    pub fn new(
+        common: Rc<BusCommon>,
+        credit: SignalPath,
+        valid: SignalPath,
+        extra_signals: ExtraSignals,
+    ) -> Self {
         CreditValidBus {
+            common,
             credit,
             valid,
             credits: 0.into(),
+            extra_signals,
         }
     }
 }
 
-impl BusDescription for CreditValidBus {
-    fn signals(&self) -> Vec<&SignalPath> {
-        vec![&self.credit, &self.valid]
-    }
+bus_description!(CreditValidBus, credit, valid);
 
+impl LockstepAnalyzer for CreditValidBus {
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> CycleType {
         let credit = signals[0];
         let valid = signals[1];

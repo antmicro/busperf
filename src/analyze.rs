@@ -2,24 +2,51 @@ use std::{
     error::Error,
     fs::File,
     io::{BufReader, Read},
+    iter::Peekable,
     sync::{Arc, atomic::AtomicU64},
 };
 
+use hashbrown::HashMap;
+use itertools::Itertools;
 use wellen::{
-    Hierarchy, LoadOptions,
+    Hierarchy, LoadOptions, Signal, SignalValue, TimeTableIdx,
     viewers::{self, BodyResult},
 };
 use yaml_rust2::YamlLoader;
 
 use analyzer::{Analyzer, AnalyzerBuilder};
 use bus::SignalPath;
-use libbusperf::CyclesNum;
+use libbusperf::{
+    CyclesNum,
+    bus_usage::{BusData, RealTime},
+};
+
+use crate::analyze::{
+    analyzer::AnalyzerResult,
+    bus::{ValueType, get_value},
+    trigger::{Control, ControlBuilder, TriggerName},
+};
 
 pub mod analyzer;
 mod bus;
 #[cfg(feature = "python-plugins")]
 mod plugins;
+mod trigger;
 
+pub struct AnalyzersConfig {
+    default_max_burst_delay: CyclesNum,
+    window_length: u32,
+    x_rate: f32,
+    y_rate: f32,
+    plugins_path: String,
+}
+
+pub struct AnalyzersGraph {
+    analyzers: Vec<Box<dyn Analyzer>>,
+    control: Vec<Box<dyn Control>>,
+}
+
+pub type Analyzers = Vec<Box<dyn Analyzer>>;
 /// Loads descriptions of the buses from yaml file with given name.
 pub fn load_bus_analyzers(
     filename: &str,
@@ -28,7 +55,7 @@ pub fn load_bus_analyzers(
     x_rate: f32,
     y_rate: f32,
     plugins_path: &str,
-) -> Result<Vec<Box<dyn Analyzer>>, Box<dyn std::error::Error>> {
+) -> Result<AnalyzersGraph, Box<dyn std::error::Error>> {
     let mut f = File::open(filename)?;
     let mut s = String::new();
     f.read_to_string(&mut s)?;
@@ -42,6 +69,7 @@ pub fn load_bus_analyzers(
         .ok_or("Yaml should define interfaces")?
         .into_hash()
         .ok_or("Invalid yaml format")?;
+    let control_only = doc.remove(&yaml_rust2::Yaml::from_str("control_only"));
     let unused = doc
         .into_iter()
         .filter_map(|(name, _)| {
@@ -61,25 +89,175 @@ pub fn load_bus_analyzers(
             unused.join(", ")
         ))?;
     }
-    let mut analyzers: Vec<Box<dyn Analyzer>> = vec![];
+    let config = AnalyzersConfig {
+        default_max_burst_delay,
+        window_length,
+        x_rate,
+        y_rate,
+        plugins_path: plugins_path.to_owned(),
+    };
+    let mut analyzers = vec![];
     for (name, dict) in interfaces {
         let n = name
             .as_str()
             .ok_or("Each bus should have a name")?
             .to_owned();
         analyzers.push(
-            AnalyzerBuilder::build(
-                (name, dict),
-                default_max_burst_delay,
-                window_length,
-                x_rate,
-                y_rate,
-                plugins_path,
-            )
-            .map_err(|e| format!("bus {n}, {e}"))?,
+            AnalyzerBuilder::build((name, dict), &config).map_err(|e| format!("bus {n}, {e}"))?,
         );
     }
-    Ok(analyzers)
+
+    let control = match control_only {
+        Some(control_only) => {
+            let mut control = vec![];
+            let control_only = control_only
+                .into_hash()
+                .ok_or("control_only should define extra triggers")?;
+            for (name, yaml) in control_only {
+                let name = name.into_string().ok_or("invalid control trigger name")?;
+                control.push(ControlBuilder::build_from_yaml(name, &yaml)?);
+            }
+            control
+        }
+        None => vec![],
+    };
+
+    let graph = AnalyzersGraph { analyzers, control };
+
+    check_dependencies(&graph)?;
+
+    Ok(graph)
+}
+
+fn check_dependencies(analyzers: &AnalyzersGraph) -> Result<(), Box<dyn Error>> {
+    let existing_triggers = analyzers
+        .control
+        .iter()
+        .flat_map(|c| c.names())
+        .chain(
+            analyzers
+                .analyzers
+                .iter()
+                .flat_map(|a| a.provides().into_iter()),
+        )
+        .collect_vec();
+    for a in analyzers.analyzers.iter() {
+        if let Some(req) = a
+            .requires()
+            .iter()
+            .find(|req| !existing_triggers.contains(req))
+        {
+            Err(format!(
+                "analyzer {} requires {} trigger which is not defined",
+                a.bus_name(),
+                req
+            ))?;
+        }
+    }
+    for c in analyzers.control.iter() {
+        if let Some(req) = c
+            .requires()
+            .iter()
+            .find(|req| !existing_triggers.contains(req))
+        {
+            Err(format!(
+                "analyzer {} requires {} trigger which is not defined",
+                c.name(),
+                req
+            ))?;
+        }
+    }
+
+    Ok(())
+}
+
+type DoneTriggers = HashMap<TriggerName, Result<Vec<RealTime>, Box<dyn Error>>>;
+
+pub fn analyze_all(
+    analyzers: AnalyzersGraph,
+    simulation_data: &mut SimulationData,
+    verbose: bool,
+) -> Vec<Result<BusData, Box<dyn Error>>> {
+    let mut done_triggers: DoneTriggers = HashMap::new();
+    let mut results: HashMap<String, Result<BusData, Box<dyn Error>>> = HashMap::new();
+    let AnalyzersGraph {
+        mut analyzers,
+        mut control,
+    } = analyzers;
+    let analyzers_order = analyzers
+        .iter()
+        .map(|a| a.bus_name().to_owned())
+        .collect_vec();
+    while !analyzers.is_empty() {
+        let mut anything_was_analyzed = false;
+        for control in control
+            .extract_if(.., |c| {
+                c.requires()
+                    .iter()
+                    .all(|req| done_triggers.keys().any(|done| done == req))
+            })
+            .collect_vec()
+        {
+            anything_was_analyzed = true;
+            if verbose {
+                println!("[Info] Started analysing {}", control.name());
+            }
+            for (name, res) in control.analyze(&done_triggers) {
+                if verbose {
+                    println!("[Info] Finished analysing {name}");
+                }
+                done_triggers.insert(name, res);
+            }
+        }
+
+        for analyzer in analyzers
+            .extract_if(.., |c| {
+                c.requires()
+                    .iter()
+                    .all(|req| done_triggers.keys().any(|done| done == req))
+            })
+            .collect_vec()
+        {
+            if verbose {
+                println!("[Info] Started analysing {}", analyzer.bus_name());
+            }
+            anything_was_analyzed = true;
+            let AnalyzerResult {
+                name,
+                result,
+                triggers,
+            } = analyzer.analyze(simulation_data, &done_triggers, verbose);
+            if verbose {
+                println!("[Info] Finished analysing {name}");
+            }
+            results.insert(name, result);
+            triggers.into_iter().for_each(|(name, res)| {
+                done_triggers.insert(name, res);
+            });
+        }
+        if !anything_was_analyzed {
+            let not_analyzed = analyzers
+                .iter()
+                .map(|a| a.bus_name())
+                .chain(control.iter().map(|c| c.name()))
+                .join(", ");
+            eprintln!(
+                "[ERROR] {not_analyzed} were not analyzed because of trigger dependency cycle"
+            );
+            return analyzers_order
+                .iter()
+                .filter_map(|name| results.remove(name))
+                .collect_vec();
+        }
+    }
+    analyzers_order
+        .iter()
+        .map(|name| {
+            results
+                .remove(name)
+                .expect("All analyzers have been analyzed")
+        })
+        .collect_vec()
 }
 
 pub struct SimulationData {
@@ -142,4 +320,104 @@ fn load_signals<'signal_buffer>(
         .collect();
 
     Ok(loaded)
+}
+
+pub struct RisingSignalIterator<'a> {
+    signal: Peekable<Box<dyn Iterator<Item = (u32, SignalValue<'a>)> + 'a>>,
+    peeked: Option<TimeTableIdx>,
+}
+
+impl<'a> RisingSignalIterator<'a> {
+    fn new(signal: &'a Signal) -> Self {
+        let signal: Box<dyn Iterator<Item = _>> = Box::new(signal.iter_changes());
+        let signal = signal.peekable();
+        Self {
+            signal,
+            peeked: None,
+        }
+    }
+
+    fn find_non_consuming<P>(&mut self, mut predicate: P) -> Option<TimeTableIdx>
+    where
+        P: FnMut(&TimeTableIdx) -> bool,
+    {
+        loop {
+            if let Some(t) = self.next() {
+                if predicate(&t) {
+                    self.peeked = Some(t);
+                    break Some(t);
+                }
+            } else {
+                break None;
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for RisingSignalIterator<'a> {
+    type Item = TimeTableIdx;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(t) = self.peeked {
+            self.peeked = None;
+            Some(t)
+        } else {
+            loop {
+                match self.signal.next() {
+                    Some((_, value)) => {
+                        if matches!(get_value(value), Some(ValueType::V0))
+                            && let Some((time, next_value)) = self.signal.next()
+                            && matches!(get_value(next_value), Some(ValueType::V1))
+                        {
+                            return Some(time);
+                        }
+                    }
+                    None => return None,
+                }
+            }
+        }
+    }
+}
+
+type Iter<'a> = Peekable<Box<dyn Iterator<Item = (u32, SignalValue<'a>)> + 'a>>;
+struct SignalsIterator<'a> {
+    clk: RisingSignalIterator<'a>,
+    signals: Vec<(Option<SignalValue<'a>>, Iter<'a>)>,
+}
+
+impl<'a> SignalsIterator<'a> {
+    fn new(clk: &'a Signal, signals: Vec<&'a Signal>) -> Self {
+        let signals = signals
+            .into_iter()
+            .map(|s| {
+                let iter: Box<dyn Iterator<Item = _>> = Box::new(s.iter_changes());
+                (None, iter.peekable())
+            })
+            .collect();
+        Self {
+            clk: RisingSignalIterator::new(clk),
+            signals,
+        }
+    }
+}
+
+impl<'a> Iterator for SignalsIterator<'a> {
+    type Item = (TimeTableIdx, Vec<Option<SignalValue<'a>>>);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let clock_time = self.clk.next()?;
+        let signal_values = self
+            .signals
+            .iter_mut()
+            .map(|(last, iter)| {
+                while let Some((time, _)) = iter.peek()
+                    && *time < clock_time
+                {
+                    *last = Some(iter.next().expect("Is Some").1);
+                }
+                *last
+            })
+            .collect();
+        Some((clock_time, signal_values))
+    }
 }

@@ -1,86 +1,44 @@
 use std::error::Error;
 
 use default_analyzer::DefaultAnalyzer;
+use itertools::Itertools;
+use libbusperf::SignalPath;
 #[cfg(feature = "python-plugins")]
 use python_analyzer::PythonAnalyzer;
 use yaml_rust2::Yaml;
 
-#[cfg(feature = "python-plugins")]
-use crate::analyze::bus::BusCommon;
+use crate::analyze::{AnalyzersConfig, DoneTriggers};
 use crate::analyze::{
     SimulationData,
     analyzer::axi_analyzer::{AXIRdAnalyzer, AXIWrAnalyzer},
     load_signals,
 };
-use libbusperf::{CyclesNum, bus_usage::BusUsage};
+use libbusperf::bus_usage::{BusData, RealTime};
 
 mod axi_analyzer;
 mod default_analyzer;
 #[cfg(feature = "python-plugins")]
 mod python_analyzer;
 
-const COMMON_YAML: &[&str] = &[
-    "scope",
-    "clk_rst_if.clock",
-    "clock",
-    "clk_rst_if.reset",
-    "reset",
-    "clk_rst_if.reset_type",
-    "reset_type",
-    "custom_analyzer",
-    "intervals",
-    "custom_handshake",
-    "handshake",
-];
-
 pub(crate) struct AnalyzerBuilder {}
 
 impl AnalyzerBuilder {
     pub fn build(
         yaml: (Yaml, Yaml),
-        default_max_burst_delay: CyclesNum,
-        window_length: u32,
-        x_rate: f32,
-        y_rate: f32,
-        plugins_path: &str,
+        config: &AnalyzersConfig,
     ) -> Result<Box<dyn Analyzer>, Box<dyn Error>> {
         let (name, dict) = yaml;
-        let to_check = dict.clone();
+        let name = name.into_string().ok_or("Invalid bus name")?;
         let analyzer: Box<dyn Analyzer> = if let Some(custom) = dict["custom_analyzer"].as_str() {
             match custom {
-                "AXIWrAnalyzer" => Box::new(AXIWrAnalyzer::build_from_yaml(
-                    (name, dict),
-                    default_max_burst_delay,
-                    window_length,
-                    x_rate,
-                    y_rate,
-                )?),
-                "AXIRdAnalyzer" => Box::new(AXIRdAnalyzer::build_from_yaml(
-                    (name, dict),
-                    default_max_burst_delay,
-                    window_length,
-                    x_rate,
-                    y_rate,
-                )?),
+                "AXIWrAnalyzer" => Box::new(AXIWrAnalyzer::build_from_yaml(name, dict, config)?),
+                "AXIRdAnalyzer" => Box::new(AXIRdAnalyzer::build_from_yaml(name, dict, config)?),
                 _ => {
                     #[cfg(feature = "python-plugins")]
                     {
-                        let common = BusCommon::from_yaml(
-                            name.into_string().ok_or("Bus should have a valid name")?,
-                            &dict,
-                            default_max_burst_delay,
-                        )?;
                         Box::new(
-                            PythonAnalyzer::new(
-                                custom,
-                                common,
-                                &dict,
-                                window_length,
-                                x_rate,
-                                y_rate,
-                                plugins_path,
-                            )
-                            .map_err(|e| format!("plugin {custom}: {e}"))?,
+                            PythonAnalyzer::new(name, custom, &dict, config)
+                                .map_err(|e| format!("plugin {custom}: {e}"))?,
                         )
                     }
                     #[cfg(not(feature = "python-plugins"))]
@@ -93,51 +51,115 @@ impl AnalyzerBuilder {
                 }
             }
         } else {
-            Box::new(DefaultAnalyzer::from_yaml(
-                (name, dict),
-                default_max_burst_delay,
-                plugins_path,
-            )?)
+            Box::new(DefaultAnalyzer::from_yaml(name, dict, config)?)
         };
-        check_unused_signals(
-            &to_check,
-            &analyzer.required_yaml_definitions(),
-            &mut vec![],
-        );
         Ok(analyzer)
     }
 }
 
 mod private {
-    use std::error::Error;
+    use std::{error::Error, rc::Rc};
 
-    use crate::analyze::bus::SignalPath;
+    use crate::analyze::{
+        DoneTriggers, SimulationData,
+        analyzer::AnalyzerResult,
+        bus::{BusDescription, SignalPath},
+        trigger::{TriggerSink, TriggerSource},
+    };
+    use libbusperf::bus_usage::{BusData, BusUsage, RealTime};
     use wellen::{Signal, SignalRef, TimeTable};
 
     pub trait AnalyzerInternal {
         fn bus_name(&self) -> &str;
+        fn requires(&self) -> Vec<&str>;
+        fn provides(&self) -> Vec<&str>;
+        fn sink(&self) -> &TriggerSink;
         // Returns waveform scope paths to every signal required by the analyzer.
         fn get_signals(&self) -> Vec<&SignalPath>;
         // Method that should perform all calculations for an analysis of the bus
         fn calculate(
             &mut self,
-            loaded: Vec<&(SignalRef, Signal)>,
+            loaded: &[&(SignalRef, Signal)],
+            intervals: &[[RealTime; 2]],
             time_table: &TimeTable,
-        ) -> Result<(), Box<dyn Error>>;
+        ) -> Result<BusUsage, Box<dyn Error>>;
+
+        fn get_result(
+            mut self: Box<Self>,
+            simulation_data: &mut SimulationData,
+            loaded: &[&(SignalRef, Signal)],
+            intervals: &[[libbusperf::bus_usage::RealTime; 2]],
+            done_triggers: &DoneTriggers,
+            verbose: bool,
+        ) -> AnalyzerResult {
+            let start = std::time::Instant::now();
+            let usage = self.calculate(loaded, intervals, &simulation_data.body.time_table);
+            if verbose {
+                println!(
+                    "Calculating statistics for {} took {:?}",
+                    self.bus_name(),
+                    start.elapsed()
+                );
+            }
+            let (name, description, triggers) = self.consume();
+            let triggers = triggers
+                .into_iter()
+                .map(|t| t.analyze(simulation_data, loaded, intervals, done_triggers, &usage))
+                .collect();
+            let signals = description.into_signals();
+            let result = usage.map(|usage| BusData { usage, signals });
+
+            AnalyzerResult {
+                name,
+                result,
+                triggers,
+            }
+        }
+        fn consume(
+            self: Box<Self>,
+        ) -> (String, Rc<dyn BusDescription>, Vec<Box<dyn TriggerSource>>);
     }
+}
+
+impl PartialEq for dyn Analyzer {
+    fn eq(&self, other: &Self) -> bool {
+        self.bus_name() == other.bus_name()
+    }
+}
+
+type TriggersResult = Vec<(String, Result<Vec<RealTime>, Box<dyn Error>>)>;
+
+pub struct AnalyzerResult {
+    pub name: String,
+    pub result: Result<BusData, Box<dyn Error>>,
+    pub triggers: TriggersResult,
 }
 
 pub trait Analyzer: private::AnalyzerInternal {
     /// Trait method that performs an analysis of a loaded bus.
     fn analyze(
-        &mut self,
+        self: Box<Self>,
         simulation_data: &mut SimulationData,
+        done_triggers: &DoneTriggers,
         verbose: bool,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> AnalyzerResult {
         let start = std::time::Instant::now();
-        let signal_paths = self.get_signals();
         let mut buffer = Vec::new();
-        let loaded = load_signals(simulation_data, &signal_paths, &mut buffer)?;
+        let loaded = match load_signals(simulation_data, &self.get_signals(), &mut buffer) {
+            Ok(l) => l,
+            Err(e) => {
+                let (name, _signals, triggers) = self.consume();
+                let triggers = triggers
+                    .into_iter()
+                    .map(|t| (t.into_name(), Err(format!("{e}").into())))
+                    .collect_vec();
+                return AnalyzerResult {
+                    name,
+                    result: Err(e),
+                    triggers,
+                };
+            }
+        };
         if verbose {
             println!(
                 "Loading signals for {} took {:?}",
@@ -146,44 +168,34 @@ pub trait Analyzer: private::AnalyzerInternal {
             );
         }
 
-        let start = std::time::Instant::now();
-        self.calculate(loaded, &simulation_data.body.time_table)?;
-        if verbose {
-            println!(
-                "Calculating statistics for {} took {:?}",
-                self.bus_name(),
-                start.elapsed()
-            );
-        }
-        Ok(())
-    }
-    /// If the analysis was run returns [Some] result of the analysis. If not - returns [None].
-    fn get_results(&self) -> Option<&BusUsage>;
-    fn finished_analysis(&self) -> bool {
-        self.get_results().is_some()
-    }
+        let intervals = self.sink().get_intervals(
+            done_triggers,
+            *simulation_data.body.time_table.last().unwrap_or(&0),
+        );
+        match intervals {
+            Ok(intervals) => {
+                self.get_result(simulation_data, &loaded, &intervals, done_triggers, verbose)
+            }
+            Err(e) => {
+                let result = Err(format!("bad intervals: {e}").into());
+                let (name, _signals, triggers) = self.consume();
+                let triggers = triggers
+                    .into_iter()
+                    .map(|t| (t.into_name(), Err(format!("bad intervals: {e}").into())))
+                    .collect();
 
-    fn required_yaml_definitions(&self) -> Vec<&str>;
-}
-
-fn check_unused_signals(yaml: &Yaml, used: &[&str], path: &mut Vec<String>) {
-    match yaml {
-        Yaml::Hash(linked_hash_map) => {
-            for (k, v) in linked_hash_map {
-                if let Yaml::String(s) = k {
-                    path.push(s.clone());
-                    check_unused_signals(v, used, path);
-                    path.pop();
-                } else {
-                    eprintln!("[WARN] Non string hash key {}.{k:?}", path.join("."))
+                AnalyzerResult {
+                    name,
+                    result,
+                    triggers,
                 }
             }
         }
-        _ => {
-            let path = path.join(".");
-            if !used.contains(&path.as_str()) {
-                eprintln!("[WARN] YAML value {path} is not used by the analyzer.");
-            }
-        }
     }
+    fn get_display_signals(&self) -> Vec<&SignalPath> {
+        // signals.append(&mut self.trigger().get_signals());
+        self.get_signals()
+    }
+
+    fn required_yaml_definitions(&self) -> Vec<&str>;
 }

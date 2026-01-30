@@ -105,7 +105,7 @@ impl TimelineStatistic {
 #[doc(hidden)]
 #[derive(PartialEq, Debug, Clone, bitcode::Encode, bitcode::Decode)]
 pub enum CurrentlyCalculating {
-    None,
+    None(RealTime),
     Burst,
     Delay,
     /// Delay during burst
@@ -165,6 +165,9 @@ impl SingleChannelBusUsage {
             description: "How many clock cycles was bus in each state",
         }
     }
+    pub fn get_bursts_start_end(&self) -> &[Period] {
+        &self.burst_lengths
+    }
     /// Creates SingleChannelBusUsage with all statistics initialized to 0.
     /// To fill it with data use add_cycle() method for every cycle in the simulation. Later call end() to finish calculations.
     pub fn new(name: &str, max_burst_delay: CyclesNum, clk_to_time: u64) -> SingleChannelBusUsage {
@@ -178,7 +181,7 @@ impl SingleChannelBusUsage {
             reset: 0,
             transaction_delays: vec![],
             burst_lengths: vec![],
-            current: CurrentlyCalculating::None,
+            current: CurrentlyCalculating::None(0),
             max_burst_delay,
             clk_period: clk_to_time,
         }
@@ -193,11 +196,15 @@ impl SingleChannelBusUsage {
         }
     }
 
+    pub fn skip_till(&mut self, time: RealTime) {
+        self.current = CurrentlyCalculating::None(time + self.clk_period);
+    }
+
     fn add_busy_cycle(&mut self) {
         match self.current {
-            CurrentlyCalculating::None => {
+            CurrentlyCalculating::None(start) => {
                 self.burst_lengths
-                    .push(Period::with_duration(0, 1, self.clk_period));
+                    .push(Period::with_duration(start, 1, self.clk_period));
                 self.current = CurrentlyCalculating::Burst;
             }
             CurrentlyCalculating::Burst => {
@@ -240,9 +247,9 @@ impl SingleChannelBusUsage {
             CycleType::Unknown => self.no_transaction += 1,
         }
         match self.current {
-            CurrentlyCalculating::None => {
+            CurrentlyCalculating::None(start) => {
                 self.transaction_delays
-                    .push(Period::with_duration(0, 1, self.clk_period));
+                    .push(Period::with_duration(start, 1, self.clk_period));
                 self.current = CurrentlyCalculating::Delay
             }
             CurrentlyCalculating::Burst => {
@@ -669,7 +676,7 @@ impl MultiChannelBusUsage {
 
     /// Finishes calculation of statistics and makes sure that all temporary values are already taken into account
     // TODO: maybe we should split this struct in two as we should with SingleChannelBusUsage
-    pub fn end(&mut self, time_in_reset: u32, intervals: Vec<[u64; 2]>) {
+    pub fn end(&mut self, time_in_reset: u32, intervals: &[[u64; 2]]) {
         let error_num = self.errors.len() as u32;
         self.error_rate = error_num as f32 / (self.correct_num + error_num) as f32;
         self.averaged_bandwidth = self.cmd_to_first_data.len() as f32
@@ -706,6 +713,10 @@ impl MultiChannelBusUsage {
             .count() as f32
             / self.bandwidth_windows.len() as f32;
 
-        self.intervals = intervals;
+        self.intervals = intervals.to_vec();
+    }
+
+    pub fn get_transactions_start_end(&self) -> &[Period] {
+        &self.cmd_to_completion
     }
 }

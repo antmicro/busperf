@@ -1,10 +1,14 @@
-use std::error::Error;
+use std::rc::Rc;
 
 use super::private::AnalyzerInternal;
 use crate::analyze::{
+    AnalyzersConfig,
     analyzer::axi_analyzer::ReadyValidTransactionIterator,
-    bus::{BusCommon, SignalPath, SignalPathFromYaml, is_value_of_type},
+    bus::{
+        BusCommon, BusDescription, COMMON_YAML, SignalPath, SignalPathFromYaml, is_value_of_type,
+    },
     plugins::load_python_plugin,
+    trigger::{TriggerName, TriggerSink},
 };
 use libbusperf::bus_usage::{BusUsage, MultiChannelBusUsage, RealTime};
 use owo_colors::OwoColorize;
@@ -14,15 +18,64 @@ use pyo3::{prelude::*, types::PyTuple};
 use wellen::TimeTable;
 use yaml_rust2::Yaml;
 
-pub struct PythonAnalyzer {
+pub struct PythonDescription {
     common: BusCommon,
-    obj: Py<PyAny>,
-    result: Option<BusUsage>,
     signals: Vec<SignalInfo>,
+}
+
+impl PythonDescription {
+    fn new(common: BusCommon, signals: Vec<SignalInfo>) -> Self {
+        Self { common, signals }
+    }
+}
+
+impl BusDescription for PythonDescription {
+    fn name(&self) -> &str {
+        self.common.bus_name()
+    }
+
+    fn common(&self) -> &BusCommon {
+        &self.common
+    }
+
+    fn get_signals(&self) -> Vec<&SignalPath> {
+        self.signals
+            .iter()
+            .flat_map(|(_, signals)| signals.iter())
+            .collect()
+    }
+
+    fn get_unique_signals(&self) -> Vec<&SignalPath> {
+        self.get_signals()
+    }
+
+    fn get_by_name(&self, _name: &str) -> Option<&SignalPath> {
+        // Unused, triggers on channel with use get_by_name from AXIBus
+        None
+    }
+
+    /// PANICS when not a last existing Rc
+    fn into_signals(self: Rc<Self>) -> Vec<SignalPath> {
+        if let Some(s) = Rc::into_inner(self) {
+            let mut signals = s.common.into_signals_owned();
+            signals.append(&mut s.signals.into_iter().flat_map(|(_, s)| s).collect());
+            signals
+        } else {
+            panic!("into signals called when strong count != 1")
+        }
+    }
+}
+
+pub struct PythonAnalyzer {
+    description: Rc<PythonDescription>,
+    obj: Py<PyAny>,
     window_length: u32,
     x_rate: f32,
     y_rate: f32,
     used_yaml: Vec<String>,
+
+    required: Vec<TriggerName>,
+    sink: TriggerSink,
 }
 
 #[pyclass]
@@ -59,7 +112,7 @@ impl Transaction {
 }
 
 #[pyclass]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum SignalType {
     Signal,
     RisingSignal,
@@ -80,14 +133,13 @@ type SignalInfo = (SignalType, Vec<SignalPath>);
 
 impl PythonAnalyzer {
     pub fn new(
+        name: String,
         class_name: &str,
-        common: BusCommon,
         i: &Yaml,
-        window_length: u32,
-        x_rate: f32,
-        y_rate: f32,
-        plugins_path: &str,
+        config: &AnalyzersConfig,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        let plugins_path = &config.plugins_path;
+        let common = BusCommon::from_yaml(name, i)?;
         Python::with_gil(|py| -> PyResult<()> {
             let module = match py.import("sys")?.getattr("modules")?.get_item("busperf") {
                 Ok(module) => module.extract()?,
@@ -113,7 +165,7 @@ impl PythonAnalyzer {
                     .map_err(|_| "get_yaml_signals returned invalid value")?)
             },
         )?;
-        let mut used_yaml: Vec<_> = super::COMMON_YAML.iter().map(|s| s.to_string()).collect();
+        let mut used_yaml: Vec<_> = COMMON_YAML.iter().map(|s| s.to_string()).collect();
         let signals: Vec<_> = signals
             .iter()
             .map(|(type_, path)| {
@@ -154,43 +206,57 @@ impl PythonAnalyzer {
                 signal
             })
             .collect::<Result<_, _>>()?;
+        let sink = TriggerSink::build_from_yaml(i)?;
+        let required = sink.required();
+        let description = Rc::new(PythonDescription::new(common, signals));
 
         Ok(PythonAnalyzer {
-            common,
+            description,
             obj,
-            result: None,
-            signals,
-            window_length,
-            x_rate,
-            y_rate,
+            window_length: config.window_length,
+            x_rate: config.x_rate,
+            y_rate: config.y_rate,
             used_yaml,
+            required,
+            sink,
         })
     }
 }
 
 impl AnalyzerInternal for PythonAnalyzer {
     fn bus_name(&self) -> &str {
-        self.common.bus_name()
+        self.description.common.bus_name()
     }
 
     fn get_signals(&self) -> Vec<&SignalPath> {
-        let mut signals = vec![self.common.clk_path(), self.common.rst_path()];
-        signals.append(&mut self.signals.iter().flat_map(|(_, path)| path).collect());
+        let mut signals = vec![
+            self.description.common.clk_path(),
+            self.description.common.rst_path(),
+        ];
+        signals.append(
+            &mut self
+                .description
+                .signals
+                .iter()
+                .flat_map(|(_, path)| path)
+                .collect(),
+        );
 
         signals
     }
 
     fn calculate(
         &mut self,
-        loaded: Vec<&(wellen::SignalRef, wellen::Signal)>,
+        loaded: &[&(wellen::SignalRef, wellen::Signal)],
+        intervals: &[[RealTime; 2]],
         time_table: &TimeTable,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<BusUsage, Box<dyn std::error::Error + 'static>> {
         let (_, clk) = &loaded[0];
         let (_, rst) = &loaded[1];
         let mut last = 0;
         let mut reset = 0;
         for (time, value) in rst.iter_changes() {
-            if is_value_of_type(value, self.common.rst_active_value()) {
+            if is_value_of_type(value, self.description.common.rst_active_value()) {
                 last = time;
             } else {
                 reset += time - last;
@@ -202,7 +268,7 @@ impl AnalyzerInternal for PythonAnalyzer {
             .last()
             .ok_or("clock should have cycles")?;
         let mut usage = MultiChannelBusUsage::new(
-            self.common.bus_name(),
+            self.description.common.bus_name(),
             self.window_length,
             *time_table.get(2).ok_or(
                 "trace is too short (less than 3 time indices), cannot calculate clock period",
@@ -211,19 +277,14 @@ impl AnalyzerInternal for PythonAnalyzer {
             self.y_rate,
         );
 
-        let intervals = if self.common.intervals().is_empty() {
-            vec![[0, time_table[time_end as usize]]]
-        } else {
-            self.common.intervals().clone()
-        };
-        for [start, end] in intervals {
+        for &[start, end] in intervals {
             let mut i = 0;
             let loaded: Vec<_> = [
                 (SignalType::Signal, vec![]),
                 (SignalType::RisingSignal, vec![]),
             ]
             .iter()
-            .chain(self.signals.iter())
+            .chain(self.description.signals.iter())
             .map(|(type_, _)| match type_ {
                 SignalType::Signal | SignalType::RisingSignal => {
                     let (_, signal) = &loaded[i];
@@ -287,24 +348,46 @@ impl AnalyzerInternal for PythonAnalyzer {
                 Err(e) => Err(format!(
                     "{} {} {}",
                     "python plugin returned bad result for bus".bright_red(),
-                    self.common.bus_name().bright_red(),
+                    self.description.common.bus_name().bright_red(),
                     e.bright_red()
                 ))?,
             };
         }
         usage.add_time(time_table[time_end as usize]);
-        usage.end(reset, vec![[0, time_table[time_end as usize]]]);
+        usage.end(reset, &[[0, time_table[time_end as usize]]]);
 
-        self.result = Some(BusUsage::MultiChannel(usage));
-        Ok(())
+        Ok(BusUsage::MultiChannel(usage))
+    }
+
+    fn requires(&self) -> Vec<&str> {
+        self.required.iter().map(|n| n.as_str()).collect()
+    }
+
+    fn provides(&self) -> Vec<&str> {
+        // TODO add trigger sources here when python analyzer will provide triggers
+        vec![]
+    }
+
+    fn sink(&self) -> &TriggerSink {
+        &self.sink
+    }
+
+    fn consume(
+        self: Box<Self>,
+    ) -> (
+        String,
+        std::rc::Rc<dyn crate::analyze::bus::BusDescription>,
+        Vec<Box<dyn crate::analyze::trigger::TriggerSource>>,
+    ) {
+        (
+            self.description.common.bus_name().to_owned(),
+            self.description,
+            vec![],
+        ) // self.provided.iter().map(|t| t.name()).collect()
     }
 }
 
 impl Analyzer for PythonAnalyzer {
-    fn get_results(&self) -> Option<&BusUsage> {
-        self.result.as_ref()
-    }
-
     fn required_yaml_definitions(&self) -> Vec<&str> {
         self.used_yaml.iter().map(|s| s.as_str()).collect()
     }

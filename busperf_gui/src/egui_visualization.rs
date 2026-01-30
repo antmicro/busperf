@@ -653,7 +653,9 @@ fn draw_timeline(
             .width(width)
             .show(ui, |plot_ui| {
                 for (stat_id, statistic) in statistics {
-                    for interval in statistic.vertical_lines.iter().copied() {
+                    for interval in statistic.vertical_lines.iter().map(|v| {
+                        waveform_to_plot_time(*v, waveform_time_unit, &timeline.timescale_unit)
+                    }) {
                         plot_ui.vline(
                             VLine::new("", interval).color(Color32::GRAY.blend(get_color(stat_id))),
                         );

@@ -1,27 +1,51 @@
+use std::rc::Rc;
+
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use super::{BusDescription, SignalPath, ValueType, bus_from_yaml, is_value_of_type};
+use crate::analyze::bus::{BusCommon, ExtraSignals, bus_description};
+
+use super::{
+    BusDescription, LockstepAnalyzer, SignalPath, ValueType, bus_from_yaml, is_value_of_type,
+};
 use libbusperf::CycleType;
 
 #[derive(Debug)]
 pub struct AXIBus {
+    common: Rc<BusCommon>,
     ready: SignalPath,
     valid: SignalPath,
+    extra_signals: ExtraSignals,
 }
 
 impl AXIBus {
     bus_from_yaml!(AXIBus, ready, valid);
-    pub fn new(ready: SignalPath, valid: SignalPath) -> Self {
-        AXIBus { ready, valid }
+    pub fn new(
+        common: Rc<BusCommon>,
+        ready: SignalPath,
+        valid: SignalPath,
+        extra_signals: ExtraSignals,
+    ) -> Self {
+        AXIBus {
+            common,
+            ready,
+            valid,
+            extra_signals,
+        }
     }
 }
 
-impl BusDescription for AXIBus {
-    fn signals(&self) -> Vec<&SignalPath> {
-        vec![&self.ready, &self.valid]
-    }
+bus_description!(AXIBus, ready, valid);
 
+pub struct ReadyValidAnalyzer;
+
+impl ReadyValidAnalyzer {
+    pub fn new() -> Self {
+        ReadyValidAnalyzer {}
+    }
+}
+
+impl LockstepAnalyzer for ReadyValidAnalyzer {
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], _time: u32) -> CycleType {
         let ready = signals[0];
         let valid = signals[1];

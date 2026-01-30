@@ -1,27 +1,43 @@
+use std::rc::Rc;
+
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use super::{BusDescription, SignalPath, ValueType, bus_from_yaml, get_value};
+use crate::analyze::bus::{BusCommon, BusDescription, ExtraSignals, bus_description};
+
+use super::{LockstepAnalyzer, SignalPath, ValueType, bus_from_yaml, get_value};
 use libbusperf::CycleType;
 
 #[derive(Debug)]
 pub struct AHBBus {
+    common: Rc<BusCommon>,
     htrans: SignalPath,
     hready: SignalPath,
+    extra_signals: ExtraSignals,
 }
 
 impl AHBBus {
     bus_from_yaml!(AHBBus, htrans, hready);
-    pub fn new(htrans: SignalPath, hready: SignalPath) -> Self {
-        AHBBus { htrans, hready }
+    pub fn new(
+        common: Rc<BusCommon>,
+        htrans: SignalPath,
+        hready: SignalPath,
+        extra_signals: ExtraSignals,
+    ) -> Self {
+        AHBBus {
+            common,
+            htrans,
+            hready,
+            extra_signals,
+        }
     }
 }
 
-impl BusDescription for AHBBus {
-    fn signals(&self) -> Vec<&SignalPath> {
-        vec![&self.htrans, &self.hready]
-    }
+bus_description!(AHBBus, htrans, hready);
 
+pub struct AHBAnalyzer;
+
+impl LockstepAnalyzer for AHBAnalyzer {
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> CycleType {
         let htrans = signals[0];
         let hready = signals[1];

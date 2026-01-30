@@ -1,0 +1,105 @@
+common_clk_rst_ifs:
+  common: &common_clk
+    clock: "clk"
+    reset: "rst"
+    reset_type: "high"
+
+"interfaces":
+  "ram_rd":
+    scope: [test_taxi_axi_ram, uut]
+    clk_rst_if: *common_clk
+
+    custom_analyzer: "AXIRdAnalyzer"
+    ar:
+      id: ["s_axi_rd", "arid"]
+      ready: ["s_axi_rd", "arready"]
+      valid: ["s_axi_rd", "arvalid"]
+    r:
+      id: ["s_axi_rd", "rid"]
+      ready: ["s_axi_rd", "rready"]
+      valid: ["s_axi_rd", "rvalid"]
+      resp: ["s_axi_rd", "rresp"]
+      last: ["s_axi_rd", "rlast"]
+    
+    # analyzer trigger sink
+    #activate_on:
+    #  - "control_only.fsm.name"
+
+    #deactivate_on:
+    #  - all:
+    #    - "hierarchical.trigger_name.b"
+    #    - "hierarchical.trigger_name.c"
+    #  - "hierarchical.trigger_name.d"
+
+    # analyzer trigger source
+    triggers:
+      # Channel based
+      ar:
+        name: # full name -> interfaces.ram_rd.ar.name
+          - all:
+            - state: busy
+            - signal: id # name in "ar" description
+              range: [7:0]
+              value: [0x0]
+      r:  
+        name: # full name -> interfaces.ram_rd.r.name
+          - all:
+            - state: busy
+            - signal: id # name in "r" description
+              range: [7:0]
+              value: [0x0]
+      # Transaction start/end
+      _:  
+        "_start": "name" # full name -> interfaces.ram_rd.name
+        "_end": "name2" # full name -> interfaces.ram_rd.name2
+
+  ram_raddr:
+    scope: [test_taxi_axi_ram, uut]
+    clk_rst_if: *common_clk
+    handshake: ReadyValid
+    ready: [s_axi_rd, arready]
+    valid: [s_axi_rd, arvalid]
+    # allow to define extra signals
+    addr: [s_axi_rd, araddr]
+    
+    # analyzer trigger sink
+    activate_on:
+      - "interfaces.ram_rd.ar.name"
+
+      # deactivate_on:
+      #- "interfaces.ram_rd.name2"
+    #  - all:
+    #    - "hierarchical.trigger_name.b"
+    #    - "hierarchical.trigger_name.c"
+    #  - "hierarchical.trigger_name.d"
+
+    # analyzer trigger source
+    triggers:
+      "addr_set": # full name -> ram_raddr.name
+        - all:
+          - state: busy
+          - signal: addr # name in description
+            range: [7:0]
+            value: [0x4]
+
+"control_only":
+  "time_range":
+    type: timer
+    triggers:
+      start: [1000000, 1000000000, 3000000000]  # full name -> control_only.time_range.start
+      stop:  [900000000, 2500000000]  # full name -> control_only.time_range.stop
+
+  "fsm":
+    type: fsm
+    states:
+      "idle":
+        transition_to:
+          "data": ["interfaces.ram_raddr.addr_set"]
+      "data":
+        transition_to:
+          "trigg": ["control_only.time_range.stop"]
+          "idle": ["control_only.time_range.start"]
+      "trigg":
+        trigger_set: "name" # full name -> control_only.fsm.name
+        transition_to:
+          "idle": []

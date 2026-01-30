@@ -7,8 +7,14 @@ do
     # Each test case starts with name of used simulation trace
     TRACE=$(echo $TEST | sed 's/\([a-z]*_[a-z]*\).*/\1/')
 
-    # We capture stderr and make sure nothing was outputed there
-    target/debug/busperf analyze taxi/src/axi/tb/taxi_$TRACE/dump.fst tests/taxi_descriptions/$TEST --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
-    target/release/busperf analyze taxi/src/axi/tb/taxi_$TRACE/dump.fst tests/taxi_descriptions/$TEST --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
+    if [ -z $(echo $TEST | grep allow_warnings) ]; then
+        # We capture stderr and make sure nothing was outputed there
+        target/debug/busperf analyze taxi/src/axi/tb/taxi_$TRACE/dump.fst tests/taxi_descriptions/$TEST --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
+        target/release/busperf analyze taxi/src/axi/tb/taxi_$TRACE/dump.fst tests/taxi_descriptions/$TEST --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | [ -z "$(cat)" ]
+    else
+        # We capture stderr and check for any error 
+        target/debug/busperf analyze taxi/src/axi/tb/taxi_$TRACE/dump.fst tests/taxi_descriptions/$TEST --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | grep -i error | [ -z "$(cat)" ]
+        target/release/busperf analyze taxi/src/axi/tb/taxi_$TRACE/dump.fst tests/taxi_descriptions/$TEST --text 3>&1 1>&2 2>&3 | tee /dev/fd/2 | grep -i error | [ -z "$(cat)" ]
+    fi
 done
 

@@ -1,0 +1,92 @@
+scopes:
+  write: &write_scope
+    - test_taxi_axi_ram
+    - uut
+    - s_axi_wr
+
+  read: &read_scope [test_taxi_axi_ram, uut, s_axi_rd]
+    
+interfaces:
+  "ram_rd": &axi_rd
+    scope: [test_taxi_axi_ram, uut]
+    clock: "clk"
+    reset: "rst"
+    reset_type: "high"
+
+    custom_analyzer: "AXIRdAnalyzer"
+    start_triggers:
+      - all:
+        - signal: [test_taxi_axi_ram, uut, s_axi_rd, rdata]
+          range: [31:24, 7:0]
+          value: [0xff, 0x00]
+        - signal: [test_taxi_axi_ram, uut, s_axi_rd, ruser]
+          value: 1
+      - time: [900000000]
+    end_triggers:
+      - signal: [test_taxi_axi_ram, uut, rst]
+        value: 1
+      - time: [1000000000]
+    ar:
+      id: ["s_axi_rd", "arid"]
+      ready: ["s_axi_rd", "arready"]
+      valid: ["s_axi_rd", "arvalid"]
+    r:
+      id: ["s_axi_rd", "rid"]
+      ready: ["s_axi_rd", "rready"]
+      valid: ["s_axi_rd", "rvalid"]
+      resp: ["s_axi_rd", "rresp"]
+      last: ["s_axi_rd", "rlast"]
+
+  "ram_wr": &axi_wr
+    scope: [test_taxi_axi_ram, uut]
+    clock: "clk"
+    reset: "rst"
+    reset_type: "high"
+
+    custom_analyzer: "AXIWrAnalyzer"
+    start_triggers:
+      - all:
+        - transaction_end: ram_rd
+        - signal: [test_taxi_axi_ram, uut, s_axi_wr, awaddr]
+          range: [7:0]
+          value: [0x04]
+    end_triggers:
+      # - transaction_start: ram_rd
+      - bus:
+          scope: [test_taxi_axi_ram, uut]
+          clock: "clk"
+          reset: "rst"
+          reset_type: "high"
+          handshake: "ReadyValid"
+          ready: ["s_axi_rd", "arready"]
+          valid: ["s_axi_rd", "arvalid"]
+        state: busy
+      - time: [1004000000]
+    aw:
+      id: ["s_axi_rd", "awid"]
+      ready: ["s_axi_wr", "awready"]
+      valid: ["s_axi_wr", "awvalid"]
+    w:
+      ready: ["s_axi_wr", "wready"]
+      valid: ["s_axi_wr", "wvalid"]
+      last: ["s_axi_wr", "wlast"]
+    b:
+      ready: ["s_axi_wr", "bready"]
+      valid: ["s_axi_wr", "bvalid"]
+      resp: ["s_axi_wr", "bresp"]
+      id: ["s_axi_rd", "bid"]
+      
+  "ram_wr_w":
+    scope: [test_taxi_axi_ram, uut]
+    clock: "clk"
+    reset: "rst"
+    reset_type: "high"
+    handshake: "ReadyValid"
+    ready: ["s_axi_wr", "wready"]
+    valid: ["s_axi_wr", "wvalid"]
+
+    start_triggers:
+      - transaction_start: ram_wr
+    end_triggers:
+      - transaction_end: ram_wr
+

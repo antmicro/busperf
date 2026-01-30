@@ -5,6 +5,8 @@ pub mod credit_valid;
 #[cfg(feature = "python-plugins")]
 pub mod custom_python;
 
+use std::rc::Rc;
+
 use ahb::AHBBus;
 use apb::APBBus;
 use axi::AXIBus;
@@ -14,20 +16,13 @@ use custom_python::PythonCustomBus;
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use libbusperf::{CycleType, CyclesNum, bus_usage::RealTime};
+use libbusperf::CycleType;
 
 pub use libbusperf::SignalPath;
 
 pub struct SignalPathFromYaml {}
 
 impl SignalPathFromYaml {
-    pub fn from_yaml_with_prefix(
-        scope: &[String],
-        yaml: Yaml,
-    ) -> Result<SignalPath, Box<dyn std::error::Error>> {
-        SignalPathFromYaml::from_yaml_ref_with_prefix(scope, &yaml)
-    }
-
     pub fn from_yaml_ref_with_prefix(
         scope: &[String],
         yaml: &Yaml,
@@ -37,45 +32,154 @@ impl SignalPathFromYaml {
                 scope: scope.to_vec(),
                 name: name.to_owned(),
             }),
-            Yaml::Array(yaml_scope) => {
-                let mut yaml_scope = yaml_scope
-                    .iter()
-                    .map(|y| y.as_str().map(|y| y.to_owned()))
-                    .collect::<Option<Vec<_>>>()
-                    .ok_or("Signal scope should be a valid string")?;
+            Yaml::Array(_yaml_scope) => {
+                let mut yaml_scope = parse_scope(yaml)?;
                 let name = yaml_scope.pop().ok_or("No signal name")?;
                 let mut scope = scope.to_vec();
                 scope.append(&mut yaml_scope);
                 Ok(SignalPath { scope, name })
             }
             Yaml::BadValue => Err("not found")?,
-            _ => Err("invalid value")?,
+            _ => Err(format!("invalid value {:?}", yaml))?,
         }
     }
 }
 
+pub const COMMON_YAML: &[&str] = &[
+    "scope",
+    "clk_rst_if",
+    "clk_rst_if.clock",
+    "clock",
+    "clk_rst_if.reset",
+    "reset",
+    "clk_rst_if.reset_type",
+    "reset_type",
+    "custom_analyzer",
+    "start_triggers",
+    "end_triggers",
+    "custom_handshake",
+    "handshake",
+    "activate_on",
+    "deactivate_on",
+    "triggers",
+];
+
+pub type ExtraSignals = Vec<(String, SignalPath)>;
+
 macro_rules! bus_from_yaml {
     ( $bus_type:tt, $($signal_name:ident),* ) => {
-        pub fn from_yaml(yaml: Yaml, bus_scope: &[String]) -> Result<Self, Box<dyn std::error::Error>> {
-            let mut yaml = yaml.into_hash().ok_or("Bus yaml should not be empty")?;
+        const HANDLED: &[&str] =
+                constcat::concat_slices!([&str]: crate::analyze::bus::COMMON_YAML, &[
+                    $(
+                        stringify!($signal_name),
+                    )*
+                ]);
+        pub fn from_yaml_with_common(common: std::rc::Rc<BusCommon>, yaml: &Yaml) -> Result<Self, Box<dyn std::error::Error>> {
             use crate::analyze::bus::SignalPathFromYaml;
+
             $(
-            let $signal_name = SignalPathFromYaml::from_yaml_with_prefix(
-                bus_scope,
-                yaml.remove(&Yaml::from_str(stringify!($signal_name)))
-                    .ok_or(concat!(stringify!($bus_type), " bus requires ", stringify!($signal_name), " signal"))?,
-            )?;
+            let $signal_name = SignalPathFromYaml::from_yaml_ref_with_prefix(
+                common.module_scope(),
+                &yaml[stringify!($signal_name)]
+            ).map_err(|_| concat!(stringify!($bus_type), " bus requires ", stringify!($signal_name), " signal"))?;
             )*
+            let mut extra_signals = Vec::new();
+            for (name, yaml) in yaml.as_hash().expect("already checked") {
+                let name = name.as_str().ok_or("invalid signal name")?;
+                if !$bus_type::HANDLED.contains(&name) {
+                    extra_signals.push((
+                        name.to_owned(),
+                        SignalPathFromYaml::from_yaml_ref_with_prefix(&common.module_scope, yaml)?,
+                    ));
+                }
+            }
             Ok($bus_type::new(
+                common,
                 $(
                     $signal_name,
                 )*
+                extra_signals,
             )
             )
+        }
+        pub fn from_yaml(name: String, yaml: &Yaml) -> Result<Self, Box<dyn std::error::Error>> {
+            use crate::analyze::bus::BusCommon;
+
+            use std::rc::Rc;
+            let common = Rc::new(BusCommon::from_yaml(
+                name,
+                yaml,
+            )?);
+            $bus_type::from_yaml_with_common(common, yaml)
         }
     };
 }
 pub(crate) use bus_from_yaml;
+
+macro_rules! bus_description {
+    ( $bus_type:tt, $($signal_name:ident),* ) => {
+        impl BusDescription for $bus_type {
+            fn name(&self) -> &str {
+                &self.common.bus_name
+            }
+            fn common(&self) -> &BusCommon {
+                &self.common
+            }
+            fn get_signals(&self) -> Vec<&SignalPath> {
+                let mut signals = vec![self.common.clk_path(), self.common.rst_path(),
+                    $(
+                        &self.$signal_name,
+                    )*
+                ];
+                signals.append(&mut self.extra_signals.iter().map(|(_, path)| path).collect());
+                signals
+            }
+            /// PANICS when not a last existing Rc
+            fn into_signals(self: Rc<Self>) -> Vec<SignalPath> {
+                if let Some(s) = Rc::into_inner(self) {
+                    if let Some(common) = Rc::into_inner(s.common) {
+                        let mut signals = vec![common.clk_path, common.rst_path,
+                            $(
+                                s.$signal_name,
+                            )*
+                        ];
+                        signals.append(&mut s.extra_signals.into_iter().map(|(_, path)| path).collect());
+                        signals
+                    } else {
+                        let mut signals = vec![
+                            $(
+                                s.$signal_name,
+                            )*
+                        ];
+                        signals.append(&mut s.extra_signals.into_iter().map(|(_, path)| path).collect());
+                        signals
+                    }
+                } else {
+                    panic!("all triggers should be analyzed and therefore dropped before this function is called");
+                }
+            }
+            fn get_unique_signals(&self) -> Vec<&SignalPath> {
+                vec![
+                    $(
+                        &self.$signal_name,
+                    )*
+                ]
+            }
+            fn get_by_name(&self, name: &str) -> Option<&SignalPath> {
+                match name {
+                    $(
+                        stringify!($signal_name) => Some(&self.$signal_name),
+                    )*
+                    other => if let Some(signal) = self.common.signal_path_by_name(other) { Some(signal) } else {self.extra_signals.iter().find_map(|(name, path)| if name == other {Some(path)} else {None})
+                        },
+                }
+            }
+        }
+    };
+}
+pub(crate) use bus_description;
+
+use crate::analyze::bus::{ahb::AHBAnalyzer, apb::APBAnalyzer, axi::ReadyValidAnalyzer};
 
 #[derive(Debug)]
 pub struct BusCommon {
@@ -84,8 +188,6 @@ pub struct BusCommon {
     clk_path: SignalPath,
     rst_path: SignalPath,
     rst_active_value: u8,
-    max_burst_delay: CyclesNum,
-    intervals: Vec<[RealTime; 2]>,
 }
 
 fn parse_scope(yaml: &Yaml) -> Result<Vec<String>, Box<dyn std::error::Error>> {
@@ -100,52 +202,12 @@ fn parse_scope(yaml: &Yaml) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     } else if let Some(s) = yaml.as_str() {
         Ok(vec![s.to_owned()])
     } else {
-        Err("Invalid scope.")?
-    }
-}
-
-fn parse_intervals(yaml: &Yaml) -> Result<Vec<[RealTime; 2]>, Box<dyn std::error::Error>> {
-    if let Some(intervals) = yaml["intervals"].as_vec() {
-        let mut intervals = intervals
-            .iter()
-            .map(|i| -> Result<_, Box<dyn std::error::Error>> {
-                let i = i
-                    .as_vec()
-                    .ok_or("interval should be an array of two numbers")?;
-                if i.len() != 2 {
-                    Err("each interval should be a 2 element list, defining start and end")?
-                }
-                if i[0] >= i[1] {
-                    Err("interval start is later than end")?;
-                }
-                Ok([
-                    i[0].as_i64()
-                        .ok_or(format!("interval start should be a number not {:?}", i[0]))?
-                        as u64,
-                    i[1].as_i64()
-                        .ok_or(format!("interval end should be a number not {:?}", i[1]))?
-                        as u64,
-                ])
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        intervals.sort_by(|a, b| a[0].cmp(&b[0]));
-        Ok(intervals)
-    } else if let Yaml::BadValue = yaml["intervals"] {
-        Ok(vec![])
-    } else {
-        Err(format!(
-            "intervals should be an array of intervals not {:?}",
-            yaml["intervals"]
-        ))?
+        Err(format!("Invalid scope. {:?}", yaml))?
     }
 }
 
 impl BusCommon {
-    pub fn from_yaml(
-        name: String,
-        yaml: &Yaml,
-        default_max_burst: CyclesNum,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_yaml(name: String, yaml: &Yaml) -> Result<Self, Box<dyn std::error::Error>> {
         let mut i = yaml;
         let scope = parse_scope(&i["scope"])?;
         match &i["clk_rst_if"] {
@@ -178,17 +240,19 @@ impl BusCommon {
         } else {
             Err("reset type should be \"high\" or \"low\"")?
         };
-        let intervals = parse_intervals(yaml)?;
 
-        Ok(Self::new(
-            name,
-            scope,
-            clk,
-            rst,
-            rst_type,
-            default_max_burst,
-            intervals,
-        ))
+        Ok(Self::new(name, scope, clk, rst, rst_type))
+    }
+    /// PANICS when not a last existing Rc
+    pub fn into_signals(self: Rc<Self>) -> Vec<SignalPath> {
+        if let Some(s) = Rc::into_inner(self) {
+            vec![s.clk_path, s.rst_path]
+        } else {
+            panic!("into signals called when strong count != 1")
+        }
+    }
+    pub fn into_signals_owned(self) -> Vec<SignalPath> {
+        vec![self.clk_path, self.rst_path]
     }
     pub fn new(
         bus_name: String,
@@ -196,8 +260,6 @@ impl BusCommon {
         clk_path: SignalPath,
         rst_path: SignalPath,
         rst_active_value: u8,
-        max_burst_delay: CyclesNum,
-        intervals: Vec<[RealTime; 2]>,
     ) -> Self {
         BusCommon {
             bus_name,
@@ -205,8 +267,6 @@ impl BusCommon {
             clk_path,
             rst_path,
             rst_active_value,
-            max_burst_delay,
-            intervals,
         }
     }
 
@@ -225,10 +285,6 @@ impl BusCommon {
         &self.rst_path
     }
 
-    pub fn max_burst_delay(&self) -> CyclesNum {
-        self.max_burst_delay
-    }
-
     pub fn rst_active_value(&self) -> ValueType {
         match self.rst_active_value {
             0 => ValueType::V0,
@@ -236,19 +292,22 @@ impl BusCommon {
             _ => ValueType::X,
         }
     }
-    pub fn intervals(&self) -> &Vec<[RealTime; 2]> {
-        &self.intervals
+    pub fn signal_path_by_name(&self, name: &str) -> Option<&SignalPath> {
+        match name {
+            "clock" => Some(self.clk_path()),
+            "reset" => Some(self.rst_path()),
+            _ => None,
+        }
     }
 }
 
 pub struct BusDescriptionBuilder {}
 
+type DescriptionBuilderResult =
+    Result<(Rc<dyn BusDescription>, Rc<dyn LockstepAnalyzer>), Box<dyn std::error::Error>>;
+
 impl BusDescriptionBuilder {
-    pub fn build(
-        yaml: Yaml,
-        scope: &[String],
-        _plugins_path: &str,
-    ) -> Result<Box<dyn BusDescription>, Box<dyn std::error::Error>> {
+    pub fn build(name: String, yaml: &Yaml, _plugins_path: &str) -> DescriptionBuilderResult {
         let i = yaml;
 
         let handshake = i["handshake"]
@@ -257,37 +316,53 @@ impl BusDescriptionBuilder {
 
         match handshake {
             "ReadyValid" => {
-                return Ok(Box::new(AXIBus::from_yaml(i, scope)?));
+                return Ok((
+                    Rc::new(AXIBus::from_yaml(name, i)?),
+                    Rc::new(ReadyValidAnalyzer::new()),
+                ));
             }
-            "CreditValid" => Ok(Box::new(CreditValidBus::from_yaml(i, scope)?)),
-            "AHB" => Ok(Box::new(AHBBus::from_yaml(i, scope)?)),
-            "APB" => Ok(Box::new(APBBus::from_yaml(i, scope)?)),
+            "CreditValid" => {
+                let bus = Rc::new(CreditValidBus::from_yaml(name, i)?);
+                Ok((Rc::clone(&bus) as Rc<dyn BusDescription>, bus))
+            }
+            "AHB" => Ok((Rc::new(AHBBus::from_yaml(name, i)?), Rc::new(AHBAnalyzer))),
+            "APB" => Ok((Rc::new(APBBus::from_yaml(name, i)?), Rc::new(APBAnalyzer))),
             "Custom" => {
                 #[cfg(feature = "python-plugins")]
                 {
+                    let scope = parse_scope(&i["scope"])?;
                     let handshake = i["custom_handshake"]
                         .as_str()
                         .ok_or("Custom bus has to specify handshake interpreter")?;
-                    Ok(Box::new(PythonCustomBus::from_yaml(
+                    let bus = Rc::new(PythonCustomBus::from_yaml(
                         handshake,
-                        &i,
-                        scope,
+                        name,
+                        i,
+                        &scope,
                         _plugins_path,
-                    )?))
+                    )?);
+                    Ok((Rc::clone(&bus) as Rc<dyn BusDescription>, bus))
                 }
                 #[cfg(not(feature = "python-plugins"))]
                 {
                     Err("python plugins are disabled")?
                 }
             }
-
             _ => Err(format!("invalid handshake {}", handshake))?,
         }
     }
 }
 
 pub trait BusDescription {
-    fn signals(&self) -> Vec<&SignalPath>;
+    fn name(&self) -> &str;
+    fn common(&self) -> &BusCommon;
+    fn get_signals(&self) -> Vec<&SignalPath>;
+    fn into_signals(self: Rc<Self>) -> Vec<SignalPath>;
+    fn get_unique_signals(&self) -> Vec<&SignalPath>;
+    fn get_by_name(&self, name: &str) -> Option<&SignalPath>;
+}
+
+pub trait LockstepAnalyzer {
     fn interpret_cycle(&self, signals: &[SignalValue], time: u32) -> CycleType;
 }
 

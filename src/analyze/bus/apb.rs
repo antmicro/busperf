@@ -1,31 +1,45 @@
-use super::{BusDescription, SignalPath, ValueType, bus_from_yaml, get_value};
+use std::rc::Rc;
+
+use crate::analyze::bus::{BusCommon, BusDescription, ExtraSignals, bus_description};
+
+use super::{LockstepAnalyzer, SignalPath, ValueType, bus_from_yaml, get_value};
 use libbusperf::CycleType;
 
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
 pub struct APBBus {
+    common: Rc<BusCommon>,
     psel: SignalPath,
     penable: SignalPath,
     pready: SignalPath,
+    extra_signals: ExtraSignals,
 }
 
 impl APBBus {
     bus_from_yaml!(APBBus, psel, penable, pready);
-    pub fn new(psel: SignalPath, penable: SignalPath, pready: SignalPath) -> Self {
+    pub fn new(
+        common: Rc<BusCommon>,
+        psel: SignalPath,
+        penable: SignalPath,
+        pready: SignalPath,
+        extra_signals: ExtraSignals,
+    ) -> Self {
         APBBus {
+            common,
             psel,
             penable,
             pready,
+            extra_signals,
         }
     }
 }
 
-impl BusDescription for APBBus {
-    fn signals(&self) -> std::vec::Vec<&SignalPath> {
-        vec![&self.psel, &self.penable, &self.pready]
-    }
+bus_description!(APBBus, psel, penable, pready);
 
+pub struct APBAnalyzer;
+
+impl LockstepAnalyzer for APBAnalyzer {
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], _time: u32) -> CycleType {
         let psel = signals[0];
         let penable = signals[1];

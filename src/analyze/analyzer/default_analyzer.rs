@@ -1,140 +1,183 @@
-use std::error::Error;
+use std::{error::Error, rc::Rc};
 
 use constcat::concat_slices;
 use wellen::{SignalValue, TimeTable};
 
 use crate::analyze::{
+    AnalyzersConfig,
     analyzer::private::AnalyzerInternal,
-    bus::{BusCommon, BusDescription, BusDescriptionBuilder, SignalPath, is_value_of_type},
+    bus::{BusDescription, BusDescriptionBuilder, LockstepAnalyzer, SignalPath, is_value_of_type},
+    trigger::{TriggerName, TriggerSink, TriggerSource, channel_trigger::ChannelTrigger},
 };
-use libbusperf::bus_usage::{BusUsage, SingleChannelBusUsage};
+use libbusperf::bus_usage::{BusUsage, RealTime, SingleChannelBusUsage};
 use libbusperf::{CycleType, CyclesNum};
 
 use super::Analyzer;
 
 pub struct DefaultAnalyzer {
-    common: BusCommon,
-    bus_desc: Box<dyn BusDescription>,
-    result: Option<BusUsage>,
+    description: Rc<dyn BusDescription>,
+    analyzer: Rc<dyn LockstepAnalyzer>,
+    max_burst_delay: CyclesNum,
+
+    required: Vec<TriggerName>,
+    sink: TriggerSink,
+    provided: Vec<Box<dyn TriggerSource>>,
 }
 
 impl DefaultAnalyzer {
     pub fn from_yaml(
-        yaml: (yaml_rust2::Yaml, yaml_rust2::Yaml),
-        default_max_burst_delay: CyclesNum,
-        plugins_path: &str,
+        name: String,
+        yaml: yaml_rust2::Yaml,
+        config: &AnalyzersConfig,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let (name, dict) = yaml;
-        let name = name
-            .into_string()
-            .ok_or("Name of bus should be a valid string")?;
-        let common = BusCommon::from_yaml(name, &dict, default_max_burst_delay)?;
-        let bus_desc = BusDescriptionBuilder::build(dict, common.module_scope(), plugins_path)?;
+        let (description, analyzer) =
+            BusDescriptionBuilder::build(name, &yaml, &config.plugins_path)?;
+        let analyzer = analyzer;
+        let sink = TriggerSink::build_from_yaml(&yaml)?;
+        let required = sink.required();
+        let provided = match &yaml["triggers"] {
+            yaml_rust2::Yaml::Hash(hash) => hash
+                .iter()
+                .map(|(name, yaml)| {
+                    let name = format!(
+                        "interfaces.{}.{}",
+                        description.name(),
+                        name.as_str().ok_or("invalid trigger name")?.to_owned()
+                    );
+                    let clk_path = description.get_by_name("clock").expect("Should have clock");
+                    ChannelTrigger::from_yaml(name, yaml, &description, &analyzer, clk_path)
+                })
+                .collect::<Result<_, _>>()?,
+            yaml_rust2::Yaml::BadValue => vec![],
+            _ => Err("bad triggers")?,
+        };
         Ok(DefaultAnalyzer {
-            common,
-            bus_desc,
-            result: None,
+            description,
+            analyzer,
+            max_burst_delay: config.default_max_burst_delay,
+            required,
+            sink,
+            provided,
         })
     }
 }
 
 impl AnalyzerInternal for DefaultAnalyzer {
     fn bus_name(&self) -> &str {
-        self.common.bus_name()
+        self.description.name()
     }
 
     fn get_signals(&self) -> Vec<&SignalPath> {
-        let mut signals = vec![self.common.clk_path(), self.common.rst_path()];
-        signals.append(&mut self.bus_desc.signals());
-
-        signals
+        self.description.get_signals()
     }
 
     fn calculate(
         &mut self,
-        loaded: Vec<&(wellen::SignalRef, wellen::Signal)>,
+        loaded: &[&(wellen::SignalRef, wellen::Signal)],
+        intervals: &[[RealTime; 2]],
         time_table: &TimeTable,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<BusUsage, Box<dyn std::error::Error + 'static>> {
         let (_, clock) = loaded[0];
         let (_, reset) = loaded[1];
         let mut usage = SingleChannelBusUsage::new(
-            self.common.bus_name(),
-            self.common.max_burst_delay(),
+            self.description.name(),
+            self.max_burst_delay,
             *time_table.get(2).ok_or(
                 "trace is too short (less than 3 time indices), cannot calculate clock period",
             )?,
         );
-        for (time, value) in clock.iter_changes() {
-            if let SignalValue::Binary(v, 1) = value
-                && v[0] == 0
-            {
-                continue;
-            }
-            let intervals = self.common.intervals();
-            if !intervals.is_empty()
-                && intervals.iter().all(|&[start, end]| {
-                    time_table[time as usize] < start || time_table[time as usize] > end
-                })
-            {
-                continue;
-            }
-            // We subtract one to use values just before clock signal
-            let time = time.saturating_sub(1);
-            let reset = reset.get_value_at(
-                &reset.get_offset(time).ok_or(format!(
-                    "reset value is invalid at {}",
-                    time_table[time as usize]
-                ))?,
-                0,
-            );
-            let values: Vec<SignalValue> = loaded[2..]
-                .iter()
-                .map(|(_, s)| {
-                    Ok::<_, Box<dyn Error>>(s.get_value_at(
-                        &s.get_offset(time).ok_or(format!(
-                            "signal does not have value at {}",
-                            time_table[time as usize]
-                        ))?,
-                        0,
-                    ))
-                })
-                .collect::<Result<_, _>>()?;
-
-            if !is_value_of_type(reset, self.common.rst_active_value()) {
-                let type_ = self.bus_desc.interpret_cycle(&values, time);
-                if let CycleType::Unknown = type_ {
-                    let mut state = String::new();
-                    self.bus_desc
-                        .signals()
-                        .iter()
-                        .zip(values)
-                        .for_each(|(name, value)| state.push_str(&format!("{name}: {value}, ")));
-                    eprintln!(
-                        "[WARN] bus \"{}\" in unknown state outside reset at time: {} - {}",
-                        self.common.bus_name(),
-                        time_table[time as usize],
-                        state
-                    );
+        let mut intervals = intervals.iter();
+        if let Some(mut current_iterval) = intervals.next() {
+            for (time, value) in clock.iter_changes() {
+                if let SignalValue::Binary(v, 1) = value
+                    && v[0] == 0
+                {
+                    continue;
+                }
+                let t = time_table[time as usize];
+                let &[mut start, end] = current_iterval;
+                if t > end {
+                    let Some(n) = intervals.next() else {
+                        break;
+                    };
+                    current_iterval = n;
+                    start = n[0];
+                }
+                if t < start {
+                    usage.skip_till(t);
+                    continue;
                 }
 
-                usage.add_cycle(type_);
-            } else {
-                usage.add_cycle(CycleType::Reset);
+                // We subtract one to use values just before clock signal
+                let time = time.saturating_sub(1);
+                let reset = reset.get_value_at(
+                    &reset.get_offset(time).ok_or(format!(
+                        "reset value is invalid at {}",
+                        time_table[time as usize]
+                    ))?,
+                    0,
+                );
+                let values: Vec<SignalValue> = loaded[2..]
+                    .iter()
+                    .map(|(_, s)| {
+                        Ok::<_, Box<dyn Error>>(s.get_value_at(
+                            &s.get_offset(time).ok_or(format!(
+                                "signal does not have value at {}",
+                                time_table[time as usize]
+                            ))?,
+                            0,
+                        ))
+                    })
+                    .collect::<Result<_, _>>()?;
+
+                if !is_value_of_type(reset, self.description.common().rst_active_value()) {
+                    let type_ = self.analyzer.interpret_cycle(&values, time);
+                    if let CycleType::Unknown = type_ {
+                        let mut state = String::new();
+                        self.description.get_signals().iter().zip(values).for_each(
+                            |(name, value)| state.push_str(&format!("{name}: {value}, ")),
+                        );
+                        eprintln!(
+                            "[WARN] bus \"{}\" in unknown state outside reset at time: {} - {}",
+                            self.description.name(),
+                            time_table[time as usize],
+                            state
+                        );
+                    }
+                    usage.add_cycle(type_);
+                } else {
+                    usage.add_cycle(CycleType::Reset);
+                }
             }
         }
 
-        self.result = Some(BusUsage::SingleChannel(usage));
-        Ok(())
+        Ok(BusUsage::SingleChannel(usage))
+    }
+
+    fn requires(&self) -> Vec<&str> {
+        self.required.iter().map(|n| n.as_str()).collect()
+    }
+
+    fn provides(&self) -> Vec<&str> {
+        self.provided.iter().map(|p| p.name()).collect()
+    }
+
+    fn sink(&self) -> &crate::analyze::trigger::TriggerSink {
+        &self.sink
+    }
+
+    fn consume(self: Box<Self>) -> (String, Rc<dyn BusDescription>, Vec<Box<dyn TriggerSource>>) {
+        (
+            self.description.name().to_owned(),
+            self.description,
+            self.provided,
+        )
     }
 }
 
-const DEFAULT_YAML: &[&str] = concat_slices!([&str]: &super::COMMON_YAML, &["ready", "valid", "credit", "valid", "htrans", "hready", "psel", "penable", "pready"]);
+const DEFAULT_YAML: &[&str] = concat_slices!([&str]: &crate::analyze::bus::COMMON_YAML, &["ready", "valid", "credit", "valid", "htrans", "hready", "psel", "penable", "pready"]);
 
 impl Analyzer for DefaultAnalyzer {
-    fn get_results(&self) -> Option<&BusUsage> {
-        self.result.as_ref()
-    }
-
     fn required_yaml_definitions(&self) -> Vec<&str> {
         Vec::from(DEFAULT_YAML)
     }

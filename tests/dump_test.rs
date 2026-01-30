@@ -4,7 +4,7 @@ use libbusperf::bus_usage::{self, BusUsage, Period, SingleChannelBusUsage};
 // helper function to check if analyzer returns expected result
 fn test(trace: &str, yaml: &str, max_burst_delay: i32, correct: &[BusUsage]) {
     let mut data = load_simulation_trace(trace, false).unwrap();
-    let mut descs = load_bus_analyzers(
+    let descs = load_bus_analyzers(
         yaml,
         max_burst_delay,
         10000,
@@ -13,23 +13,22 @@ fn test(trace: &str, yaml: &str, max_burst_delay: i32, correct: &[BusUsage]) {
         "plugins/python",
     )
     .unwrap();
-    assert_eq!(correct.len(), descs.len());
-    for (desc, correct) in descs.iter_mut().zip(correct) {
-        desc.analyze(&mut data, false).unwrap();
-        let usage = desc.get_results();
-        assert_eq!(usage, Some(correct));
+    let results = analyze_all(descs, &mut data, false);
+    assert_eq!(correct.len(), results.len());
+    for (r, correct) in results.iter().zip(correct) {
+        assert_eq!(&r.as_ref().unwrap().usage, correct)
     }
 }
 
 // helper function to check if provided number of results has been calculated
 fn test_basic(trace: &str, yaml: &str, num: usize) {
     let mut data = load_simulation_trace(trace, false).unwrap();
-    let mut descs = load_bus_analyzers(yaml, 0, 10000, 0.0001, 0.00001, "plugins/python").unwrap();
-    for desc in descs.iter_mut() {
-        desc.analyze(&mut data, false).unwrap();
-        assert!(matches!(desc.get_results(), Some(_)))
+    let descs = load_bus_analyzers(yaml, 0, 10000, 0.0001, 0.00001, "plugins/python").unwrap();
+    let results = analyze_all(descs, &mut data, false);
+    assert_eq!(results.len(), num);
+    for r in results {
+        r.unwrap();
     }
-    assert!(descs.len() == num)
 }
 
 // test dump.vcd - ready/valid with 2 iterfaces
@@ -308,7 +307,7 @@ fn python_axi() {
 #[test]
 fn custom_plugin_path() {
     let mut data = load_simulation_trace("tests/test_dumps/test.vcd", false).unwrap();
-    let mut descs = load_bus_analyzers(
+    let descs = load_bus_analyzers(
         "tests/test_dumps/python_test.yaml",
         0,
         10000,
@@ -317,11 +316,11 @@ fn custom_plugin_path() {
         "tests/dummy_plugins",
     )
     .unwrap();
-    for desc in descs.iter_mut() {
-        desc.analyze(&mut data, false).unwrap();
-        assert!(matches!(desc.get_results(), Some(_)))
+    let results = analyze_all(descs, &mut data, false);
+    assert!(results.len() == 1);
+    for r in results {
+        r.unwrap();
     }
-    assert!(descs.len() == 1)
 }
 
 // functions returning correct usages for tests
