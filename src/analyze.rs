@@ -1,3 +1,4 @@
+//! Module containing analyzing logic.
 use std::{
     error::Error,
     fs::File,
@@ -27,7 +28,7 @@ use crate::analyze::{
     trigger::{Control, ControlBuilder, TriggerName},
 };
 
-pub mod analyzer;
+mod analyzer;
 mod bus;
 #[cfg(feature = "python-plugins")]
 mod plugins;

@@ -10,13 +10,21 @@ use crate::analyze::{
     trigger::{fsm_trigger::Fsm, time_trigger::TimeControl},
 };
 
-pub mod channel_trigger;
+mod channel_trigger;
 mod fsm_trigger;
 mod signal_trigger;
 mod time_trigger;
-pub mod transaction_trigger;
-pub mod trigger_combination;
+mod transaction_trigger;
+mod trigger_combination;
 
+pub use channel_trigger::ChannelTrigger;
+pub use transaction_trigger::TransactionTrigger;
+
+pub type TriggerResult = (String, Result<Vec<RealTime>, Box<dyn Error>>);
+
+/// Trait to implement by triggers that need signal values and/or result of the analyzer to determine when they activate.
+///
+/// For triggers that do not need any signals use [Control] trait.
 pub trait TriggerSource {
     fn name(&self) -> &str;
     fn into_name(self: Box<Self>) -> String;
@@ -27,13 +35,16 @@ pub trait TriggerSource {
         intervals: &[[libbusperf::bus_usage::RealTime; 2]],
         done_triggers: &DoneTriggers,
         bus_usage: &Result<BusUsage, Box<dyn Error>>,
-    ) -> (String, Result<Vec<RealTime>, Box<dyn Error>>);
+    ) -> TriggerResult;
 }
 
 pub struct ControlBuilder;
 
 type ControlResult = Vec<(String, Result<Vec<RealTime>, Box<dyn Error>>)>;
 
+/// Trait to implement by triggers that depend only on other triggers.
+///
+/// For triggers that also require signals and/or analyzer's result use [TriggerSource]
 pub trait Control {
     fn requires(&self) -> Vec<&str>;
     fn names(&self) -> Vec<&str>;
@@ -52,6 +63,7 @@ impl ControlBuilder {
     }
 }
 
+/// Struct that defines when should an analyzer activate and deactivate.
 pub struct TriggerSink {
     activate: TriggerCombination,
     deactivate: TriggerCombination,
@@ -69,12 +81,15 @@ impl TriggerSink {
         })
     }
 
+    // Returns names of triggers that must be analyzed so that the sink can determine intervals in which the analyzer will be active.
     pub fn required(&self) -> Vec<String> {
         let mut req = self.activate.get_names();
         req.append(&mut self.deactivate.get_names());
         req
     }
 
+    // Returns list of time periods (intervals), during which the analyzer should be active.
+    // Returns error when any of the required triggers had not been calculated or failed.
     pub fn get_intervals(
         &self,
         triggers: &DoneTriggers,
@@ -108,14 +123,20 @@ impl TriggerSink {
 
 pub type TriggerName = String;
 
+/// Enum of was of combining triggers
 enum TriggerCombination {
+    /// No trigger.
     None,
+    /// Only one trigger.
     Single(TriggerName),
+    /// Any combination - activates whenever any of the subtriggers activates.
     Any(Vec<TriggerCombination>),
+    /// All combination - activates when all subtriggers are active at the same time.
     All(Vec<TriggerCombination>),
 }
 
 impl TriggerCombination {
+    /// Get names of triggers used in this combination.
     fn get_names(&self) -> Vec<String> {
         match self {
             TriggerCombination::None => vec![],
@@ -161,6 +182,7 @@ impl TriggerCombination {
         }
     }
 
+    /// Get times during which this trigger combination is active.
     #[allow(clippy::borrowed_box)]
     fn get_times<'a>(
         &self,

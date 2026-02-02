@@ -181,6 +181,7 @@ pub(crate) use bus_description;
 
 use crate::analyze::bus::{ahb::AHBAnalyzer, apb::APBAnalyzer, axi::ReadyValidAnalyzer};
 
+/// Common info about the bus.
 #[derive(Debug)]
 pub struct BusCommon {
     bus_name: String,
@@ -353,16 +354,31 @@ impl BusDescriptionBuilder {
     }
 }
 
+/// Trait to implement by any struct that is to be used as BusDescription.
+///
+/// Main task of any such struct is to contain information about the bus and its signals.
+/// It should contain how the signals has been named in YAML and what is its waveform signal path.
+/// Also see [BusCommon].
 pub trait BusDescription {
-    fn name(&self) -> &str;
+    fn name(&self) -> &str {
+        self.common().bus_name()
+    }
     fn common(&self) -> &BusCommon;
+    /// Returns list of signal paths for that bus.
     fn get_signals(&self) -> Vec<&SignalPath>;
+    /// Returns list of owned signal paths.
+    /// Can PANIC when self is not a last existing Rc.
     fn into_signals(self: Rc<Self>) -> Vec<SignalPath>;
+    /// Returns list of signals that are specific for that bus, e.g. skips clk and rst from BusCommon.
     fn get_unique_signals(&self) -> Vec<&SignalPath>;
+    /// Return signal path for a signal named `name` in YAML.
     fn get_by_name(&self, name: &str) -> Option<&SignalPath>;
 }
 
+/// Trait for use in DefaultAnalyzer.
 pub trait LockstepAnalyzer {
+    /// For each clock cycle it calls this method from this trait
+    /// to determine the state of the bus.
     fn interpret_cycle(&self, signals: &[SignalValue], time: u32) -> CycleType;
 }
 

@@ -1,3 +1,4 @@
+//! Module containing different ways of displaying data calculated by Busperf.
 use std::error::Error;
 use std::io::Read;
 use std::io::Write;
@@ -83,6 +84,7 @@ pub fn visualization_from_file(
     Ok(())
 }
 
+/// Save data into binary format.
 fn save_data(
     usages: Vec<BusData>,
     trace: String,

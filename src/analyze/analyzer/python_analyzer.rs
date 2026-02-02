@@ -1,6 +1,5 @@
 use std::rc::Rc;
 
-use super::private::AnalyzerInternal;
 use crate::analyze::{
     AnalyzersConfig,
     analyzer::axi_analyzer::ReadyValidTransactionIterator,
@@ -213,7 +212,7 @@ impl PythonAnalyzer {
     }
 }
 
-impl AnalyzerInternal for PythonAnalyzer {
+impl Analyzer for PythonAnalyzer {
     fn bus_name(&self) -> &str {
         self.description.common.bus_name()
     }
@@ -376,5 +375,3 @@ impl AnalyzerInternal for PythonAnalyzer {
         ) // self.provided.iter().map(|t| t.name()).collect()
     }
 }
-
-impl Analyzer for PythonAnalyzer {}

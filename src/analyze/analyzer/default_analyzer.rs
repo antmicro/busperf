@@ -4,9 +4,8 @@ use wellen::{SignalValue, TimeTable};
 
 use crate::analyze::{
     AnalyzersConfig,
-    analyzer::private::AnalyzerInternal,
     bus::{BusDescription, BusDescriptionBuilder, LockstepAnalyzer, SignalPath, is_value_of_type},
-    trigger::{TriggerName, TriggerSink, TriggerSource, channel_trigger::ChannelTrigger},
+    trigger::{ChannelTrigger, TriggerName, TriggerSink, TriggerSource},
 };
 use libbusperf::bus_usage::{BusUsage, RealTime, SingleChannelBusUsage};
 use libbusperf::{CycleType, CyclesNum};
@@ -61,7 +60,7 @@ impl DefaultAnalyzer {
     }
 }
 
-impl AnalyzerInternal for DefaultAnalyzer {
+impl Analyzer for DefaultAnalyzer {
     fn bus_name(&self) -> &str {
         self.description.name()
     }
@@ -173,5 +172,3 @@ impl AnalyzerInternal for DefaultAnalyzer {
         )
     }
 }
-
-impl Analyzer for DefaultAnalyzer {}

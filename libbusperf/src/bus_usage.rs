@@ -2,6 +2,9 @@ use crate::CycleType;
 use crate::{CyclesNum, SignalPath};
 use std::collections::HashMap;
 
+/// [BusUsage] combined with [SignalPath]s that were used when calculating it.
+///
+/// Paths are currently used in surfer integration.
 #[derive(bitcode::Encode, bitcode::Decode)]
 pub struct BusData {
     pub usage: BusUsage,

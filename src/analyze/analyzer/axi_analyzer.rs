@@ -8,17 +8,13 @@ use std::{
 use wellen::{Signal, SignalValue, TimeTable, TimeTableIdx};
 use yaml_rust2::Yaml;
 
+use crate::analyze::bus::{
+    BusCommon, SignalPath, ValueType, axi::AXIBus, get_value, is_value_of_type,
+};
 use crate::analyze::{
     AnalyzersConfig, RisingSignalIterator,
     bus::{BusDescription, LockstepAnalyzer, SignalPathFromYaml, axi::ReadyValidAnalyzer},
-    trigger::{
-        TriggerName, TriggerSink, TriggerSource, channel_trigger::ChannelTrigger,
-        transaction_trigger::TransactionTrigger,
-    },
-};
-use crate::analyze::{
-    analyzer::private::AnalyzerInternal,
-    bus::{BusCommon, SignalPath, ValueType, axi::AXIBus, get_value, is_value_of_type},
+    trigger::{ChannelTrigger, TransactionTrigger, TriggerName, TriggerSink, TriggerSource},
 };
 use libbusperf::bus_usage::{BusUsage, MultiChannelBusUsage, RealTime};
 
@@ -71,7 +67,6 @@ impl BusDescription for AXIRdDescription {
         &self.common
     }
 
-    /// PANICS when not a last existing Rc
     fn into_signals(self: Rc<Self>) -> Vec<SignalPath> {
         if let Some(s) = Rc::into_inner(self) {
             let mut ar_signals = s.ar.into_signals();
@@ -541,7 +536,7 @@ impl AXIRdAnalyzer {
     }
 }
 
-impl AnalyzerInternal for AXIRdAnalyzer {
+impl Analyzer for AXIRdAnalyzer {
     fn get_signals(&self) -> Vec<&SignalPath> {
         self.description.get_signals()
     }
@@ -642,8 +637,6 @@ impl AnalyzerInternal for AXIRdAnalyzer {
         )
     }
 }
-
-impl Analyzer for AXIRdAnalyzer {}
 
 impl AXIWrDescription {
     fn build_from_yaml(name: String, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
@@ -961,7 +954,7 @@ impl AXIWrAnalyzer {
     }
 }
 
-impl AnalyzerInternal for AXIWrAnalyzer {
+impl Analyzer for AXIWrAnalyzer {
     fn bus_name(&self) -> &str {
         self.description.name()
     }
@@ -1066,8 +1059,6 @@ impl AnalyzerInternal for AXIWrAnalyzer {
         Ok(BusUsage::MultiChannel(usage))
     }
 }
-
-impl Analyzer for AXIWrAnalyzer {}
 
 pub struct ReadyValidTransactionIterator<'a> {
     current_time: TimeTableIdx,
