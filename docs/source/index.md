@@ -6,6 +6,7 @@
 introduction
 analyzers
 yaml
+triggers
 plugins
 output
 ```
