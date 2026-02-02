@@ -46,7 +46,7 @@ User docs can be found at [antmicro.github.io/busperf/](https://antmicro.github.
 
 Developer docs can be generated with:
 ```sh
-$ cargo doc --no-deps --open
+$ cargo doc --workspace --no-deps --open --document-private-items
 ```
 
 ### Examples
