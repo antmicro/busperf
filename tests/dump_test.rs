@@ -1,19 +1,13 @@
-use busperf::analyze::*;
+use busperf::*;
 use itertools::Itertools;
 use libbusperf::bus_usage::{self, BusData, BusUsage, Period, SingleChannelBusUsage};
 
 // helper function to check if analyzer returns expected result
 fn test(trace: &str, yaml: &str, max_burst_delay: i32, correct: &[BusUsage]) {
     let mut data = load_simulation_trace(trace, false).unwrap();
-    let descs = load_bus_analyzers(
-        yaml,
-        max_burst_delay,
-        10000,
-        0.0001,
-        0.00001,
-        "plugins/python",
-    )
-    .unwrap();
+    let mut config = AnalyzersConfig::default();
+    config.set_max_burst_delay(max_burst_delay);
+    let descs = load_bus_analyzers(yaml, &config).unwrap();
     let results = analyze_all(descs, &mut data, false);
     assert_eq!(correct.len(), results.len());
     for (r, correct) in results.iter().zip(correct) {
@@ -24,7 +18,7 @@ fn test(trace: &str, yaml: &str, max_burst_delay: i32, correct: &[BusUsage]) {
 // helper function to check if provided number of results has been calculated
 fn test_basic(trace: &str, yaml: &str, num: usize) {
     let mut data = load_simulation_trace(trace, false).unwrap();
-    let descs = load_bus_analyzers(yaml, 0, 10000, 0.0001, 0.00001, "plugins/python").unwrap();
+    let descs = load_bus_analyzers(yaml, &AnalyzersConfig::default()).unwrap();
     let results = analyze_all(descs, &mut data, false);
     assert_eq!(results.len(), num);
     for r in results {
@@ -298,15 +292,9 @@ fn python_axi() {
 #[test]
 fn custom_plugin_path() {
     let mut data = load_simulation_trace("tests/test_dumps/test.vcd", false).unwrap();
-    let descs = load_bus_analyzers(
-        "tests/test_dumps/python_test.yaml",
-        0,
-        10000,
-        0.0001,
-        0.00001,
-        "tests/dummy_plugins",
-    )
-    .unwrap();
+    let mut config = AnalyzersConfig::default();
+    config.set_plugins_path("tests/dummy_plugins");
+    let descs = load_bus_analyzers("tests/test_dumps/python_test.yaml", &config).unwrap();
     let results = analyze_all(descs, &mut data, false);
     assert!(results.len() == 1);
     for r in results {
@@ -319,11 +307,7 @@ fn channel_and_signal_triggers() {
     let mut data = load_simulation_trace("tests/test_dumps/axi.vcd", false).unwrap();
     let descs = load_bus_analyzers(
         "tests/test_dumps/channel_and_signal_triggers.yaml",
-        0,
-        10000,
-        0.0001,
-        0.00001,
-        "tests/dummy_plugins",
+        &AnalyzersConfig::default(),
     )
     .unwrap();
     let results = analyze_all(descs, &mut data, false);
@@ -371,11 +355,7 @@ fn transaction_triggers() {
     let mut data = load_simulation_trace("tests/test_dumps/axi.vcd", false).unwrap();
     let descs = load_bus_analyzers(
         "tests/test_dumps/transactions_triggers.yaml",
-        0,
-        10000,
-        0.0001,
-        0.00001,
-        "tests/dummy_plugins",
+        &AnalyzersConfig::default(),
     )
     .unwrap();
     let results = analyze_all(descs, &mut data, false);
@@ -416,11 +396,7 @@ fn time_and_fsm_triggers() {
     let mut data = load_simulation_trace("tests/test_dumps/axi.vcd", false).unwrap();
     let descs = load_bus_analyzers(
         "tests/test_dumps/time_and_fsm_triggers.yaml",
-        0,
-        10000,
-        0.0001,
-        0.00001,
-        "tests/dummy_plugins",
+        &AnalyzersConfig::default(),
     )
     .unwrap();
     let results = analyze_all(descs, &mut data, false);

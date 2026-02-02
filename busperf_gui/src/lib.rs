@@ -4,6 +4,7 @@ mod surfer_egui;
 #[cfg(feature = "surfer")]
 mod surfer_integration;
 
+/// Run the egui GUI and show passed bus statistics.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn run_egui(
     usages: Vec<libbusperf::bus_usage::BusData>,

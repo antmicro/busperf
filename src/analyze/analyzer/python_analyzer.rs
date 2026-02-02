@@ -4,9 +4,7 @@ use super::private::AnalyzerInternal;
 use crate::analyze::{
     AnalyzersConfig,
     analyzer::axi_analyzer::ReadyValidTransactionIterator,
-    bus::{
-        BusCommon, BusDescription, COMMON_YAML, SignalPath, SignalPathFromYaml, is_value_of_type,
-    },
+    bus::{BusCommon, BusDescription, SignalPath, SignalPathFromYaml, is_value_of_type},
     plugins::load_python_plugin,
     trigger::{TriggerName, TriggerSink},
 };
@@ -72,7 +70,6 @@ pub struct PythonAnalyzer {
     window_length: u32,
     x_rate: f32,
     y_rate: f32,
-    used_yaml: Vec<String>,
 
     required: Vec<TriggerName>,
     sink: TriggerSink,
@@ -165,7 +162,6 @@ impl PythonAnalyzer {
                     .map_err(|_| "get_yaml_signals returned invalid value")?)
             },
         )?;
-        let mut used_yaml: Vec<_> = COMMON_YAML.iter().map(|s| s.to_string()).collect();
         let signals: Vec<_> = signals
             .iter()
             .map(|(type_, path)| {
@@ -180,16 +176,11 @@ impl PythonAnalyzer {
                             common.module_scope(),
                             i,
                         ) {
-                            Ok(path) => {
-                                used_yaml.push(name);
-                                Ok((*type_, vec![path]))
-                            }
+                            Ok(path) => Ok((*type_, vec![path])),
                             Err(_) => Err(format!("Yaml should define {} signal", name))?,
                         }
                     }
                     SignalType::ReadyValid => {
-                        used_yaml.push(name.clone() + ".ready");
-                        used_yaml.push(name.clone() + ".valid");
                         let r = SignalPathFromYaml::from_yaml_ref_with_prefix(
                             common.module_scope(),
                             &i["ready"],
@@ -216,7 +207,6 @@ impl PythonAnalyzer {
             window_length: config.window_length,
             x_rate: config.x_rate,
             y_rate: config.y_rate,
-            used_yaml,
             required,
             sink,
         })
@@ -387,8 +377,4 @@ impl AnalyzerInternal for PythonAnalyzer {
     }
 }
 
-impl Analyzer for PythonAnalyzer {
-    fn required_yaml_definitions(&self) -> Vec<&str> {
-        self.used_yaml.iter().map(|s| s.as_str()).collect()
-    }
-}
+impl Analyzer for PythonAnalyzer {}

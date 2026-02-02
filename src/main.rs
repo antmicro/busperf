@@ -1,5 +1,5 @@
 use bpaf::{OptionParser, Parser, construct, long, positional, short};
-use busperf::show::OutputType;
+use busperf::{AnalyzersConfig, OutputType, analyze_and_show_results};
 use cfg_if::cfg_if;
 use owo_colors::OwoColorize;
 
@@ -195,39 +195,7 @@ fn main() {
                 .split(',')
                 .map(|s| s.to_string())
                 .collect();
-            use busperf::{
-                analyze::{load_bus_analyzers, load_simulation_trace},
-                run_visualization,
-            };
 
-            let analyzers = match load_bus_analyzers(
-                &args.files.bus_description,
-                args.max_burst_delay as i32,
-                args.window_length,
-                args.x_rate,
-                args.y_rate,
-                &args.plugins_path,
-            ) {
-                Ok(analyzers) => analyzers,
-                Err(e) => {
-                    eprintln!(
-                        "{} {}",
-                        "[ERROR] Invalid bus decription:".bright_red(),
-                        e.bright_red()
-                    );
-                    std::process::exit(1);
-                }
-            };
-
-            let mut data = load_simulation_trace(&args.files.simulation_trace, args.verbose)
-                .unwrap_or_else(|e| {
-                    eprintln!(
-                        "{} {}",
-                        "[ERROR] Invalid simulation trace:".bright_red(),
-                        e.bright_red()
-                    );
-                    std::process::exit(1);
-                });
             if let OutputType::Data = args.output_type {
                 args.output.as_ref().unwrap_or_else(|| {
                     eprintln!(
@@ -257,13 +225,20 @@ fn main() {
                     std::process::exit(1);
                 }),
             };
-            if let Err(e) = run_visualization(
-                analyzers,
+            let config = AnalyzersConfig::new(
+                args.max_burst_delay as i32,
+                args.window_length,
+                args.x_rate,
+                args.y_rate,
+                args.plugins_path,
+            );
+            if let Err(e) = analyze_and_show_results(
+                &args.files.simulation_trace,
+                &args.files.bus_description,
+                config,
                 args.output_type,
-                &mut out,
-                &mut data,
-                args.files.simulation_trace,
                 args.verbose,
+                &mut out,
                 &skipped_stats,
             ) {
                 eprintln!("{} {}", "[ERROR]".bright_red(), e.bright_red());
@@ -271,7 +246,7 @@ fn main() {
             }
         }
         Args::Show(args) => {
-            use busperf::show::visualization_from_file;
+            use busperf::visualization_from_file;
 
             if let Err(e) = visualization_from_file(&args.file, args.output_type, args.verbose) {
                 eprintln!("{} {}", "[ERROR]".bright_red(), e.bright_red());

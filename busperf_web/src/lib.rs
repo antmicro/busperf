@@ -6,6 +6,7 @@ use libbusperf::prepare_data;
 use std::error::Error;
 use std::io::Write;
 
+/// Generate html containing wasm of busperf_web and calculated bus statistics.
 pub fn generate_html(
     usages: Vec<BusData>,
     trace: String,

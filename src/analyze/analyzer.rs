@@ -2,7 +2,6 @@ use std::error::Error;
 
 use default_analyzer::DefaultAnalyzer;
 use itertools::Itertools;
-use libbusperf::SignalPath;
 #[cfg(feature = "python-plugins")]
 use python_analyzer::PythonAnalyzer;
 use yaml_rust2::Yaml;
@@ -192,10 +191,4 @@ pub trait Analyzer: private::AnalyzerInternal {
             }
         }
     }
-    fn get_display_signals(&self) -> Vec<&SignalPath> {
-        // signals.append(&mut self.trigger().get_signals());
-        self.get_signals()
-    }
-
-    fn required_yaml_definitions(&self) -> Vec<&str>;
 }

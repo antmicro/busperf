@@ -33,6 +33,13 @@ mod bus;
 mod plugins;
 mod trigger;
 
+/// Configuration for the analyzers.
+///
+/// - `default_max_burst_delay` - number of consecutive non busy clock cycles that can occur on the bus that will not end the burst
+/// - `window_length` - size of rolling window when calculating bandwidth
+/// - `x_rate` - threshold for calculating percentage of time that bandwidth was higher than
+/// - `y_rate` - threshold for calculating percentage of time that bandwidth was lower than
+/// - `plugins_path` - path where to search for python plugins
 pub struct AnalyzersConfig {
     default_max_burst_delay: CyclesNum,
     window_length: u32,
@@ -41,20 +48,51 @@ pub struct AnalyzersConfig {
     plugins_path: String,
 }
 
+impl AnalyzersConfig {
+    pub fn new(
+        default_max_burst_delay: CyclesNum,
+        window_length: u32,
+        x_rate: f32,
+        y_rate: f32,
+        plugins_path: String,
+    ) -> Self {
+        Self {
+            default_max_burst_delay,
+            window_length,
+            x_rate,
+            y_rate,
+            plugins_path,
+        }
+    }
+    pub fn set_max_burst_delay(&mut self, num: CyclesNum) {
+        self.default_max_burst_delay = num;
+    }
+    pub fn set_plugins_path(&mut self, s: &str) {
+        self.plugins_path = s.to_owned();
+    }
+}
+
+impl Default for AnalyzersConfig {
+    fn default() -> Self {
+        Self {
+            default_max_burst_delay: 0,
+            window_length: 10000,
+            x_rate: 0.0001,
+            y_rate: 0.00001,
+            plugins_path: String::from("./plugins/python"),
+        }
+    }
+}
+
 pub struct AnalyzersGraph {
     analyzers: Vec<Box<dyn Analyzer>>,
     control: Vec<Box<dyn Control>>,
 }
 
-pub type Analyzers = Vec<Box<dyn Analyzer>>;
 /// Loads descriptions of the buses from yaml file with given name.
 pub fn load_bus_analyzers(
     filename: &str,
-    default_max_burst_delay: CyclesNum,
-    window_length: u32,
-    x_rate: f32,
-    y_rate: f32,
-    plugins_path: &str,
+    config: &AnalyzersConfig,
 ) -> Result<AnalyzersGraph, Box<dyn std::error::Error>> {
     let mut f = File::open(filename)?;
     let mut s = String::new();
@@ -89,13 +127,6 @@ pub fn load_bus_analyzers(
             unused.join(", ")
         ))?;
     }
-    let config = AnalyzersConfig {
-        default_max_burst_delay,
-        window_length,
-        x_rate,
-        y_rate,
-        plugins_path: plugins_path.to_owned(),
-    };
     let mut analyzers = vec![];
     for (name, dict) in interfaces {
         let n = name
@@ -103,7 +134,7 @@ pub fn load_bus_analyzers(
             .ok_or("Each bus should have a name")?
             .to_owned();
         analyzers.push(
-            AnalyzerBuilder::build((name, dict), &config).map_err(|e| format!("bus {n}, {e}"))?,
+            AnalyzerBuilder::build((name, dict), config).map_err(|e| format!("bus {n}, {e}"))?,
         );
     }
 
@@ -173,6 +204,9 @@ fn check_dependencies(analyzers: &AnalyzersGraph) -> Result<(), Box<dyn Error>> 
 
 type DoneTriggers = HashMap<TriggerName, Result<Vec<RealTime>, Box<dyn Error>>>;
 
+/// Analyze all analyzers in passed analyzers graph
+///
+/// Returns `Vec` containing `Result` of every analyzers' calculations
 pub fn analyze_all(
     analyzers: AnalyzersGraph,
     simulation_data: &mut SimulationData,
@@ -322,7 +356,7 @@ fn load_signals<'signal_buffer>(
     Ok(loaded)
 }
 
-pub struct RisingSignalIterator<'a> {
+struct RisingSignalIterator<'a> {
     signal: Peekable<Box<dyn Iterator<Item = (u32, SignalValue<'a>)> + 'a>>,
     peeked: Option<TimeTableIdx>,
 }

@@ -21,6 +21,7 @@ pub enum CycleType {
 
 pub type CyclesNum = i32;
 
+/// Waveform scope path for signal.
 #[derive(Debug, Clone, bitcode::Encode, bitcode::Decode)]
 pub struct SignalPath {
     pub scope: Vec<String>,
@@ -45,6 +46,7 @@ use flate2::Compression;
 use std::error::Error;
 #[cfg(feature = "file-hash")]
 use std::io::Write;
+/// Helper for writing data in binary format.
 #[cfg(feature = "file-hash")]
 #[inline]
 pub fn prepare_data(
@@ -63,6 +65,7 @@ pub fn prepare_data(
     Ok(())
 }
 
+/// Helper for calculating hash of file.
 #[cfg(feature = "file-hash")]
 pub fn calculate_file_hash(filename: &str) -> Result<blake3::Hash, Box<dyn std::error::Error>> {
     use std::fs::File;

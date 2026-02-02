@@ -5,15 +5,12 @@ use std::{
     rc::Rc,
 };
 
-use constcat::concat_slices;
 use wellen::{Signal, SignalValue, TimeTable, TimeTableIdx};
 use yaml_rust2::Yaml;
 
 use crate::analyze::{
     AnalyzersConfig, RisingSignalIterator,
-    bus::{
-        BusDescription, COMMON_YAML, LockstepAnalyzer, SignalPathFromYaml, axi::ReadyValidAnalyzer,
-    },
+    bus::{BusDescription, LockstepAnalyzer, SignalPathFromYaml, axi::ReadyValidAnalyzer},
     trigger::{
         TriggerName, TriggerSink, TriggerSource, channel_trigger::ChannelTrigger,
         transaction_trigger::TransactionTrigger,
@@ -231,17 +228,6 @@ pub struct AXIWrAnalyzer {
     sink: TriggerSink,
     provided: Vec<Box<dyn TriggerSource>>,
 }
-
-const AXI_RD_YAML: &[&str] = concat_slices!([&str]: COMMON_YAML, &[
-    "ar", "ar.id", "ar.ready", "ar.valid",
-    "r", "r.id", "r.ready", "r.valid", "r.resp", "r.last",
-]);
-
-const AXI_WR_YAML: &[&str] = concat_slices!([&str]: COMMON_YAML, &[
-    "aw", "aw.id", "aw.ready", "aw.valid",
-    "w", "w.ready", "w.valid", "w.last",
-    "b", "b.ready", "b.valid", "b.resp", "b.id"
-]);
 
 // Count how many clock cycles was reset active
 fn count_reset(rst: &Signal, active_value: ValueType, start: u32, end: u32) -> u32 {
@@ -657,11 +643,7 @@ impl AnalyzerInternal for AXIRdAnalyzer {
     }
 }
 
-impl Analyzer for AXIRdAnalyzer {
-    fn required_yaml_definitions(&self) -> Vec<&str> {
-        Vec::from(AXI_RD_YAML)
-    }
-}
+impl Analyzer for AXIRdAnalyzer {}
 
 impl AXIWrDescription {
     fn build_from_yaml(name: String, yaml: &Yaml) -> Result<Self, Box<dyn Error>> {
@@ -1085,11 +1067,7 @@ impl AnalyzerInternal for AXIWrAnalyzer {
     }
 }
 
-impl Analyzer for AXIWrAnalyzer {
-    fn required_yaml_definitions(&self) -> Vec<&str> {
-        Vec::from(AXI_WR_YAML)
-    }
-}
+impl Analyzer for AXIWrAnalyzer {}
 
 pub struct ReadyValidTransactionIterator<'a> {
     current_time: TimeTableIdx,

@@ -14,6 +14,7 @@ use egui_plot::{
     VLine, uniform_grid_spacer,
 };
 
+/// Equivalent of `wellen::TimescaleUnit`, but we define our own struct to not add dependency on `wellen`.
 #[derive(PartialEq, Clone, Copy)]
 pub struct TimescaleUnit(i32);
 
@@ -37,7 +38,7 @@ use libbusperf::{
 };
 
 #[derive(PartialEq)]
-pub enum PlotScale {
+pub(crate) enum PlotScale {
     Log,
     Lin,
 }
@@ -50,7 +51,7 @@ enum PlotType {
 }
 
 #[derive(PartialEq)]
-pub struct BucketsPlot {
+pub(crate) struct BucketsPlot {
     pub scale: PlotScale,
     pub selected: Option<(CyclesNum, Id)>,
 }
@@ -65,7 +66,7 @@ impl BucketsPlot {
 }
 
 #[derive(PartialEq)]
-pub struct TimelinePlot {
+pub(crate) struct TimelinePlot {
     pub timescale_unit: TimescaleUnit,
     pub pointer: Option<PlotPoint>,
     pub period_start: f64,
@@ -93,6 +94,7 @@ impl std::fmt::Display for PlotType {
     }
 }
 
+/// Struct for keeping the state of GUI view
 pub struct BusperfApp {
     usages: Vec<BusData>,
     selected: usize,
@@ -211,14 +213,6 @@ impl eframe::App for BusperfApp {
         });
     }
 }
-
-// #[cfg(not(target_arch = "wasm32"))]
-// struct SurferInfo<'a, 'b, 'c, 'd> {
-//     trace_path: &'a WaveformFile,
-//     signals: &'b Vec<String>,
-//     bus_name: &'c str,
-//     ui: RefCell<&'d mut SurferConnectionUi>,
-// }
 
 thread_local! {
     static COLORS: RefCell<HashMap<usize, Color32>> = RefCell::new(HashMap::new());

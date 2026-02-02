@@ -1,6 +1,5 @@
 use std::{error::Error, rc::Rc};
 
-use constcat::concat_slices;
 use wellen::{SignalValue, TimeTable};
 
 use crate::analyze::{
@@ -175,10 +174,4 @@ impl AnalyzerInternal for DefaultAnalyzer {
     }
 }
 
-const DEFAULT_YAML: &[&str] = concat_slices!([&str]: &crate::analyze::bus::COMMON_YAML, &["ready", "valid", "credit", "valid", "htrans", "hready", "psel", "penable", "pready"]);
-
-impl Analyzer for DefaultAnalyzer {
-    fn required_yaml_definitions(&self) -> Vec<&str> {
-        Vec::from(DEFAULT_YAML)
-    }
-}
+impl Analyzer for DefaultAnalyzer {}

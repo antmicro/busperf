@@ -1,7 +1,6 @@
-use blake3::Hash;
 use std::error::Error;
 use std::io::Read;
-use std::{cell::Cell, io::Write};
+use std::io::Write;
 
 use libbusperf::bus_usage::BusData;
 use libbusperf::prepare_data;
@@ -25,12 +24,7 @@ pub enum OutputType {
     Html,
 }
 
-pub struct WaveformFile {
-    pub path: String,
-    pub hash: Hash,
-    pub checked: Cell<bool>,
-}
-
+/// Output data from `usages` in format defined by `type_` into `out`.
 pub fn show_data(
     usages: Vec<BusData>,
     trace_path: String,
@@ -64,6 +58,7 @@ pub fn show_data(
     }
 }
 
+/// Show data from a binary busperf data file.
 pub fn visualization_from_file(
     filename: &str,
     output_type: OutputType,
