@@ -18,10 +18,10 @@ class Analyzer:
     def get_yaml_signals(self):
         return [(SignalType.ReadyValid, ["ar"]),
                 (SignalType.ReadyValid, ["r"]),
-                (SignalType.Signal, ["r", "rresp"]),
+                (SignalType.Signal, ["r", "resp"]),
                 (SignalType.Signal, ["ar", "id"]),
                 (SignalType.Signal, ["r", "id"]),
-                (SignalType.Signal, ["r", "rlast"])]
+                (SignalType.Signal, ["r", "last"])]
 
     def analyze(self, clk, rst, ar, r, r_resp, ar_id, r_id, r_last):
         time_end = clk[-1][0]
@@ -48,7 +48,7 @@ class Analyzer:
                 next_rst = next(rst, time_end + 1)
 
             ar_id_value = next(filter(lambda v: v[0] < time, ar_id))[1]
-            next_transaction = ar.peek(time_end)
+            next_transaction = ar.peek(time_end+1)
 
             counting[ar_id_value].append(InProgressTransaction(time, next_transaction))
 

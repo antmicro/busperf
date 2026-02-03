@@ -4,7 +4,7 @@ use default_analyzer::DefaultAnalyzer;
 use itertools::Itertools;
 #[cfg(feature = "python-plugins")]
 use python_analyzer::PythonAnalyzer;
-use wellen::{Signal, SignalRef, TimeTable};
+use wellen::{Signal, SignalRef, SignalValue, TimeTable, TimeTableIdx};
 use yaml_rust2::Yaml;
 
 use crate::analyze::{AnalyzersConfig, DoneTriggers};
@@ -191,4 +191,9 @@ pub trait Analyzer {
             }
         }
     }
+}
+
+#[inline]
+fn get_value_at_time(signal: &Signal, time: TimeTableIdx) -> Option<SignalValue<'_>> {
+    Some(signal.get_value_at(&signal.get_offset(time)?, 0))
 }

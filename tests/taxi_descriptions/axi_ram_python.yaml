@@ -14,5 +14,5 @@ interfaces:
       id: ["s_axi_rd", "rid"]
       ready: ["s_axi_rd", "rready"]
       valid: ["s_axi_rd", "rvalid"]
-      rresp: ["s_axi_rd", "rresp"]
-      rlast: ["s_axi_rd", "rlast"]
+      resp: ["s_axi_rd", "rresp"]
+      last: ["s_axi_rd", "rlast"]

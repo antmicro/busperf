@@ -1,11 +1,15 @@
-use std::error::Error;
+use std::{error::Error, rc::Rc};
 
 use libbusperf::{SignalPath, bus_usage::BusUsage};
 use wellen::{Signal, SignalRef, SignalValue};
 use yaml_rust2::Yaml;
 
 use super::TriggerSource;
-use crate::analyze::{DoneTriggers, SignalsIterator, SimulationData};
+use crate::analyze::{
+    DoneTriggers, SignalsIterator, SimulationData,
+    bus::BusDescription,
+    trigger::trigger_combination::{CombinationType, TriggerSourceCombination},
+};
 
 pub struct SignalTrigger {
     name: String,
@@ -87,6 +91,68 @@ impl SignalTrigger {
             signal,
             bit_match,
         })
+    }
+
+    pub fn combination_from_yaml(
+        name: String,
+        yaml: &Yaml,
+        bus_description: &Rc<dyn BusDescription>,
+        clk_path: &SignalPath,
+    ) -> Result<Box<dyn TriggerSource>, Box<dyn Error>> {
+        match yaml {
+            Yaml::Array(yamls) => {
+                let sub = yamls
+                    .iter()
+                    .map(|y| {
+                        SignalTrigger::combination_from_yaml(
+                            String::new(),
+                            y,
+                            bus_description,
+                            clk_path,
+                        )
+                    })
+                    .collect::<Result<_, _>>()?;
+                Ok(Box::new(TriggerSourceCombination::new(
+                    name,
+                    sub,
+                    CombinationType::Any,
+                )))
+            }
+            Yaml::Hash(hash) => {
+                if let Some(y) = hash.get(&Yaml::String(String::from("all"))) {
+                    let sub = y
+                        .as_vec()
+                        .ok_or("all requires array")?
+                        .iter()
+                        .map(|t| {
+                            SignalTrigger::combination_from_yaml(
+                                String::new(),
+                                t,
+                                bus_description,
+                                clk_path,
+                            )
+                        })
+                        .collect::<Result<_, _>>()?;
+                    return Ok(Box::new(TriggerSourceCombination::new(
+                        name,
+                        sub,
+                        CombinationType::All,
+                    )));
+                }
+
+                if let Some(signal_name) = hash.get(&Yaml::String(String::from("signal"))) {
+                    let signal_name = signal_name.as_str().ok_or("invalid signal name")?;
+                    let signal = bus_description
+                        .get_by_name(signal_name)
+                        .ok_or(format!("signal {signal_name} not defined in description"))?;
+                    return SignalTrigger::from_yaml(name, yaml, clk_path.clone(), signal.clone())
+                        .map(|t| Box::new(t) as Box<dyn TriggerSource>);
+                }
+
+                return Err(format!("unknown trigger type {:?}", hash))?;
+            }
+            other => Err(format!("bad trigger type {:?}", other))?,
+        }
     }
 
     fn analyze_internal(

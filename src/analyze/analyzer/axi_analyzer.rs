@@ -8,13 +8,14 @@ use std::{
 use wellen::{Signal, SignalValue, TimeTable, TimeTableIdx};
 use yaml_rust2::Yaml;
 
-use crate::analyze::bus::{
-    BusCommon, SignalPath, ValueType, axi::AXIBus, get_value, is_value_of_type,
-};
 use crate::analyze::{
     AnalyzersConfig, RisingSignalIterator,
     bus::{BusDescription, LockstepAnalyzer, SignalPathFromYaml, axi::ReadyValidAnalyzer},
     trigger::{ChannelTrigger, TransactionTrigger, TriggerName, TriggerSink, TriggerSource},
+};
+use crate::analyze::{
+    analyzer::get_value_at_time,
+    bus::{BusCommon, SignalPath, ValueType, axi::AXIBus, get_value, is_value_of_type},
 };
 use libbusperf::bus_usage::{BusUsage, MultiChannelBusUsage, RealTime};
 
@@ -246,11 +247,6 @@ fn get_id_value(signal: &Signal, time: TimeTableIdx) -> Option<String> {
 #[inline]
 fn get_logic_value(signal: &Signal, time: TimeTableIdx) -> Option<ValueType> {
     get_value(get_value_at_time(signal, time.saturating_sub(1))?)
-}
-
-#[inline]
-fn get_value_at_time(signal: &Signal, time: TimeTableIdx) -> Option<SignalValue<'_>> {
-    Some(signal.get_value_at(&signal.get_offset(time)?, 0))
 }
 
 struct Transaction {

@@ -18,6 +18,7 @@ mod transaction_trigger;
 mod trigger_combination;
 
 pub use channel_trigger::ChannelTrigger;
+pub use signal_trigger::SignalTrigger;
 pub use transaction_trigger::TransactionTrigger;
 
 pub type TriggerResult = (String, Result<Vec<RealTime>, Box<dyn Error>>);

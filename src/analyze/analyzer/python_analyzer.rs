@@ -1,11 +1,13 @@
-use std::rc::Rc;
+use std::{collections::HashMap, error::Error, rc::Rc};
 
 use crate::analyze::{
     AnalyzersConfig,
-    analyzer::axi_analyzer::ReadyValidTransactionIterator,
-    bus::{BusCommon, BusDescription, SignalPath, SignalPathFromYaml, is_value_of_type},
+    analyzer::{axi_analyzer::ReadyValidTransactionIterator, get_value_at_time},
+    bus::{
+        BusCommon, BusDescription, COMMON_YAML, SignalPath, SignalPathFromYaml, is_value_of_type,
+    },
     plugins::load_python_plugin,
-    trigger::{TriggerName, TriggerSink},
+    trigger::{SignalTrigger, TransactionTrigger, TriggerName, TriggerSink, TriggerSource},
 };
 use libbusperf::bus_usage::{BusUsage, MultiChannelBusUsage, RealTime};
 use owo_colors::OwoColorize;
@@ -18,11 +20,20 @@ use yaml_rust2::Yaml;
 pub struct PythonDescription {
     common: BusCommon,
     signals: Vec<SignalInfo>,
+    signals_hash: HashMap<String, SignalPath>,
 }
 
 impl PythonDescription {
-    fn new(common: BusCommon, signals: Vec<SignalInfo>) -> Self {
-        Self { common, signals }
+    fn new(
+        common: BusCommon,
+        signals: Vec<SignalInfo>,
+        signals_hash: HashMap<String, SignalPath>,
+    ) -> Self {
+        Self {
+            common,
+            signals,
+            signals_hash,
+        }
     }
 }
 
@@ -46,9 +57,12 @@ impl BusDescription for PythonDescription {
         self.get_signals()
     }
 
-    fn get_by_name(&self, _name: &str) -> Option<&SignalPath> {
-        // Unused, triggers on channel with use get_by_name from AXIBus
-        None
+    fn get_by_name(&self, name: &str) -> Option<&SignalPath> {
+        match name {
+            "clock" => Some(self.common.clk_path()),
+            "reset" => Some(self.common.rst_path()),
+            other => self.signals_hash.get(other),
+        }
     }
 
     /// PANICS when not a last existing Rc
@@ -72,6 +86,7 @@ pub struct PythonAnalyzer {
 
     required: Vec<TriggerName>,
     sink: TriggerSink,
+    provided: Vec<Box<dyn TriggerSource>>,
 }
 
 #[pyclass]
@@ -196,9 +211,71 @@ impl PythonAnalyzer {
                 signal
             })
             .collect::<Result<_, _>>()?;
+        let mut signals_hash = HashMap::new();
+        for (name, yaml) in i.as_hash().expect("Already checked").iter() {
+            let name = name.as_str().ok_or("invalid name")?;
+            if !COMMON_YAML.contains(&name) {
+                match SignalPathFromYaml::from_yaml_ref_with_prefix(common.module_scope(), yaml) {
+                    Ok(path) => {
+                        signals_hash.insert(name.to_owned(), path);
+                    }
+                    Err(_) => {
+                        for (signal_name, yaml) in yaml
+                            .as_hash()
+                            .ok_or(format!("invalid signal definition {:?}", yaml))?
+                        {
+                            let signal_name = signal_name.as_str().ok_or("invalid name")?;
+                            let path = SignalPathFromYaml::from_yaml_ref_with_prefix(
+                                common.module_scope(),
+                                yaml,
+                            )?;
+                            signals_hash.insert(format!("{}.{}", name, signal_name), path);
+                        }
+                    }
+                }
+            }
+        }
         let sink = TriggerSink::build_from_yaml(i)?;
         let required = sink.required();
-        let description = Rc::new(PythonDescription::new(common, signals));
+        let description = Rc::new(PythonDescription::new(common, signals, signals_hash));
+
+        let provided = match &i["triggers"] {
+            yaml_rust2::Yaml::Hash(hash) => {
+                let mut provided = vec![];
+                for (name, yaml) in hash {
+                    let name = name.as_str().ok_or("invalid trigger name")?;
+                    if name == "_" {
+                        let mut new = yaml
+                            .as_hash()
+                            .ok_or("invalid syntax")?
+                            .iter()
+                            .map(|(type_, n)| {
+                                let name = format!(
+                                    "interfaces.{}.{}",
+                                    description.name(),
+                                    n.as_str().ok_or("invalid name")?
+                                );
+                                TransactionTrigger::from_yaml(name, type_)
+                            })
+                            .collect::<Result<Vec<_>, Box<dyn Error>>>()?;
+                        provided.append(&mut new);
+                    } else {
+                        let name = format!("interfaces.{}.{}", description.name(), name);
+                        let clk_path = description.get_by_name("clock").expect("Should have clock");
+                        let new = SignalTrigger::combination_from_yaml(
+                            name,
+                            yaml,
+                            &(Rc::clone(&description) as Rc<dyn BusDescription>),
+                            clk_path,
+                        )?;
+                        provided.push(new);
+                    }
+                }
+                provided
+            }
+            yaml_rust2::Yaml::BadValue => vec![],
+            _ => Err("bad triggers")?,
+        };
 
         Ok(PythonAnalyzer {
             description,
@@ -208,6 +285,7 @@ impl PythonAnalyzer {
             y_rate: config.y_rate,
             required,
             sink,
+            provided,
         })
     }
 }
@@ -267,6 +345,10 @@ impl Analyzer for PythonAnalyzer {
         );
 
         for &[start, end] in intervals {
+            let start_idx = time_table
+                .binary_search(&start)
+                .unwrap_or_else(|e| e - 1)
+                .saturating_sub(1) as u32;
             let mut i = 0;
             let loaded: Vec<_> = [
                 (SignalType::Signal, vec![]),
@@ -278,7 +360,15 @@ impl Analyzer for PythonAnalyzer {
                 SignalType::Signal | SignalType::RisingSignal => {
                     let (_, signal) = &loaded[i];
                     i += 1;
-                    signal
+                    let start_value = vec![(
+                        time_table[start_idx as usize],
+                        get_value_at_time(signal, start_idx)
+                            .ok_or(format!("signal is invalid at {}", start))?
+                            .to_bit_string()
+                            .expect("never returns none"),
+                    )]
+                    .into_iter();
+                    let changes = signal
                         .iter_changes()
                         .filter_map(|(t, v)| {
                             let time = time_table[t as usize];
@@ -294,7 +384,8 @@ impl Analyzer for PythonAnalyzer {
                                 None
                             }
                         })
-                        .collect::<Result<Vec<(RealTime, String)>, _>>()
+                        .collect::<Result<Vec<(RealTime, String)>, _>>()?;
+                    Ok::<_, Box<dyn Error>>(start_value.chain(changes).collect::<Vec<_>>())
                 }
                 SignalType::ReadyValid => {
                     let (_, ready) = &loaded[i];
@@ -303,7 +394,7 @@ impl Analyzer for PythonAnalyzer {
                     let a = ReadyValidTransactionIterator::new(clk, ready, valid, time_end);
                     a.filter_map(|time_idx| {
                         let time = time_table[time_idx as usize];
-                        if time >= start && time < end {
+                        if time >= start && time <= end {
                             Some(Ok((time_table[time_idx as usize], String::new())))
                         } else {
                             None
@@ -353,8 +444,7 @@ impl Analyzer for PythonAnalyzer {
     }
 
     fn provides(&self) -> Vec<&str> {
-        // TODO add trigger sources here when python analyzer will provide triggers
-        vec![]
+        self.provided.iter().map(|p| p.name()).collect()
     }
 
     fn sink(&self) -> &TriggerSink {
@@ -371,7 +461,7 @@ impl Analyzer for PythonAnalyzer {
         (
             self.description.common.bus_name().to_owned(),
             self.description,
-            vec![],
-        ) // self.provided.iter().map(|t| t.name()).collect()
+            self.provided,
+        )
     }
 }
