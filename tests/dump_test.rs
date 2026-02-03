@@ -417,6 +417,51 @@ fn time_and_fsm_triggers() {
     assert_eq!(calculated, ok);
 }
 
+#[test]
+fn python_analyzer_triggers() {
+    let mut data = load_simulation_trace("tests/test_dumps/axi.vcd", false).unwrap();
+    let descs = load_bus_analyzers(
+        "tests/test_dumps/channel_and_signal_triggers_python.yaml",
+        &AnalyzersConfig::default(),
+    )
+    .unwrap();
+    let results = analyze_all(descs, &mut data, false);
+    let BusData {
+        usage: BusUsage::MultiChannel(usage),
+        ..
+    } = results[0].as_ref().unwrap()
+    else {
+        panic!("invalid usage outputted")
+    };
+    let calculated = usage.get_transactions_start_end().iter().collect_vec();
+    let ok = [
+        &Period::literal(320000, 340000, 2),
+        &Period::literal(1530000, 1550000, 2),
+        &Period::literal(2820000, 2850000, 3),
+        &Period::literal(4220000, 4250000, 3),
+        &Period::literal(5690000, 5720000, 3),
+        &Period::literal(7210000, 7240000, 3),
+        &Period::literal(8790000, 8830000, 4),
+    ];
+    assert_eq!(calculated, ok);
+
+    let BusData {
+        usage: BusUsage::SingleChannel(usage),
+        ..
+    } = results[3].as_ref().unwrap()
+    else {
+        panic!("invalid usage outputted")
+    };
+    let calculated = usage
+        .get_cycles()
+        .data_labels
+        .into_iter()
+        .map(|(d, _)| d as u64)
+        .collect_vec();
+    let ok = [21, 0, 112, 0, 0, 0];
+    assert_eq!(calculated, ok);
+}
+
 // functions returning correct usages for tests
 
 fn correct_test() -> BusUsage {

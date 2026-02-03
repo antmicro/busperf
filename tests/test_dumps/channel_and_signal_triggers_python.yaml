@@ -30,7 +30,7 @@ common_clk_rst_ifs:
       trigg:
         - signal: ar.id
           range: [7:0]
-          value: [0x0] 
+          value: [0x31] 
 
     
   ram_raddr:
