@@ -224,15 +224,17 @@ cfg_if! {
                             &mut surfer_info.surfer.borrow_mut(),
                         )
                     {
-                        surfer_integration::open_at_time(
-                            &surfer_info.trace_path.path,
+                        surfer_integration::send_to_surfer(&surfer_info.trace_path.path, vec![
+                            surfer_integration::SurferCommand::LoadSignals(
                             surfer_info.signals.clone(),
+                            ),
+                            surfer_integration::SurferCommand::MarkTime(
                             plot_to_waveform_time(
                                 coords.expect("Should be set by right click").x,
                                 waveform_time_unit,
                                 plot_time_unit,
-                            ),
-                        );
+                            ))
+                        ]);
                     }
                     ui.menu_button("mark statistic", |ui| {
                         for s in all_statistics {
@@ -248,19 +250,24 @@ cfg_if! {
                                             .map(|period| (period.start(), period.end()))
                                             .take(10)
                                             .collect::<Vec<_>>();
-                                        surfer_integration::open_and_mark_periods(
-                                            &surfer_info.trace_path.path,
+                                        let last = periods.last().copied();
+                                        let mut commands = vec![
+                                        surfer_integration::SurferCommand::LoadSignals(
                                             surfer_info.signals.clone(),
-                                            &periods,
-                                            &format!("{} {}", s.name, surfer_info.bus_name),
-                                            s.color,
-                                        );
-                                        if let Some(&(start, _)) = periods.last() {
-                                            surfer_integration::zoom_to_range(
+                                        ),
+                                        surfer_integration::SurferCommand::MarkPeriods(
+                                            periods,
+                                            format!("{} {}", s.name, surfer_info.bus_name),
+                                            s.color.to_owned(),
+                                        ),
+                                    ];
+                                        if let Some((start, _)) = last {
+                                            commands.push(surfer_integration::SurferCommand::Zoom(
                                                 start,
                                                 time as u64,
-                                            );
+                                            ));
                                         }
+                                        surfer_integration::send_to_surfer(&surfer_info.trace_path.path, commands);
                                     }
                                     if ui.button("after this point").clicked() {
                                         let time = coords.expect("Is set by right click").x;
@@ -271,16 +278,24 @@ cfg_if! {
                                             .map(|period| (period.start(), period.end()))
                                             .take(10)
                                             .collect::<Vec<_>>();
-                                        surfer_integration::open_and_mark_periods(
-                                            &surfer_info.trace_path.path,
+                                        let last = periods.last().copied();
+                                        let mut commands = vec![
+                                        surfer_integration::SurferCommand::LoadSignals(
                                             surfer_info.signals.clone(),
-                                            &periods,
-                                            &format!("{} {}", s.name, surfer_info.bus_name),
-                                            s.color,
-                                        );
-                                        if let Some(&(_, end)) = periods.last() {
-                                            surfer_integration::zoom_to_range(time as u64, end);
+                                        ),
+                                        surfer_integration::SurferCommand::MarkPeriods(
+                                            periods,
+                                            format!("{} {}", s.name, surfer_info.bus_name),
+                                            s.color.to_owned(),
+                                        ),
+                                    ];
+                                        if let Some((_, end)) = last {
+                                            commands.push(surfer_integration::SurferCommand::Zoom(
+                                                time as u64,
+                                                end
+                                            ));
                                         }
+                                        surfer_integration::send_to_surfer(&surfer_info.trace_path.path, commands);
                                     }
                                     let menu = egui::containers::menu::SubMenuButton::new(
                                         "custom period",
@@ -302,10 +317,7 @@ cfg_if! {
                                                 waveform_time_unit,
                                                 plot_time_unit,
                                             );
-                                            surfer_integration::open_and_mark_periods(
-                                                &surfer_info.trace_path.path,
-                                                surfer_info.signals.clone(),
-                                                &s.data
+                                            let periods = s.data
                                                     .iter()
                                                     .filter(|period| {
                                                         period.start() as f64 > period_start
@@ -315,14 +327,20 @@ cfg_if! {
                                                     .map(|period| {
                                                         (period.start(), period.end())
                                                     })
-                                                    .collect::<Vec<_>>(),
-                                                &format!("{} {}", s.name, surfer_info.bus_name),
-                                                s.color,
-                                            );
-                                            surfer_integration::zoom_to_range(
+                                                    .collect::<Vec<_>>();
+                                            let commands = vec![
+                                        surfer_integration::SurferCommand::LoadSignals(
+                                            surfer_info.signals.clone(),
+                                        ),
+                                        surfer_integration::SurferCommand::MarkPeriods(
+                                            periods,
+                                            format!("{} {}", s.name, surfer_info.bus_name),
+                                            s.color.to_owned(),
+                                        ), surfer_integration::SurferCommand::Zoom(
                                                 period_start as u64,
                                                 period_end as u64,
-                                            );
+                                            )                                    ];
+                                    surfer_integration::send_to_surfer(&surfer_info.trace_path.path, commands);
                                             ui.close();
                                         }
                                     });
@@ -361,9 +379,17 @@ cfg_if! {
                                 let color = buckets_statistic.color;
                                 let action = move |trace_path: &str| {
                                     let periods = periods;
-                                    surfer_integration::open_and_mark_periods(
-                                        trace_path, signals, &periods, &suffix, color,
-                                    );
+                                    let commands = vec![
+                                    surfer_integration::SurferCommand::LoadSignals(
+                                        signals,
+                                    ),
+                                    surfer_integration::SurferCommand::MarkPeriods(
+                                        periods,
+                                        suffix,
+                                        color.into(),
+                                    ),
+                                        ];
+                                    surfer_integration::send_to_surfer(trace_path, commands);
                                 };
                                 if ensure_trace_matches(
                                     &surfer.trace_path,
