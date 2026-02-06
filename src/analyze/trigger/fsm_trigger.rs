@@ -37,6 +37,9 @@ impl Fsm {
                 let mut epsilon_transition = None;
                 let transitions =
                         match &yaml["transition_to"] {
+                            // Yaml::Hash uses LinkedHashMap which preserves the order of
+                            // insertions, so here we can iterate over it to keep the order of
+                            // transition definitions in yaml
                             Yaml::Hash(linked_hash_map) => linked_hash_map
                             .iter()
                             .map(
