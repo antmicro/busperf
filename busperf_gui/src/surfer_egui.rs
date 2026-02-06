@@ -1,9 +1,9 @@
 use crate::egui_visualization::BucketsPlot;
 use crate::egui_visualization::TimelinePlot;
-use crate::egui_visualization::TimescaleUnit;
 use cfg_if::cfg_if;
 use eframe::egui::{Id, Response, Ui};
 use egui_plot::PlotUi;
+use libbusperf::Timescale;
 use libbusperf::bus_usage::{BucketsStatistic, Statistic};
 use std::collections::HashMap;
 
@@ -203,19 +203,13 @@ cfg_if! {
 
         fn plot_to_waveform_time(
             value: f64,
-            waveform_time_unit: &TimescaleUnit,
-            plot_time_unit: &TimescaleUnit,
+            waveform_time_unit: &Timescale,
+            plot_time_unit: &Timescale,
         ) -> f64 {
-            let diff = i32::from(waveform_time_unit)
-                - i32::from(plot_time_unit);
-            if diff > 0 {
-                value / 10.0f64.powi(diff.abs())
-            } else {
-                value * 10.0f64.powi(diff.abs())
-            }
+            Timescale::float_time_from_to(value, *plot_time_unit, *waveform_time_unit)
         }
 
-        pub fn surfer_ui_timeline(plot_ui: &PlotUi, surfer_info: &SurferData, waveform_time_unit: &TimescaleUnit, timeline: &mut TimelinePlot, all_statistics: &[Statistic]) {
+        pub fn surfer_ui_timeline(plot_ui: &PlotUi, surfer_info: &SurferData, waveform_time_unit: &Timescale, timeline: &mut TimelinePlot, all_statistics: &[Statistic]) {
             let TimelinePlot {
                 timescale_unit: plot_time_unit,
                 pointer: coords,
@@ -340,7 +334,7 @@ cfg_if! {
             });
         }
     } else {
-        pub fn surfer_ui_timeline(_plot_ui: &PlotUi, _surfer_info: &SurferData, _waveform_time_unit: &TimescaleUnit, _timeline: &mut TimelinePlot, _all_statistics: &[Statistic]) {}
+        pub fn surfer_ui_timeline(_plot_ui: &PlotUi, _surfer_info: &SurferData, _waveform_time_unit: &Timescale, _timeline: &mut TimelinePlot, _all_statistics: &[Statistic]) {}
     }
 }
 

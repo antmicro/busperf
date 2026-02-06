@@ -4,7 +4,7 @@ use std::io::Read;
 use std::io::Write;
 
 use libbusperf::bus_usage::BusData;
-use libbusperf::prepare_data;
+use libbusperf::{Timescale, prepare_data};
 
 mod text_output;
 
@@ -26,8 +26,10 @@ pub enum OutputType {
 }
 
 /// Output data from `usages` in format defined by `type_` into `out`.
+#[allow(clippy::too_many_arguments)]
 pub fn show_data(
     usages: Vec<BusData>,
+    timescale: Timescale,
     trace_path: String,
     _hash: Option<String>,
     type_: OutputType,
@@ -49,13 +51,10 @@ pub fn show_data(
             text_output::generate_md_table(out, &usages, verbose, skipped_stats)
         }
         #[cfg(feature = "gui")]
-        OutputType::Rendered => {
-            use busperf_gui::egui_visualization::TimescaleUnit;
-            busperf_gui::run_egui(usages, trace_path, _hash, TimescaleUnit::new(-9))
-        }
-        OutputType::Data => save_data(usages, trace_path, out),
+        OutputType::Rendered => busperf_gui::run_egui(usages, trace_path, _hash, timescale),
+        OutputType::Data => save_data(timescale, usages, trace_path, out),
         #[cfg(feature = "generate-html")]
-        OutputType::Html => busperf_web::generate_html(usages, trace_path, out),
+        OutputType::Html => busperf_web::generate_html(timescale, usages, trace_path, out),
     }
 }
 
@@ -69,11 +68,12 @@ pub fn visualization_from_file(
     let mut decoder = flate2::read::GzDecoder::new(&*data);
     let mut buf = Vec::new();
     decoder.read_to_end(&mut buf).map_err(|_| "Invalid file")?;
-    let data: (String, String, Vec<BusData>) =
+    let data: (String, String, Timescale, Vec<BusData>) =
         bitcode::decode(&buf).map_err(|_| "Invalid file data")?;
-    let (waveform_path, hash, usages) = data;
+    let (waveform_path, hash, timescale, usages) = data;
     show_data(
         usages,
+        timescale,
         waveform_path,
         Some(hash),
         output_type,
@@ -86,9 +86,10 @@ pub fn visualization_from_file(
 
 /// Save data into binary format.
 fn save_data(
+    timescale: Timescale,
     usages: Vec<BusData>,
     trace: String,
     out: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
-    prepare_data(usages, trace, out)
+    prepare_data(timescale, usages, trace, out)
 }

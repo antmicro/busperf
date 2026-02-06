@@ -1,9 +1,9 @@
 use std::{error::Error, rc::Rc};
 
-use wellen::{SignalValue, TimeTable};
+use wellen::SignalValue;
 
 use crate::analyze::{
-    AnalyzersConfig,
+    AnalyzersConfig, TimeTable,
     bus::{BusDescription, BusDescriptionBuilder, LockstepAnalyzer, SignalPath, is_value_of_type},
     trigger::{ChannelTrigger, TriggerName, TriggerSink, TriggerSource},
 };

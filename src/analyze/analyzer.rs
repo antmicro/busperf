@@ -4,12 +4,12 @@ use default_analyzer::DefaultAnalyzer;
 use itertools::Itertools;
 #[cfg(feature = "python-plugins")]
 use python_analyzer::PythonAnalyzer;
-use wellen::{Signal, SignalRef, SignalValue, TimeTable, TimeTableIdx};
+use wellen::{Signal, SignalRef, SignalValue, TimeTableIdx};
 use yaml_rust2::Yaml;
 
 use crate::analyze::{AnalyzersConfig, DoneTriggers};
 use crate::analyze::{
-    SimulationData,
+    SimulationData, TimeTable,
     analyzer::axi_analyzer::{AXIRdAnalyzer, AXIWrAnalyzer},
     bus::BusDescription,
     load_signals,
@@ -87,7 +87,7 @@ where
     T: Analyzer + ?Sized,
 {
     let start = std::time::Instant::now();
-    let usage = analyzer.calculate(loaded, intervals, &simulation_data.body.time_table);
+    let usage = analyzer.calculate(loaded, intervals, &simulation_data.time_table);
     if verbose {
         println!(
             "Calculating statistics for {} took {:?}",
@@ -162,10 +162,9 @@ pub trait Analyzer {
             );
         }
 
-        let intervals = self.sink().get_intervals(
-            done_triggers,
-            *simulation_data.body.time_table.last().unwrap_or(&0),
-        );
+        let intervals = self
+            .sink()
+            .get_intervals(done_triggers, simulation_data.time_table.last());
         match intervals {
             Ok(intervals) => get_result(
                 self,
@@ -182,7 +181,6 @@ pub trait Analyzer {
                     .into_iter()
                     .map(|t| (t.into_name(), Err(format!("bad intervals: {e}").into())))
                     .collect();
-
                 AnalyzerResult {
                     name,
                     result,

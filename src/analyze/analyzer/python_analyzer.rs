@@ -1,7 +1,7 @@
 use std::{collections::HashMap, error::Error, rc::Rc};
 
 use crate::analyze::{
-    AnalyzersConfig,
+    AnalyzersConfig, TimeTable,
     analyzer::{axi_analyzer::ReadyValidTransactionIterator, get_value_at_time},
     bus::{
         BusCommon, BusDescription, COMMON_YAML, SignalPath, SignalPathFromYaml, is_value_of_type,
@@ -14,7 +14,6 @@ use owo_colors::OwoColorize;
 
 use super::Analyzer;
 use pyo3::{prelude::*, types::PyTuple};
-use wellen::TimeTable;
 use yaml_rust2::Yaml;
 
 pub struct PythonDescription {

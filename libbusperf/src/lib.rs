@@ -38,6 +38,23 @@ impl std::fmt::Display for SignalPath {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, bitcode::Encode, bitcode::Decode)]
+pub struct Timescale {
+    pub factor: u32,
+    pub order: i8,
+}
+
+impl Timescale {
+    pub fn float_time_from_to(time: f64, from: Timescale, to: Timescale) -> f64 {
+        let diff = to.order - from.order;
+        if diff > 0 {
+            time * to.factor as f64 / from.factor as f64 / 10.0f64.powi(diff.abs() as i32).round()
+        } else {
+            time * 10.0f64.powi(diff.abs() as i32).round() * to.factor as f64 / from.factor as f64
+        }
+    }
+}
+
 #[cfg(feature = "file-hash")]
 use bus_usage::BusData;
 #[cfg(feature = "file-hash")]
@@ -50,13 +67,14 @@ use std::io::Write;
 #[cfg(feature = "file-hash")]
 #[inline]
 pub fn prepare_data(
+    timescale: Timescale,
     usages: Vec<BusData>,
     trace: String,
     out: &mut impl Write,
 ) -> Result<(), Box<dyn Error>> {
     let hash = calculate_file_hash(&trace)
         .map_err(|e| format!("[ERROR] failed to calculate trace hash: {e}"))?;
-    let data = (trace, hash.to_string(), usages);
+    let data = (trace, hash.to_string(), timescale, usages);
     let data = bitcode::encode(&data);
     let mut encoder = flate2::write::GzEncoder::new(out, Compression::default());
     encoder

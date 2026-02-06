@@ -2,12 +2,13 @@
 #![cfg(feature = "build_wasm")]
 
 use libbusperf::bus_usage::BusData;
-use libbusperf::prepare_data;
+use libbusperf::{Timescale, prepare_data};
 use std::error::Error;
 use std::io::Write;
 
 /// Generate html containing wasm of busperf_web and calculated bus statistics.
 pub fn generate_html(
+    timescale: Timescale,
     usages: Vec<BusData>,
     trace: String,
     out: &mut impl Write,
@@ -15,7 +16,7 @@ pub fn generate_html(
     use base64::prelude::*;
 
     let mut busperf_data = Vec::new();
-    prepare_data(usages, trace, &mut busperf_data)?;
+    prepare_data(timescale, usages, trace, &mut busperf_data)?;
 
     let busperf_data = BASE64_STANDARD.encode(busperf_data);
 

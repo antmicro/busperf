@@ -4,13 +4,14 @@ use std::{
     fs::File,
     io::{BufReader, Read},
     iter::Peekable,
+    ops::Index,
     sync::{Arc, atomic::AtomicU64},
 };
 
 use hashbrown::HashMap;
 use itertools::Itertools;
 use wellen::{
-    Hierarchy, LoadOptions, Signal, SignalValue, TimeTableIdx,
+    Hierarchy, LoadOptions, Signal, SignalSource, SignalValue, TimeTableIdx, Timescale,
     viewers::{self, BodyResult},
 };
 use yaml_rust2::YamlLoader;
@@ -295,9 +296,53 @@ pub fn analyze_all(
         .collect_vec()
 }
 
+pub struct TimeTable {
+    table: Vec<u64>,
+}
+
+impl TimeTable {
+    fn new(table: Vec<u64>) -> Self {
+        Self { table }
+    }
+    pub fn iter(&self) -> std::slice::Iter<'_, u64> {
+        self.table.iter()
+    }
+    pub fn get(&self, index: usize) -> Option<&u64> {
+        self.table.get(index)
+    }
+    pub fn last(&self) -> u64 {
+        self.table.last().copied().unwrap_or(0)
+    }
+    pub fn binary_search(&self, value: &u64) -> Result<usize, usize> {
+        self.table.binary_search(value)
+    }
+}
+
+impl Index<usize> for TimeTable {
+    type Output = RealTime;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.table[index]
+    }
+}
+
 pub struct SimulationData {
     hierarchy: Hierarchy,
-    body: BodyResult,
+    signal_source: SignalSource,
+    time_table: TimeTable,
+}
+
+impl SimulationData {
+    pub fn timescale(&self) -> libbusperf::Timescale {
+        let timescale = self.hierarchy.timescale().unwrap_or(Timescale {
+            factor: 1,
+            unit: wellen::TimescaleUnit::Seconds,
+        });
+        libbusperf::Timescale {
+            factor: timescale.factor,
+            order: timescale.unit.to_exponent().unwrap_or(0),
+        }
+    }
 }
 
 /// Loads waveform file.
@@ -316,11 +361,17 @@ pub fn load_simulation_trace(
     let file = BufReader::new(std::fs::File::open(filename)?);
     let header = viewers::read_header(file, &load_options)?;
     let hierarchy = header.hierarchy;
-    let body = viewers::read_body(header.body, &hierarchy, Some(Arc::new(AtomicU64::new(0))))?;
+    let BodyResult { source, time_table } =
+        viewers::read_body(header.body, &hierarchy, Some(Arc::new(AtomicU64::new(0))))?;
+    let time_table = TimeTable::new(time_table);
     if verbose {
         println!("Loading trace took {:?}", start.elapsed());
     }
-    Ok(SimulationData { hierarchy, body })
+    Ok(SimulationData {
+        hierarchy,
+        signal_source: source,
+        time_table,
+    })
 }
 
 fn load_signals<'signal_buffer>(
@@ -329,7 +380,7 @@ fn load_signals<'signal_buffer>(
     buffer: &'signal_buffer mut Vec<(wellen::SignalRef, wellen::Signal)>,
 ) -> Result<Vec<&'signal_buffer (wellen::SignalRef, wellen::Signal)>, Box<dyn Error>> {
     let hierarchy = &simulation_data.hierarchy;
-    let body = &mut simulation_data.body;
+    let source = &mut simulation_data.signal_source;
     let signal_refs: Vec<wellen::SignalRef> = signal_paths
         .iter()
         .map(|path| {
@@ -340,7 +391,7 @@ fn load_signals<'signal_buffer>(
         })
         .collect::<Result<_, Box<dyn Error>>>()?;
 
-    *buffer = body.source.load_signals(&signal_refs, hierarchy, true);
+    *buffer = source.load_signals(&signal_refs, hierarchy, true);
     // SignalSource::load_signals can return a vector of different size than passsed signals refs vector
     // e.g when some ref is duplicated (this can happen if a user uses the same simulation signal in two
     // analyzer signals) but we want to return loaded signals in same order as in requested paths

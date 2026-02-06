@@ -5,11 +5,11 @@ use std::{
     rc::Rc,
 };
 
-use wellen::{Signal, SignalValue, TimeTable, TimeTableIdx};
+use wellen::{Signal, SignalValue, TimeTableIdx};
 use yaml_rust2::Yaml;
 
 use crate::analyze::{
-    AnalyzersConfig, RisingSignalIterator,
+    AnalyzersConfig, RisingSignalIterator, TimeTable,
     bus::{BusDescription, LockstepAnalyzer, SignalPathFromYaml, axi::ReadyValidAnalyzer},
     trigger::{ChannelTrigger, TransactionTrigger, TriggerName, TriggerSink, TriggerSource},
 };

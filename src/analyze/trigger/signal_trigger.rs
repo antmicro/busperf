@@ -184,7 +184,7 @@ impl SignalTrigger {
         let mut trigger_times = vec![];
         if let Some(mut current_interval) = intervals.next() {
             for (time, values) in iter {
-                let real_time = simulation_data.body.time_table[time as usize];
+                let real_time = simulation_data.time_table[time as usize];
                 let &[mut start, end] = current_interval;
                 if real_time > end {
                     let Some(n) = intervals.next() else {

@@ -10,7 +10,7 @@ pub fn run_egui(
     usages: Vec<libbusperf::bus_usage::BusData>,
     trace_path: String,
     hash: Option<String>,
-    time_unit: egui_visualization::TimescaleUnit,
+    time_unit: libbusperf::Timescale,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let options = eframe::NativeOptions::default();
     let surfer_data = surfer_egui::SurferData::new(trace_path, hash)?;

@@ -57,7 +57,7 @@ impl ChannelTrigger {
         let (_, clk_signal) = &loaded[0];
         let iterator =
             SignalsIterator::new(clk_signal, loaded[2..].iter().map(|(_, s)| s).collect());
-        let time_table = &simulation_data.body.time_table;
+        let time_table = &simulation_data.time_table;
         iterator
             .filter_map(
                 |(time, values)| match values.into_iter().collect::<Option<Vec<_>>>() {
@@ -67,7 +67,7 @@ impl ChannelTrigger {
                         }) {
                             let type_ = self.analyzer.interpret_cycle(&values, time);
                             if type_ == self.type_ {
-                                Some(Ok(simulation_data.body.time_table[time as usize]))
+                                Some(Ok(time_table[time as usize]))
                             } else {
                                 None
                             }

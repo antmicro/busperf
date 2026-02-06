@@ -42,8 +42,10 @@ pub fn analyze_and_show_results(
             }
         })
         .collect();
+    let timescale = simulation_data.timescale();
     show_data(
         usages,
+        timescale,
         simulation_trace_file.to_owned(),
         None,
         type_,

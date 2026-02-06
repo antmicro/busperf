@@ -13,22 +13,7 @@ use egui_plot::{
     Bar, BarChart, ClosestElem, Legend, Line, Plot, PlotItem, PlotPoint, PlotPoints, Polygon, Text,
     VLine, uniform_grid_spacer,
 };
-
-/// Equivalent of `wellen::TimescaleUnit`, but we define our own struct to not add dependency on `wellen`.
-#[derive(PartialEq, Clone, Copy)]
-pub struct TimescaleUnit(i32);
-
-impl TimescaleUnit {
-    pub fn new(u: i32) -> Self {
-        TimescaleUnit(u)
-    }
-}
-
-impl From<&TimescaleUnit> for i32 {
-    fn from(value: &TimescaleUnit) -> Self {
-        value.0
-    }
-}
+use libbusperf::Timescale;
 
 use crate::surfer_egui::{self, SurferData, surfer_ui_buckets};
 
@@ -67,14 +52,14 @@ impl BucketsPlot {
 
 #[derive(PartialEq)]
 pub(crate) struct TimelinePlot {
-    pub timescale_unit: TimescaleUnit,
+    pub timescale_unit: Timescale,
     pub pointer: Option<PlotPoint>,
     pub period_start: f64,
     pub period_end: f64,
 }
 
 impl TimelinePlot {
-    pub fn new(timescale_unit: TimescaleUnit, pointer: Option<PlotPoint>) -> Self {
+    pub fn new(timescale_unit: Timescale, pointer: Option<PlotPoint>) -> Self {
         Self {
             timescale_unit,
             pointer,
@@ -98,7 +83,7 @@ impl std::fmt::Display for PlotType {
 pub struct BusperfApp {
     usages: Vec<BusData>,
     selected: usize,
-    waveform_time_unit: TimescaleUnit,
+    waveform_time_unit: Timescale,
     left: PlotType,
     right: PlotType,
     surfer: SurferData,
@@ -111,14 +96,14 @@ impl BusperfApp {
         decoder
             .read_to_end(&mut buf)
             .map_err(|_| "invalid file: failed decompression")?;
-        let data: (String, String, Vec<BusData>) =
+        let data: (String, String, Timescale, Vec<BusData>) =
             bitcode::decode(&buf).map_err(|_| "invalid file data")?;
-        let (waveform_path, hash, usages) = data;
+        let (waveform_path, hash, timescale, usages) = data;
         let surfer_data = SurferData::new(waveform_path, Some(hash))?;
-        Ok(BusperfApp::new(usages, surfer_data, TimescaleUnit(-9)))
+        Ok(BusperfApp::new(usages, surfer_data, timescale))
     }
 
-    pub fn new(usages: Vec<BusData>, surfer: SurferData, time_unit: TimescaleUnit) -> Self {
+    pub fn new(usages: Vec<BusData>, surfer: SurferData, time_unit: Timescale) -> Self {
         let right = if matches!(usages[0].usage, BusUsage::SingleChannel(_)) {
             PlotType::Pie
         } else {
@@ -369,7 +354,7 @@ fn draw_plot(
     ui: &mut Ui,
     statistics: &[Statistic],
     id: usize,
-    waveform_time_unit: &TimescaleUnit,
+    waveform_time_unit: &Timescale,
     type_: &mut PlotType,
     width: f32,
     surfer: &SurferData,
@@ -592,24 +577,11 @@ fn draw_buckets(
     });
 }
 
-fn waveform_to_plot_time(
-    value: f64,
-    waveform_time_unit: &TimescaleUnit,
-    plot_time_unit: &TimescaleUnit,
-) -> f64 {
-    let diff: i32 = i32::from(plot_time_unit) - i32::from(waveform_time_unit);
-    if diff > 0 {
-        value / 10.0f64.powi(diff.abs())
-    } else {
-        value * 10.0f64.powi(diff.abs())
-    }
-}
-
 fn draw_timeline(
     ui: &mut Ui,
     statistics: &[Statistic],
     id: usize,
-    waveform_time_unit: &TimescaleUnit,
+    waveform_time_unit: &Timescale,
     timeline: &mut TimelinePlot,
     width: f32,
     surfer: &SurferData,
@@ -634,11 +606,46 @@ fn draw_timeline(
         let plot_time_unit = &mut timeline.timescale_unit;
         ui.horizontal(|ui| {
             ui.label("Time unit: ");
-            ui.radio_value(plot_time_unit, TimescaleUnit(0), "s");
-            ui.radio_value(plot_time_unit, TimescaleUnit(-3), "ms");
-            ui.radio_value(plot_time_unit, TimescaleUnit(-6), "us");
-            ui.radio_value(plot_time_unit, TimescaleUnit(-9), "ns");
-            ui.radio_value(plot_time_unit, TimescaleUnit(-12), "ps");
+            ui.radio_value(
+                plot_time_unit,
+                Timescale {
+                    factor: 1,
+                    order: 0,
+                },
+                "s",
+            );
+            ui.radio_value(
+                plot_time_unit,
+                Timescale {
+                    factor: 1,
+                    order: -3,
+                },
+                "ms",
+            );
+            ui.radio_value(
+                plot_time_unit,
+                Timescale {
+                    factor: 1,
+                    order: -6,
+                },
+                "us",
+            );
+            ui.radio_value(
+                plot_time_unit,
+                Timescale {
+                    factor: 1,
+                    order: -9,
+                },
+                "ns",
+            );
+            ui.radio_value(
+                plot_time_unit,
+                Timescale {
+                    factor: 1,
+                    order: -12,
+                },
+                "ps",
+            );
         });
         Plot::new(("timeline", id))
             .legend(Legend::default())
@@ -648,7 +655,11 @@ fn draw_timeline(
             .show(ui, |plot_ui| {
                 for (stat_id, statistic) in statistics {
                     for interval in statistic.vertical_lines.iter().map(|v| {
-                        waveform_to_plot_time(*v, waveform_time_unit, &timeline.timescale_unit)
+                        Timescale::float_time_from_to(
+                            *v,
+                            *waveform_time_unit,
+                            timeline.timescale_unit,
+                        )
                     }) {
                         plot_ui.vline(
                             VLine::new("", interval).color(Color32::GRAY.blend(get_color(stat_id))),
@@ -663,10 +674,10 @@ fn draw_timeline(
                                     .iter()
                                     .map(|&[x, y]| {
                                         [
-                                            waveform_to_plot_time(
+                                            Timescale::float_time_from_to(
                                                 x,
-                                                waveform_time_unit,
-                                                &timeline.timescale_unit,
+                                                *waveform_time_unit,
+                                                timeline.timescale_unit,
                                             ),
                                             y,
                                         ]
