@@ -7,5 +7,6 @@ It consists of the following chapters:
 
 * [Analyzers](analyzers.md) provides descriptions of available native analyzers
 * [YAML bus description](yaml.md) describes how to write a YAML bus description
+* [Triggers](triggers.md) describes trigger sources and trigger sinks
 * [Busperf plugins](plugins.md) describes how to write a custom plugin
 * [Output](output.md) explains how to interpret Busperf's output

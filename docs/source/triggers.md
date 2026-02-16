@@ -1,34 +1,34 @@
 # Triggers
 
-By default analyzers gather statistics over the entire simulation trace.
-In order to narrow the analysis scope triggers can be used, they allow for the start/stop control over analyzers.
+By default, analyzers gather statistics over the entire simulation trace.
+In order to narrow the analysis scope, triggers can be used to control the start/stop of the analyzers.
 Triggers are provided by trigger sources and they are consumed by trigger sinks.
-Triggers require DAG format in order to work, if this is not meet, busperf will error out.
+Triggers require the DAG format to work, otherwise Busperf will error out.
 
 ## Trigger sources
 
 There are multiple trigger sources:
-* time - create trigger when simulation reaches given time
-* finite-state machines - create trigger when specified state is reached
-* analyzers - create trigger when specified bus conditions are meet.
+* time - create a trigger when simulation reaches the given time
+* finite-state machines - create a trigger when the specified state is reached
+* analyzers - create a trigger when specified bus conditions are met
 
 ### Analyzers
 
-Triggers and their trigger conditions are defined next to signals definition.
-They can be based on bus state, specific value of one of bus signals or combination of both.
+Triggers and their trigger conditions are defined next to signal definitions.
+They can be based on the bus state, specific value of one of the bus signals, or a combination of both.
 
 #### Bus state
 
-For single channel buses, definition is straight forward:
+For single channel buses, the definition is straightforward:
 ~~~yaml
-trigggers:
+triggers:
   "name":
     - state: busy/free/no transaction/backpressure/no data/reset/unknown
 ~~~
 
-Multichannel buses require for the channel to be be specified:
+For multichannel buses, the channel must be specified:
 ~~~yaml
-trigggers:
+triggers:
   ar:
     "name":
       - state: busy/free/no transaction/backpressure/no data/reset/unknown
@@ -36,9 +36,9 @@ trigggers:
 
 #### Signal value
 
-Trigger can be set on any signal that was defined in the bus's signals definition.
+Triggers can be set on any signal that was defined in the bus's signal definition.
 ~~~yaml
-trigggers:
+triggers:
   # whole signal value
   "name":
     - signal: rlast
@@ -57,7 +57,7 @@ trigggers:
       value: [3, 0xa]
 ~~~
 
-For multichannel buses if the signals is defined in channel, trigger definitions must also contain channel name.
+For multichannel buses, if the signal is defined in the channel, trigger definitions must also contain channel name.
 ~~~yaml
 triggers:
   ar:
@@ -73,9 +73,9 @@ triggers:
 
 The trigger activates when any of the subtriggers activate.
 
-Example: `"trigger_name"` activates when 7:0 bits of `addr` are set to 0x4 or when `rlast` is set to 1.
+Example: `"trigger_name"` activates when the 7:0 bits of `addr` are set to 0x4 or when `rlast` is set to 1.
 ~~~yaml
-trigggers:
+triggers:
   "trigger_name":
     - signal: addr
       range: [7:0]
@@ -88,9 +88,9 @@ trigggers:
 
 The trigger activates when all subtriggers are active at the same time.
 
-Example: `"addr_set"` activates when bus is in busy state and addr signal matches the pattern.
+Example: `"addr_set"` activates when the bus is in a busy state and the `addr` signal matches the pattern.
 ~~~yaml
-trigggers:
+triggers:
   "addr_set":
     - all:
       - state: busy
@@ -101,7 +101,7 @@ trigggers:
 
 #### Transactions
 
-This type of analyzer triggers is only supported in the multichannel bus analyzers, and allow for triggers to be set on starts/ends of a bus transaction.
+This type of analyzer trigger is only supported in the multichannel bus analyzers, and allows for triggers to be set on starts/ends of a bus transaction.
 ~~~yaml
 triggers:
   _:
@@ -112,12 +112,12 @@ triggers:
 {#fsm}
 ### Finite-state Machine
 
-User can create an FSM that changes states based on triggers activating.
-For FSM to provide triggers, states can be marked with `trigger_set` keyword followed by name of the trigger.
-Transitions are defined within a `transition_to` section.
-Firstly it defines state to which the transition leads, then a list of triggers that cause the transition.
-If an empty list is provided it defines an epsilon transition, meaning it happens without any extra condition.
-Transitions are checked sequentially in order of definitions, so it is possible to have other transitions before epsilon one.
+Users can create an FSM that changes states based on triggers activating.
+For FSM to provide triggers, states can be marked with the `trigger_set` keyword followed by the name of the trigger.
+Transitions are defined within the `transition_to` section.
+Firstly it defines the state to which the transition leads, then a list of triggers that cause the transition.
+If an empty list is provided, it defines an epsilon transition, meaning it happens without any extra condition.
+Transitions are checked sequentially in the order of the definitions, so it is possible to have other transitions before the epsilon one.
 This also means that if two triggers activate simultaneously and lead to different states, the transition defined earlier in the list takes precedence.
 
 ~~~yaml
@@ -162,16 +162,17 @@ They activate on specific timestamps.
 
 ## Trigger sinks
 
-Currently triggers can be consumed by the following:
-* analyzer
-* finite-state machines.
+Currently, triggers can be consumed by the following:
+* analyzers
+* finite-state machines
 
 ### Analyzers
 
 Analyzers can be started and stopped using triggers:
-* `activate_on` defines which triggers start analyzer and
-* `deactivate_on` which triggers stop.
-Conditions can be combined with `all` and `any` as in the analyzer trigger source.
+* `activate_on` defines which triggers start the analyzer
+* `deactivate_on` defines which triggers stop the analyzer.
+
+Conditions can be combined with `all` and `any`, as in the analyzer trigger source.
 
 ~~~yaml
 activate_on:
@@ -186,11 +187,11 @@ deactivate_on:
 
 ### Finite-state Machine
 
-When making transitions FSM depends on triggers from other sources. See [FSM](#fsm)
+When making transitions, the FSM depends on triggers from other sources (see [FSM](#fsm)).
 
 ## Example
 
-Here you can see all types of triggers combined in one example. Trigger names starting with "hierarchical" are placeholders.
+Below you can see all types of triggers combined in one example. Trigger names starting with "hierarchical" are placeholders.
 
 ~~~yaml
 common_clk_rst_ifs:
