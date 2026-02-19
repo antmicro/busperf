@@ -279,23 +279,7 @@ impl PythonAnalyzer {
             _ => Err("bad triggers")?,
         };
 
-        let provided_python = if let Ok(method) = Python::with_gil(|py| obj.getattr(py, "provides"))
-        {
-            match Python::with_gil(|py| -> PyResult<Vec<String>> { method.call0(py)?.extract(py) })
-            {
-                Ok(results) => results
-                    .into_iter()
-                    .map(|name| {
-                        PythonTrigger::new(format!("interfaces.{}.{}", description.name(), name))
-                    })
-                    .collect(),
-                Err(e) => Err(format!(
-                    "python plugin failed - bad return from provides method: {e}"
-                ))?,
-            }
-        } else {
-            vec![]
-        };
+        let provided_python = PythonTrigger::vec_from_obj(&obj, description.name(), false)?;
 
         Ok(PythonAnalyzer {
             description,
@@ -466,7 +450,6 @@ impl Analyzer for PythonAnalyzer {
                         self.provided_python
                             .iter_mut()
                             .find(|p| {
-                                println!("{}", p.name());
                                 p.name()
                                     == format!("interfaces.{}.{}", self.description.name(), name)
                             })

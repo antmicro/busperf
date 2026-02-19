@@ -91,6 +91,12 @@ pub struct AnalyzersGraph {
     control: Vec<Box<dyn Control>>,
 }
 
+impl AnalyzersGraph {
+    pub fn into_analyzers(self) -> Vec<Box<dyn Analyzer>> {
+        self.analyzers
+    }
+}
+
 /// Loads descriptions of the buses from yaml file with given name.
 pub fn load_bus_analyzers(
     filename: &str,

@@ -4,6 +4,8 @@ use default_analyzer::DefaultAnalyzer;
 use itertools::Itertools;
 #[cfg(feature = "python-plugins")]
 use python_analyzer::PythonAnalyzer;
+#[cfg(feature = "python-plugins")]
+use python_bus_analyzer::PythonBusAnalyzer;
 use wellen::{Signal, SignalRef, SignalValue, TimeTableIdx};
 use yaml_rust2::Yaml;
 
@@ -24,6 +26,8 @@ mod axi_analyzer;
 mod default_analyzer;
 #[cfg(feature = "python-plugins")]
 mod python_analyzer;
+#[cfg(feature = "python-plugins")]
+mod python_bus_analyzer;
 
 pub(crate) struct AnalyzerBuilder {}
 
@@ -54,6 +58,19 @@ impl AnalyzerBuilder {
                         ))?
                     }
                 }
+            }
+        } else if dict["handshake"]
+            .as_str()
+            .ok_or("Bus should have handshake defined")?
+            == "Custom"
+        {
+            #[cfg(feature = "python-plugins")]
+            {
+                Box::new(PythonBusAnalyzer::from_yaml(name, dict, config)?)
+            }
+            #[cfg(not(feature = "python-plugins"))]
+            {
+                Err("Python plugins are disabled")?
             }
         } else {
             Box::new(DefaultAnalyzer::from_yaml(name, dict, config)?)

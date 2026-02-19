@@ -1,4 +1,5 @@
 use busperf::*;
+use hashbrown::HashMap;
 use itertools::Itertools;
 use libbusperf::bus_usage::{self, BusData, BusUsage, Period, SingleChannelBusUsage};
 
@@ -493,6 +494,33 @@ fn python_defined_triggers() {
         2,
     ));
     assert_eq!(results[1].as_ref().unwrap().usage, ok);
+}
+
+#[test]
+fn python_defined_single_channel_triggers() {
+    let mut data = load_simulation_trace("tests/test_dumps/test.vcd", false).unwrap();
+    let mut config = AnalyzersConfig::default();
+    config.set_plugins_path("tests/dummy_plugins");
+    let descs = load_bus_analyzers(
+        "tests/test_dumps/python_defined_single_channel_triggers.yaml",
+        &config,
+    )
+    .unwrap();
+    let done_triggers = HashMap::new();
+    let result = descs
+        .into_analyzers()
+        .remove(0)
+        .analyze(&mut data, &done_triggers, false);
+    assert_eq!(result.triggers[0].0.as_str(), "interfaces.test.trig1");
+    assert_eq!(
+        result.triggers[0].1.as_ref().unwrap(),
+        &vec![4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 36, 42]
+    );
+    assert_eq!(result.triggers[1].0.as_str(), "interfaces.test.trig2");
+    assert_eq!(
+        result.triggers[1].1.as_ref().unwrap(),
+        &vec![4, 6, 8, 10, 16, 20, 22, 30, 32, 34, 36, 38, 40, 42]
+    );
 }
 
 // functions returning correct usages for tests

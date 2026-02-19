@@ -12,6 +12,7 @@ use crate::analyze::{
 
 mod channel_trigger;
 mod fsm_trigger;
+#[cfg(feature = "python-plugins")]
 mod python_trigger;
 mod signal_trigger;
 mod time_trigger;
@@ -19,6 +20,7 @@ mod transaction_trigger;
 mod trigger_combination;
 
 pub use channel_trigger::ChannelTrigger;
+#[cfg(feature = "python-plugins")]
 pub use python_trigger::PythonTrigger;
 pub use signal_trigger::SignalTrigger;
 pub use transaction_trigger::TransactionTrigger;

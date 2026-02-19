@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::rc::Rc;
 
 use crate::analyze::bus::{
@@ -5,6 +6,7 @@ use crate::analyze::bus::{
     bus_description,
 };
 use crate::analyze::plugins::load_python_plugin;
+use crate::analyze::trigger::PythonTrigger;
 
 use super::LockstepAnalyzer;
 use owo_colors::OwoColorize;
@@ -52,7 +54,6 @@ impl PythonCustomBus {
         class_name: &str,
         name: String,
         i: &Yaml,
-        bus_scope: &[String],
         plugins_path: &str,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let common = Rc::new(BusCommon::from_yaml(name, i)?);
@@ -92,7 +93,9 @@ impl PythonCustomBus {
 
         let paths: Vec<SignalPath> = signals
             .iter()
-            .map(|s| SignalPathFromYaml::from_yaml_ref_with_prefix(bus_scope, &i[s.as_str()]))
+            .map(|s| {
+                SignalPathFromYaml::from_yaml_ref_with_prefix(&common.module_scope, &i[s.as_str()])
+            })
             .collect::<Result<_, _>>()?;
         let mut extra_signals: Vec<_> = signals.into_iter().zip(paths).collect();
         extra_signals.append(&mut unhandled_signals);
@@ -101,6 +104,26 @@ impl PythonCustomBus {
             obj,
             extra_signals,
         })
+    }
+    pub fn provides(&self) -> Result<Vec<PythonTrigger>, Box<dyn Error>> {
+        PythonTrigger::vec_from_obj(&self.obj, self.name(), true)
+    }
+    pub fn get_triggers(&self, signals: &[SignalValue<'_>]) -> Result<Vec<String>, Box<dyn Error>> {
+        let signals: Vec<String> = signals
+            .iter()
+            .map(|s| s.to_bit_string().ok_or("invalid signal value at"))
+            .collect::<Result<_, _>>()?;
+
+        Ok(Python::with_gil(|py| -> PyResult<Vec<String>> {
+            let method = self.obj.getattr(py, "get_trigger");
+            match method {
+                Ok(method) => {
+                    let obj = method.call1(py, PyTuple::new(py, PyList::new(py, signals))?)?;
+                    obj.extract(py)
+                }
+                Err(_) => Ok(vec![]),
+            }
+        })?)
     }
 }
 

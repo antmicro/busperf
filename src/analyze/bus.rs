@@ -11,8 +11,6 @@ use ahb::AHBBus;
 use apb::APBBus;
 use axi::AXIBus;
 use credit_valid::CreditValidBus;
-#[cfg(feature = "python-plugins")]
-use custom_python::PythonCustomBus;
 use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
@@ -328,27 +326,6 @@ impl BusDescriptionBuilder {
             }
             "AHB" => Ok((Rc::new(AHBBus::from_yaml(name, i)?), Rc::new(AHBAnalyzer))),
             "APB" => Ok((Rc::new(APBBus::from_yaml(name, i)?), Rc::new(APBAnalyzer))),
-            "Custom" => {
-                #[cfg(feature = "python-plugins")]
-                {
-                    let scope = parse_scope(&i["scope"])?;
-                    let handshake = i["custom_handshake"]
-                        .as_str()
-                        .ok_or("Custom bus has to specify handshake interpreter")?;
-                    let bus = Rc::new(PythonCustomBus::from_yaml(
-                        handshake,
-                        name,
-                        i,
-                        &scope,
-                        _plugins_path,
-                    )?);
-                    Ok((Rc::clone(&bus) as Rc<dyn BusDescription>, bus))
-                }
-                #[cfg(not(feature = "python-plugins"))]
-                {
-                    Err("python plugins are disabled")?
-                }
-            }
             _ => Err(format!("invalid handshake {}", handshake))?,
         }
     }
