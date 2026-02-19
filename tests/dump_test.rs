@@ -462,6 +462,39 @@ fn python_analyzer_triggers() {
     assert_eq!(calculated, ok);
 }
 
+#[test]
+fn python_defined_triggers() {
+    let mut data = load_simulation_trace("tests/test_dumps/test.vcd", false).unwrap();
+    let mut config = AnalyzersConfig::default();
+    config.set_plugins_path("tests/dummy_plugins");
+    let descs =
+        load_bus_analyzers("tests/test_dumps/python_defined_triggers.yaml", &config).unwrap();
+    let results = analyze_all(descs, &mut data, false);
+    assert!(results.len() == 2);
+    for r in &results {
+        r.as_ref().unwrap();
+    }
+    let ok = BusUsage::SingleChannel(SingleChannelBusUsage::literal(
+        "test",
+        6,
+        2,
+        0,
+        0,
+        1,
+        2,
+        vec![
+            Period::literal(0, 2, 2),
+            Period::literal(24, 24, 1),
+            Period::literal(32, 34, 2),
+        ],
+        vec![Period::literal(4, 10, 4), Period::literal(20, 22, 2)],
+        0,
+        bus_usage::CurrentlyCalculating::Delay,
+        2,
+    ));
+    assert_eq!(results[1].as_ref().unwrap().usage, ok);
+}
+
 // functions returning correct usages for tests
 
 fn correct_test() -> BusUsage {

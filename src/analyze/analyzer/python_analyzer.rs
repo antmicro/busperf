@@ -7,7 +7,9 @@ use crate::analyze::{
         BusCommon, BusDescription, COMMON_YAML, SignalPath, SignalPathFromYaml, is_value_of_type,
     },
     plugins::load_python_plugin,
-    trigger::{SignalTrigger, TransactionTrigger, TriggerName, TriggerSink, TriggerSource},
+    trigger::{
+        PythonTrigger, SignalTrigger, TransactionTrigger, TriggerName, TriggerSink, TriggerSource,
+    },
 };
 use libbusperf::bus_usage::{BusUsage, MultiChannelBusUsage, RealTime};
 use owo_colors::OwoColorize;
@@ -86,6 +88,7 @@ pub struct PythonAnalyzer {
     required: Vec<TriggerName>,
     sink: TriggerSink,
     provided: Vec<Box<dyn TriggerSource>>,
+    provided_python: Vec<PythonTrigger>,
 }
 
 #[pyclass]
@@ -276,6 +279,24 @@ impl PythonAnalyzer {
             _ => Err("bad triggers")?,
         };
 
+        let provided_python = if let Ok(method) = Python::with_gil(|py| obj.getattr(py, "provides"))
+        {
+            match Python::with_gil(|py| -> PyResult<Vec<String>> { method.call0(py)?.extract(py) })
+            {
+                Ok(results) => results
+                    .into_iter()
+                    .map(|name| {
+                        PythonTrigger::new(format!("interfaces.{}.{}", description.name(), name))
+                    })
+                    .collect(),
+                Err(e) => Err(format!(
+                    "python plugin failed - bad return from provides method: {e}"
+                ))?,
+            }
+        } else {
+            vec![]
+        };
+
         Ok(PythonAnalyzer {
             description,
             obj,
@@ -285,6 +306,7 @@ impl PythonAnalyzer {
             required,
             sink,
             provided,
+            provided_python,
         })
     }
 }
@@ -433,7 +455,30 @@ impl Analyzer for PythonAnalyzer {
             };
         }
         usage.add_time(time_table[time_end as usize]);
-        usage.end(reset, &[[0, time_table[time_end as usize]]]);
+        usage.end(reset, intervals);
+
+        if let Ok(method) = Python::with_gil(|py| self.obj.getattr(py, "get_trigger_times")) {
+            match Python::with_gil(|py| -> PyResult<HashMap<String, Vec<RealTime>>> {
+                method.call0(py)?.extract(py)
+            }) {
+                Ok(results) => {
+                    for (name, times) in results {
+                        self.provided_python
+                            .iter_mut()
+                            .find(|p| {
+                                println!("{}", p.name());
+                                p.name()
+                                    == format!("interfaces.{}.{}", self.description.name(), name)
+                            })
+                            .ok_or("python plugin error - returns trigger it did not define")?
+                            .set_result(times);
+                    }
+                }
+                Err(e) => Err(format!(
+                    "python plugin failed - defines triggers but provides bad value: {e}"
+                ))?,
+            }
+        }
 
         Ok(BusUsage::MultiChannel(usage))
     }
@@ -443,7 +488,11 @@ impl Analyzer for PythonAnalyzer {
     }
 
     fn provides(&self) -> Vec<&str> {
-        self.provided.iter().map(|p| p.name()).collect()
+        self.provided
+            .iter()
+            .map(|p| p.name())
+            .chain(self.provided_python.iter().map(|p| p.name()))
+            .collect()
     }
 
     fn sink(&self) -> &TriggerSink {
@@ -451,12 +500,15 @@ impl Analyzer for PythonAnalyzer {
     }
 
     fn consume(
-        self: Box<Self>,
+        mut self: Box<Self>,
     ) -> (
         String,
         std::rc::Rc<dyn crate::analyze::bus::BusDescription>,
         Vec<Box<dyn crate::analyze::trigger::TriggerSource>>,
     ) {
+        self.provided_python
+            .into_iter()
+            .for_each(|p| self.provided.push(Box::new(p)));
         (
             self.description.common.bus_name().to_owned(),
             self.description,

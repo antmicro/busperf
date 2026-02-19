@@ -1,0 +1,29 @@
+interfaces:
+  ####################################################
+  ###############  TEST INTERFACE  ###################
+  ####################################################
+  "trigger_stub":
+    scope: "logic"
+    clock: "clk"
+    reset: "reset"
+    reset_type: "low"
+
+    custom_analyzer: TriggerExample
+
+  "test":
+    scope: "logic"
+    clock: "clk"
+    reset: "reset"
+    reset_type: "low"
+
+    handshake: "Custom"
+    custom_handshake: "PythonReadyValid"
+    ready: "ready"
+    valid: "valid"
+
+    activate_on:
+      "interfaces.trigger_stub.trig1"
+    deactivate_on:
+      "interfaces.trigger_stub.trig2"
+ 
+
