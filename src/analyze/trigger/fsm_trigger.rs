@@ -220,8 +220,8 @@ impl Control for Fsm {
             }
             Err(e) => self
                 .states
-                .into_iter()
-                .filter_map(|(_, state)| {
+                .into_values()
+                .filter_map(|state| {
                     state
                         .trigger
                         .map(|t| (t, Err(format!("used trigger failed: {e}").into())))
