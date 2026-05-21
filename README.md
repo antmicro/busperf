@@ -17,9 +17,10 @@ Additionally, the tool supports Python plugins for analyzing custom bus protocol
 
 ### Install and run
 
+<!-- name="example-build" -->
 ```sh
-$ cargo install busperf
-$ busperf --help
+cargo install busperf
+busperf --help
 ```
 
 Shell completion can be generated as described [here](https://github.com/pacak/bpaf?tab=readme-ov-file#dynamic-shell-completion).
@@ -54,31 +55,31 @@ $ cargo doc --workspace --no-deps --open --document-private-items
 - Print statistics about the bus described in `test.yaml` with traces from `test.vcd`
 <!-- name="example-test" -->
 ```sh
-cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml --text
+busperf analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml --text
 ```
 
 - Print all statistics and set max burst delay to 1
 <!-- name="example-test-verbose" -->
 ```sh
-cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml --verbose -m 1 --text
+busperf analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml --verbose -m 1 --text
 ```
 
 - Write statistics to `stat.csv` formatted as CSV
 <!-- name="example-csv" -->
 ```sh
-cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o stat.csv --csv
+busperf analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o stat.csv --csv
 ```
 
 - Print statistics to stdout in the md format
 <!-- name="example-md" -->
 ```sh
-cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml --md
+busperf analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml --md
 ```
 
 - Write pretty printed statistics to `out`
 <!-- name="example-pretty" -->
 ```sh
-cargo run -- analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o out --text
+busperf analyze tests/test_dumps/test.vcd tests/test_dumps/test.yaml -o out --text
 ```
 
 - Clean files generated from examples

@@ -1,8 +1,171 @@
 # YAML bus description
 
-This chapter provides examples of YAML bus descriptions for different types of buses.
+Bus description is a YAML file which describes the bus(es) we want to analyze.
+It consists of 3 parts:
+- `common_clk_rst_ifs` (optional) - for defining common clock and reset pairs that can be later reused
+- `scopes` (optional) - for defining scope paths to be reused later
+- `interfaces` - the most important part of the description. This is where the buses are defined.
 
-## Single channel bus
+Top level overview
+
+```yaml
+common_clk_rst_ifs:
+  # ifs definitions
+
+scopes:
+  # scopes definitions
+
+interfaces:
+  # interfaces definitions
+```
+
+## Interfaces section
+
+```yaml
+interfaces:
+  "a_bus":
+    # a_bus description
+    scope: [$rootio, some_module, a]
+    clock: "clk_i"
+    reset: "rst_ni"
+    reset_type: "low"
+
+    handshake: "ReadyValid"
+    ready: "a_ready"
+    valid: "a_valid"
+
+  "b_bus":
+    # b_bus description
+    # ...
+
+  "axi_basic":
+    # axi_basic description
+    # ...
+
+  "axi_wr":
+    # axi_full_wr
+    # ...
+```
+
+In this block we define all the buses that we need to analyze.
+Each bus always must define those 4 elements:
+- `scope` - scope path to the signals
+- `clock` - name of the clock signal
+- `reset` - name of the reset signal
+- `reset_type` - reset active polarity "high" or "low"
+
+It also has to define either `handshake` or `custom_analyzer`.
+- `handshake` is used for single channel buses
+- `custom_analyzer` is used for multichannel bus analyzers
+
+In the last part there are signal names definitions.
+Scope and signal names can be either a single string or an array of strings.
+All signal names are relative to the scope.
+In the example we defined that `ready` signal in the simulation trace is `$rootio.some_module.a.a_ready` and `valid` is `$rootio.some_module.a.a_valid`.
+
+List of the supported analyzers and their required signals can be found in [Analyzers](analyzers.md).
+
+## `common_clk_rst_ifs` section
+
+To not rewrite same values to `clock`, `reset` and `reset_type` multiple times for different buses this section can be used.
+We define common names in `common_clk_rst_ifs` section with a YAML anchor and later in the `interfaces` section we use it.
+
+```yaml
+common_clk_rst_ifs:
+  first_common_clk: &first_common_clk
+    clock: "clk_i"
+    reset: "rst_ni"
+    reset_type: "low"
+  second_common_clk: &second_common_clk
+    clock: "clk_second"
+    reset: "rst_second"
+    reset_type: "high"
+
+interfaces:
+  "a_":
+    scope: "top"
+    clk_rst_if: *first_common_clk
+
+    handshake: "ReadyValid"
+    ready: "a_ready"
+    valid: "a_valid"
+
+  "b_":
+    scope: "top"
+    clk_rst_if: *first_common_clk
+    # ...
+
+  "c_":
+    scope: "top"
+    clk_rst_if: *first_common_clk
+    # ...
+
+  "d_":
+    scope: "top"
+    clk_rst_if: *first_common_clk
+    # ...
+
+  "E_":
+    scope: "top"
+    clk_rst_if: *second_common_clk
+    # ...
+  "F_":
+    scope: "top"
+    clk_rst_if: *second_common_clk
+    # ...
+```
+
+For example all 4 buses a-d use the same clock and reset signals. The remaining 2 (E and F) use other signals.
+
+## Scopes section
+
+To not rewrite long scope paths multiple times it can be defined inside `scopes` section and be referred to via YAML anchor.
+They can also be nested to define a long common path part separatedly.
+
+```yaml
+scopes:
+  base: &base_scope
+    [top, tb, very, long, scope, name]
+
+interfaces:
+  "a_":
+    scope: *base_scope
+    clock: "clk_i"
+    reset: "rst_ni"
+    reset_type: "low"
+
+    handshake: "ReadyValid"
+    ready: "a_ready"
+    valid: "a_valid"
+
+  "b_":
+    scope: *base_scope
+    clk_rst_if: *common_clk
+    # ...
+
+  "A_":
+    scope: [*base_scope, "A"]
+    clk_rst_if: *common_clk
+    # ...
+
+  "B_":
+    scope: [*base_scope, "B"]
+    clk_rst_if: *common_clk
+    # ...
+
+  "C_":
+    scope: [*base_scope, "C"]
+    clk_rst_if: *common_clk
+    # ...
+```
+
+In example `a_`'s and `b_`'s scopes are set to "top.tb.very.long.scope.name".
+For `A`, `B` and `C` the scopes end with the respective letter eg. A - "top.tb.very.long.name.A".
+
+
+## More examples
+
+### Single channel bus
 
 Example `.yaml` for `tests/test_dumps/dump.vcd`:
 
@@ -65,7 +228,7 @@ interfaces:
     valid: "b_valid"
 ```
 
-## Multi channel bus
+### Multi channel bus
 
 Example `.yaml` for a multi channel bus:
 
@@ -78,9 +241,6 @@ interfaces:
     reset_type: "high"
 
     custom_analyzer: "AXIRdAnalyzer"
-    intervals:
-      - [0, 5000000]
-      - [1234567890,1324567890]
     ar:
       id:    ["s_axi_rd", "arid"]
       ready: ["s_axi_rd", "arready"]
