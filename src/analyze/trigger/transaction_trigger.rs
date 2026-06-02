@@ -39,7 +39,7 @@ impl TriggerSource for TransactionTrigger {
     fn analyze(
         self: Box<Self>,
         _simulation_data: &mut crate::analyze::SimulationData,
-        _loaded: &[&(wellen::SignalRef, wellen::Signal)],
+        _loaded: &[&wellen::Signal],
         _intervals: &[[libbusperf::bus_usage::RealTime; 2]],
         _done_triggers: &crate::analyze::DoneTriggers,
         bus_usage: &Result<BusUsage, Box<dyn std::error::Error>>,

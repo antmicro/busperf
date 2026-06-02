@@ -74,7 +74,7 @@ impl TriggerSource for PythonTrigger {
     fn analyze(
         self: Box<Self>,
         _simulation_data: &mut crate::analyze::SimulationData,
-        _loaded: &[&(wellen::SignalRef, wellen::Signal)],
+        _loaded: &[&wellen::Signal],
         _intervals: &[[libbusperf::bus_usage::RealTime; 2]],
         _done_triggers: &crate::analyze::DoneTriggers,
         _bus_usage: &Result<libbusperf::bus_usage::BusUsage, Box<dyn std::error::Error>>,

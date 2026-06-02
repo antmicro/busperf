@@ -1,6 +1,7 @@
 use std::error::Error;
 use std::rc::Rc;
 
+use crate::analyze::SignalValue;
 use crate::analyze::bus::{
     BusCommon, BusDescription, COMMON_YAML, ExtraSignals, SignalPath, SignalPathFromYaml,
     bus_description,
@@ -14,7 +15,6 @@ use pyo3::{
     prelude::*,
     types::{PyList, PyTuple},
 };
-use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
 pub struct PythonCustomBus {

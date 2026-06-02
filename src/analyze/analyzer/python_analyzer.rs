@@ -319,12 +319,12 @@ impl Analyzer for PythonAnalyzer {
 
     fn calculate(
         &mut self,
-        loaded: &[&(wellen::SignalRef, wellen::Signal)],
+        loaded: &[&wellen::Signal],
         intervals: &[[RealTime; 2]],
         time_table: &TimeTable,
     ) -> Result<BusUsage, Box<dyn std::error::Error + 'static>> {
-        let (_, clk) = &loaded[0];
-        let (_, rst) = &loaded[1];
+        let clk = &loaded[0];
+        let rst = &loaded[1];
         let mut last = 0;
         let mut reset = 0;
         for (time, value) in rst.iter_changes() {
@@ -363,7 +363,7 @@ impl Analyzer for PythonAnalyzer {
             .chain(self.description.signals.iter())
             .map(|(type_, _)| match type_ {
                 SignalType::Signal | SignalType::RisingSignal => {
-                    let (_, signal) = &loaded[i];
+                    let signal = &loaded[i];
                     i += 1;
                     let start_value = vec![(
                         time_table[start_idx as usize],
@@ -393,8 +393,8 @@ impl Analyzer for PythonAnalyzer {
                     Ok::<_, Box<dyn Error>>(start_value.chain(changes).collect::<Vec<_>>())
                 }
                 SignalType::ReadyValid => {
-                    let (_, ready) = &loaded[i];
-                    let (_, valid) = &loaded[i + 1];
+                    let ready = &loaded[i];
+                    let valid = &loaded[i + 1];
                     i += 2;
                     let a = ReadyValidTransactionIterator::new(clk, ready, valid, time_end);
                     a.filter_map(|time_idx| {

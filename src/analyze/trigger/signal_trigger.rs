@@ -1,12 +1,12 @@
 use std::{error::Error, rc::Rc};
 
 use libbusperf::{SignalPath, bus_usage::BusUsage};
-use wellen::{Signal, SignalRef, SignalValue};
+use wellen::Signal;
 use yaml_rust2::Yaml;
 
 use super::TriggerSource;
 use crate::analyze::{
-    DoneTriggers, SignalsIterator, SimulationData,
+    DoneTriggers, SignalValue, SignalsIterator, SimulationData,
     bus::BusDescription,
     trigger::trigger_combination::{CombinationType, TriggerSourceCombination},
 };
@@ -57,12 +57,16 @@ impl BitMatch {
         Ok(BitMatch { filter })
     }
     fn compare_with_value(&self, signal: SignalValue) -> bool {
-        let SignalValue::Binary(s, bits) = signal else {
-            return false;
-        };
-        let mut buf = [0u8; 8];
-        buf[8 - (bits + 7) as usize / 8..].copy_from_slice(s);
-        self.matches(i64::from_be_bytes(buf))
+        if let SignalValue::BitVec(bit_vec) = signal
+            && let Some(s) = bit_vec.be_bytes()
+            && let bits = bit_vec.width()
+        {
+            let mut buf = [0u8; 8];
+            buf[8 - (bits + 7) as usize / 8..].copy_from_slice(s);
+            self.matches(i64::from_be_bytes(buf))
+        } else {
+            false
+        }
     }
 
     fn matches(&self, signal_value: i64) -> bool {
@@ -158,25 +162,25 @@ impl SignalTrigger {
     fn analyze_internal(
         &self,
         simulation_data: &mut SimulationData,
-        loaded: &[&(SignalRef, Signal)],
+        loaded: &[&Signal],
         intervals: &[[libbusperf::bus_usage::RealTime; 2]],
     ) -> Result<Vec<u64>, Box<dyn std::error::Error + 'static>> {
         let h = &simulation_data.hierarchy;
         let clk_ref = h[h
-            .lookup_var(&self.clk_path.scope, &self.clk_path.name)
+            .lookup_var(&self.clk_path.scope, self.clk_path.name.clone())
             .ok_or("signal not found")?]
         .signal_ref();
         let signal_ref = h[h
-            .lookup_var(&self.signal.scope, &self.signal.name)
+            .lookup_var(&self.signal.scope, self.signal.name.clone())
             .ok_or("signal not found")?]
         .signal_ref();
-        let (_, clk) = loaded
+        let clk = loaded
             .iter()
-            .find(|&(r, _)| *r == clk_ref)
+            .find(|clk| clk.signal_ref() == clk_ref)
             .ok_or("signal not loaded")?;
-        let (_, signal) = loaded
+        let signal = loaded
             .iter()
-            .find(|&(r, _)| *r == signal_ref)
+            .find(|signal| signal.signal_ref() == signal_ref)
             .ok_or("signal not loaded")?;
         let iter = SignalsIterator::new(clk, vec![signal]);
 
@@ -212,7 +216,7 @@ impl TriggerSource for SignalTrigger {
     fn analyze(
         self: Box<Self>,
         simulation_data: &mut SimulationData,
-        loaded: &[&(SignalRef, Signal)],
+        loaded: &[&Signal],
         intervals: &[[libbusperf::bus_usage::RealTime; 2]],
         _done_triggers: &DoneTriggers,
         _bus_usage: &Result<BusUsage, Box<dyn Error>>,

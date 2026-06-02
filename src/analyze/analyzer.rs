@@ -6,12 +6,12 @@ use itertools::Itertools;
 use python_analyzer::PythonAnalyzer;
 #[cfg(feature = "python-plugins")]
 use python_bus_analyzer::PythonBusAnalyzer;
-use wellen::{Signal, SignalRef, SignalValue, TimeTableIdx};
+use wellen::{Signal, TimeTableIdx};
 use yaml_rust2::Yaml;
 
 use crate::analyze::{AnalyzersConfig, DoneTriggers};
 use crate::analyze::{
-    SimulationData, TimeTable,
+    SignalValue, SimulationData, TimeTable,
     analyzer::axi_analyzer::{AXIRdAnalyzer, AXIWrAnalyzer},
     bus::BusDescription,
     load_signals,
@@ -95,7 +95,7 @@ pub struct AnalyzerResult {
 fn get_result<T>(
     mut analyzer: Box<T>,
     simulation_data: &mut SimulationData,
-    loaded: &[&(SignalRef, Signal)],
+    loaded: &[&Signal],
     intervals: &[[libbusperf::bus_usage::RealTime; 2]],
     done_triggers: &DoneTriggers,
     verbose: bool,
@@ -141,7 +141,7 @@ pub trait Analyzer {
     /// Method that should perform all calculations for an analysis of the bus
     fn calculate(
         &mut self,
-        loaded: &[&(SignalRef, Signal)],
+        loaded: &[&Signal],
         intervals: &[[RealTime; 2]],
         time_table: &TimeTable,
     ) -> Result<BusUsage, Box<dyn Error>>;

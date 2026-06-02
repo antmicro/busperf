@@ -11,7 +11,6 @@ use ahb::AHBBus;
 use apb::APBBus;
 use axi::AXIBus;
 use credit_valid::CreditValidBus;
-use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
 use libbusperf::CycleType;
@@ -177,7 +176,10 @@ macro_rules! bus_description {
 }
 pub(crate) use bus_description;
 
-use crate::analyze::bus::{ahb::AHBAnalyzer, apb::APBAnalyzer, axi::ReadyValidAnalyzer};
+use crate::analyze::{
+    SignalValue,
+    bus::{ahb::AHBAnalyzer, apb::APBAnalyzer, axi::ReadyValidAnalyzer},
+};
 
 /// Common info about the bus.
 #[derive(Debug)]
@@ -367,45 +369,25 @@ pub enum ValueType {
     Z,
 }
 
-pub fn get_value(value: SignalValue) -> Option<ValueType> {
+pub fn get_value(value: SignalValue<'_>) -> Option<ValueType> {
     match value {
-        SignalValue::Binary(items, 1) => match items[0] {
+        SignalValue::BitVec(bit_vec_ref) => match Into::<u8>::into(bit_vec_ref.get_bit(0)) {
             0 => Some(ValueType::V0),
             1 => Some(ValueType::V1),
-            _ => unreachable!(),
+            2 => Some(ValueType::X),
+            3 => Some(ValueType::Z),
+            _ => None,
         },
-        SignalValue::Binary(_, _) => None,
-        SignalValue::FourValue(items, 1) => match items[0] {
-            // if value was 0 or 1 then it would be Binary not FourValue
-            66 => Some(ValueType::X),
-            67 => Some(ValueType::Z),
-            _ => unreachable!(),
-        },
-        SignalValue::FourValue(_, _) => None,
-        SignalValue::NineValue(_, _) => None,
+        SignalValue::Event => None,
         SignalValue::String(_) => None,
         SignalValue::Real(_) => None,
     }
 }
 
-pub fn is_value_of_type(value: SignalValue, type_: ValueType) -> bool {
-    match value {
-        SignalValue::Binary(items, 1) => match type_ {
-            ValueType::V0 => items[0] == 0,
-            ValueType::V1 => items[0] == 1,
-            ValueType::X => false,
-            ValueType::Z => false,
-        },
-        SignalValue::Binary(_, _) => false,
-        SignalValue::FourValue(items, 1) => match type_ {
-            ValueType::V0 => false,
-            ValueType::V1 => false,
-            ValueType::X => items[0] == 66,
-            ValueType::Z => items[0] == 67,
-        },
-        SignalValue::FourValue(_, _) => false,
-        SignalValue::NineValue(_, _) => false,
-        SignalValue::String(_) => false,
-        SignalValue::Real(_) => false,
+pub fn is_value_of_type(value: SignalValue<'_>, type_: ValueType) -> bool {
+    if let Some(value) = get_value(value) {
+        value == type_
+    } else {
+        false
     }
 }

@@ -1,9 +1,11 @@
 use std::rc::Rc;
 
-use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use crate::analyze::bus::{BusCommon, BusDescription, ExtraSignals, bus_description};
+use crate::analyze::{
+    SignalValue,
+    bus::{BusCommon, BusDescription, ExtraSignals, bus_description},
+};
 
 use super::{LockstepAnalyzer, SignalPath, ValueType, bus_from_yaml, get_value};
 use libbusperf::CycleType;
@@ -41,7 +43,8 @@ impl LockstepAnalyzer for AHBAnalyzer {
     fn interpret_cycle(&self, signals: &[SignalValue<'_>], time: u32) -> CycleType {
         let htrans = signals[0];
         let hready = signals[1];
-        if let SignalValue::Binary(htrans_v, 2) = htrans
+        if let SignalValue::BitVec(htrans_v) = htrans
+            && let Some(htrans_v) = htrans_v.be_bytes()
             && let Some(hready_v) = get_value(hready)
         {
             /*
@@ -52,11 +55,11 @@ impl LockstepAnalyzer for AHBAnalyzer {
             */
             use ValueType::V0;
             use ValueType::V1;
-            match (htrans_v[0], hready_v) {
-                (0b11, V1) | (0b10, V1) => CycleType::Busy,
-                (0b00, V1) => CycleType::Free,
-                (0b01, V1) => CycleType::NoData,
-                (0b00, V0) | (0b01, V0) => {
+            match (htrans_v, hready_v) {
+                (&[0b11], V1) | (&[0b10], V1) => CycleType::Busy,
+                (&[0b00], V1) => CycleType::Free,
+                (&[0b01], V1) => CycleType::NoData,
+                (&[0b00], V0) | (&[0b01], V0) => {
                     eprintln!(
                         "ahb bus in disallowed state htrans: {} hready: {}, time: {}",
                         htrans, hready, time

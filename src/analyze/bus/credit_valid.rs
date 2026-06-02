@@ -1,8 +1,10 @@
 use std::{cell::Cell, rc::Rc};
-use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use crate::analyze::bus::{BusCommon, BusDescription, ExtraSignals, bus_description};
+use crate::analyze::{
+    SignalValue,
+    bus::{BusCommon, BusDescription, ExtraSignals, bus_description},
+};
 
 use super::{LockstepAnalyzer, SignalPath, ValueType, bus_from_yaml, get_value};
 use libbusperf::CycleType;

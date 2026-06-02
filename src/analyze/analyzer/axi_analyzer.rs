@@ -5,11 +5,12 @@ use std::{
     rc::Rc,
 };
 
-use wellen::{Signal, SignalValue, TimeTableIdx};
+use wellen::{Signal, TimeTableIdx};
 use yaml_rust2::Yaml;
 
 use crate::analyze::{
     AnalyzersConfig, RisingSignalIterator, TimeTable,
+    analyzer::SignalValue,
     bus::{BusDescription, LockstepAnalyzer, SignalPathFromYaml, axi::ReadyValidAnalyzer},
     trigger::{ChannelTrigger, TransactionTrigger, TriggerName, TriggerSink, TriggerSource},
 };
@@ -547,17 +548,17 @@ impl Analyzer for AXIRdAnalyzer {
 
     fn calculate(
         &mut self,
-        loaded: &[&(wellen::SignalRef, Signal)],
+        loaded: &[&Signal],
         intervals: &[[RealTime; 2]],
         time_table: &TimeTable,
     ) -> Result<BusUsage, Box<dyn std::error::Error + 'static>> {
-        let (_, clk) = &loaded[0];
-        let (_, rst) = &loaded[1];
-        let (_, _arready) = &loaded[2];
-        let (_, arvalid) = &loaded[3];
-        let (_, _rready) = &loaded[4];
-        let (_, rvalid) = &loaded[5];
-        let (_, r_resp) = &loaded[6];
+        let clk = &loaded[0];
+        let rst = &loaded[1];
+        let _arready = &loaded[2];
+        let arvalid = &loaded[3];
+        let _rready = &loaded[4];
+        let rvalid = &loaded[5];
+        let r_resp = &loaded[6];
 
         let mut reset = 0;
 
@@ -598,9 +599,9 @@ impl Analyzer for AXIRdAnalyzer {
             let rst = RisingSignalIterator::new(rst);
             match self.description.full {
                 Some(_) => {
-                    let (_, ar_id) = &loaded[7];
-                    let (_, r_id) = &loaded[8];
-                    let (_, r_last) = &loaded[9];
+                    let ar_id = &loaded[7];
+                    let r_id = &loaded[8];
+                    let r_last = &loaded[9];
 
                     self.calculate_full(
                         &mut usage, ar, r, rst, r_resp, ar_id, r_id, r_last, &end_idx, time_table,
@@ -981,19 +982,19 @@ impl Analyzer for AXIWrAnalyzer {
 
     fn calculate(
         &mut self,
-        loaded: &[&(wellen::SignalRef, Signal)],
+        loaded: &[&Signal],
         intervals: &[[RealTime; 2]],
         time_table: &TimeTable,
     ) -> Result<BusUsage, Box<dyn std::error::Error + 'static>> {
-        let (_, clk) = &loaded[0];
-        let (_, rst) = &loaded[1];
-        let (_, awready) = &loaded[2];
-        let (_, awvalid) = &loaded[3];
-        let (_, wready) = &loaded[4];
-        let (_, wvalid) = &loaded[5];
-        let (_, bready) = &loaded[6];
-        let (_, bvalid) = &loaded[7];
-        let (_, b_resp) = &loaded[8];
+        let clk = &loaded[0];
+        let rst = &loaded[1];
+        let awready = &loaded[2];
+        let awvalid = &loaded[3];
+        let wready = &loaded[4];
+        let wvalid = &loaded[5];
+        let bready = &loaded[6];
+        let bvalid = &loaded[7];
+        let b_resp = &loaded[8];
 
         let mut reset = 0;
         let clock_period = *time_table.get(2).ok_or(
@@ -1036,9 +1037,9 @@ impl Analyzer for AXIWrAnalyzer {
 
             match self.description.full {
                 Some(_) => {
-                    let (_, aw_id) = &loaded[9];
-                    let (_, w_last) = &loaded[10];
-                    let (_, b_id) = &loaded[11];
+                    let aw_id = &loaded[9];
+                    let w_last = &loaded[10];
+                    let b_id = &loaded[11];
                     self.calculate_full(
                         &mut usage, aw, w, b, aw_id, w_last, b_id, b_resp, rst, &end_idx,
                         time_table,

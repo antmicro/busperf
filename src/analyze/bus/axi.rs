@@ -1,9 +1,11 @@
 use std::rc::Rc;
 
-use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
-use crate::analyze::bus::{BusCommon, ExtraSignals, bus_description};
+use crate::analyze::{
+    SignalValue,
+    bus::{BusCommon, ExtraSignals, bus_description},
+};
 
 use super::{
     BusDescription, LockstepAnalyzer, SignalPath, ValueType, bus_from_yaml, is_value_of_type,

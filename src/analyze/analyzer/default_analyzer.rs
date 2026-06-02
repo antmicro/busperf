@@ -1,9 +1,7 @@
 use std::{error::Error, rc::Rc};
 
-use wellen::SignalValue;
-
 use crate::analyze::{
-    AnalyzersConfig, TimeTable,
+    AnalyzersConfig, SignalValue, TimeTable,
     bus::{BusDescription, BusDescriptionBuilder, LockstepAnalyzer, SignalPath, is_value_of_type},
     trigger::{ChannelTrigger, TriggerName, TriggerSink, TriggerSource},
 };
@@ -71,12 +69,12 @@ impl Analyzer for DefaultAnalyzer {
 
     fn calculate(
         &mut self,
-        loaded: &[&(wellen::SignalRef, wellen::Signal)],
+        loaded: &[&wellen::Signal],
         intervals: &[[RealTime; 2]],
         time_table: &TimeTable,
     ) -> Result<BusUsage, Box<dyn std::error::Error + 'static>> {
-        let (_, clock) = loaded[0];
-        let (_, reset) = loaded[1];
+        let clock = loaded[0];
+        let reset = loaded[1];
         let mut usage = SingleChannelBusUsage::new(
             self.description.name(),
             self.max_burst_delay,
@@ -87,9 +85,7 @@ impl Analyzer for DefaultAnalyzer {
         let mut intervals = intervals.iter();
         if let Some(mut current_iterval) = intervals.next() {
             for (time, value) in clock.iter_changes() {
-                if let SignalValue::Binary(v, 1) = value
-                    && v[0] == 0
-                {
+                if is_value_of_type(value, crate::analyze::bus::ValueType::V0) {
                     continue;
                 }
                 let t = time_table[time as usize];
@@ -117,7 +113,7 @@ impl Analyzer for DefaultAnalyzer {
                 );
                 let values: Vec<SignalValue> = loaded[2..]
                     .iter()
-                    .map(|(_, s)| {
+                    .map(|s| {
                         Ok::<_, Box<dyn Error>>(s.get_value_at(
                             &s.get_offset(time).ok_or(format!(
                                 "signal does not have value at {}",

@@ -2,7 +2,7 @@ use std::error::Error;
 
 use itertools::Itertools;
 use libbusperf::bus_usage::{BusUsage, RealTime};
-use wellen::{Signal, SignalRef};
+use wellen::Signal;
 use yaml_rust2::Yaml;
 
 use crate::analyze::{
@@ -36,7 +36,7 @@ pub trait TriggerSource {
     fn analyze(
         self: Box<Self>,
         simulation_data: &mut SimulationData,
-        loaded: &[&(SignalRef, Signal)],
+        loaded: &[&Signal],
         intervals: &[[libbusperf::bus_usage::RealTime; 2]],
         done_triggers: &DoneTriggers,
         bus_usage: &Result<BusUsage, Box<dyn Error>>,

@@ -34,7 +34,7 @@ impl TriggerSource for ChannelTrigger {
     fn analyze(
         self: Box<Self>,
         simulation_data: &mut crate::analyze::SimulationData,
-        loaded: &[&(wellen::SignalRef, wellen::Signal)],
+        loaded: &[&wellen::Signal],
         intervals: &[[libbusperf::bus_usage::RealTime; 2]],
         _done_triggers: &crate::analyze::DoneTriggers,
         _bus_usage: &Result<BusUsage, Box<dyn Error>>,
@@ -51,12 +51,11 @@ impl ChannelTrigger {
     fn analyze_internal(
         &self,
         simulation_data: &mut crate::analyze::SimulationData,
-        loaded: &[&(wellen::SignalRef, wellen::Signal)],
+        loaded: &[&wellen::Signal],
         intervals: &[[libbusperf::bus_usage::RealTime; 2]],
     ) -> Result<Vec<RealTime>, Box<dyn Error>> {
-        let (_, clk_signal) = &loaded[0];
-        let iterator =
-            SignalsIterator::new(clk_signal, loaded[2..].iter().map(|(_, s)| s).collect());
+        let clk_signal = &loaded[0];
+        let iterator = SignalsIterator::new(clk_signal, loaded[2..].to_vec());
         let time_table = &simulation_data.time_table;
         iterator
             .filter_map(

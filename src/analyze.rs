@@ -11,7 +11,7 @@ use std::{
 use hashbrown::HashMap;
 use itertools::Itertools;
 use wellen::{
-    Hierarchy, LoadOptions, Signal, SignalSource, SignalValue, TimeTableIdx, Timescale,
+    Hierarchy, LoadOptions, Signal, SignalSource, SignalValueRef, TimeTableIdx, Timescale,
     viewers::{self, BodyResult},
 };
 use yaml_rust2::YamlLoader;
@@ -34,6 +34,8 @@ mod bus;
 #[cfg(feature = "python-plugins")]
 mod plugins;
 mod trigger;
+
+pub(crate) type SignalValue<'a> = SignalValueRef<'a>;
 
 /// Configuration for the analyzers.
 ///
@@ -383,15 +385,15 @@ pub fn load_simulation_trace(
 fn load_signals<'signal_buffer>(
     simulation_data: &mut SimulationData,
     signal_paths: &Vec<&SignalPath>,
-    buffer: &'signal_buffer mut Vec<(wellen::SignalRef, wellen::Signal)>,
-) -> Result<Vec<&'signal_buffer (wellen::SignalRef, wellen::Signal)>, Box<dyn Error>> {
+    buffer: &'signal_buffer mut Vec<wellen::Signal>,
+) -> Result<Vec<&'signal_buffer wellen::Signal>, Box<dyn Error>> {
     let hierarchy = &simulation_data.hierarchy;
     let source = &mut simulation_data.signal_source;
     let signal_refs: Vec<wellen::SignalRef> = signal_paths
         .iter()
         .map(|path| {
             Ok(hierarchy[hierarchy
-                .lookup_var(&path.scope, &path.name)
+                .lookup_var(&path.scope, path.name.clone())
                 .ok_or(format!("signal \"{}\" does not exist", path))?]
             .signal_ref())
         })
@@ -406,7 +408,7 @@ fn load_signals<'signal_buffer>(
         .map(|signal_ref| {
             buffer
                 .iter()
-                .find(|(r, _)| signal_ref == r)
+                .find(|signal| *signal_ref == signal.signal_ref())
                 .expect("Signal should be loaded for each SignalRef")
         })
         .collect();

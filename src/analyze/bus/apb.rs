@@ -1,11 +1,13 @@
 use std::rc::Rc;
 
-use crate::analyze::bus::{BusCommon, BusDescription, ExtraSignals, bus_description};
+use crate::analyze::{
+    SignalValue,
+    bus::{BusCommon, BusDescription, ExtraSignals, bus_description},
+};
 
 use super::{LockstepAnalyzer, SignalPath, ValueType, bus_from_yaml, get_value};
 use libbusperf::CycleType;
 
-use wellen::SignalValue;
 use yaml_rust2::Yaml;
 
 pub struct APBBus {
