@@ -64,6 +64,7 @@ jobs:
           sudo apt-get install -qqy git help2man perl python3 make autoconf g++ flex bison libfl-dev libfl2 ccache libgoogle-perftools-dev numactl perl-doc
           git clone https://github.com/verilator/verilator
           cd verilator
+          git checkout v5.048
           autoconf
           ./configure
           make  -j `nproc`
